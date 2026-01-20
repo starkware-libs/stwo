@@ -232,6 +232,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             &samples,
             channel.draw_secure_felt(),
             lifting_log_size,
+            self.twiddles,
             self.config.fri_config.log_blowup_factor,
         );
 

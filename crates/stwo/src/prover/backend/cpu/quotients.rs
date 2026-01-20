@@ -14,6 +14,7 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
@@ -23,6 +24,8 @@ impl QuotientOps for CpuBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+        _twiddles: &TwiddleTree<Self>,
+        _log_blowup_factor: u32,
     ) {
         let size = columns[0].len();
         let quotient_constants = quotient_constants(sample_batches);

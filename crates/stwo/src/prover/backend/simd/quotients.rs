@@ -3,7 +3,7 @@ use std::iter::zip;
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
@@ -18,13 +18,18 @@ use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
+use crate::prover::backend::Column;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
+// TODO(Leo): find the best size.
 const QUOTIENTS_CHUNK_SIZE: usize = 64;
+const MIN_LOG_SIZE: u32 = 18;
+const MIN_N_COLS: usize = 70;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -34,48 +39,46 @@ pub struct QuotientConstants {
 impl QuotientOps for SimdBackend {
     // TODO(Leo): optimize.
     fn accumulate_numerators(
+        // All columns are of the same size.
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+        twiddles: &TwiddleTree<SimdBackend>,
+        log_blowup_factor: u32,
     ) {
-        let size = columns[0].length;
+        let size = columns[0].values.len();
+        let domain = CanonicCoset::new(size.ilog2()).circle_domain();
+        let (subdomain, _) = domain.split(log_blowup_factor);
+        // Fallback to full domain accumulation if there are no major gains with fft.
+        if (subdomain.log_size() < MIN_LOG_SIZE) || (columns.len() < MIN_N_COLS) {
+            accumulate_numerators_no_fft(
+                domain,
+                columns,
+                sample_batches,
+                accumulated_numerators_vec,
+            );
+            return;
+        }
         let quotient_constants = quotient_constants(sample_batches);
-
+        let subdomain_twiddles = TwiddleTree {
+            root_coset: subdomain.half_coset,
+            // Only itwiddles are needed for interpolation.
+            twiddles: TwiddleBuffer::empty(),
+            itwiddles: twiddles
+                .itwiddles
+                .extract_subdomain_twiddles(domain.log_size(), subdomain.log_size()),
+        };
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            let mut partial_numerators_acc =
-                unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(size) };
-
-            #[cfg(not(feature = "parallel"))]
-            let iter = partial_numerators_acc.chunks_mut(QUOTIENTS_CHUNK_SIZE);
-
-            #[cfg(feature = "parallel")]
-            let iter = partial_numerators_acc.par_chunks_mut(QUOTIENTS_CHUNK_SIZE);
-
-            iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-                let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
-                // Initialize accumulators for the chunk.
-                let mut accumulators = [PackedSecureField::zero(); QUOTIENTS_CHUNK_SIZE];
-                // This is needed because because the last chunk may be smaller than
-                // `QUOTIENTS_CHUNK_SIZE`.
-                let packed_chunk_len = values_dst.0[0].0.len();
-                let accumulators = &mut accumulators[..packed_chunk_len];
-
-                for (numerator_data, (_, b, c)) in zip_eq(&batch.cols_vals_randpows, &coeffs) {
-                    let col_data = &columns[numerator_data.column_index].data;
-                    let b_broadcast = PackedSecureField::broadcast(*b);
-                    let c_broadcast = PackedSecureField::broadcast(*c);
-                    for (i, acc) in accumulators.iter_mut().enumerate() {
-                        let val = col_data[chunk_start + i];
-                        *acc += c_broadcast * val - b_broadcast;
-                    }
-                }
-
-                for (i, acc) in accumulators.iter().enumerate() {
-                    unsafe {
-                        values_dst.set_packed(i, *acc);
-                    }
-                }
+            let subdomain_acc =
+                accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs);
+            // Extend accumulations to the full domain.
+            let columns = subdomain_acc.columns.map(|c| {
+                let poly =
+                    CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
+                        .interpolate_with_twiddles(&subdomain_twiddles);
+                poly.evaluate_with_twiddles(domain, twiddles).values
             });
+            let partial_numerators_acc = SecureColumnByCoords { columns };
 
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
             accumulated_numerators_vec.push(AccumulatedNumerators {
@@ -143,6 +146,69 @@ impl QuotientOps for SimdBackend {
     }
 }
 
+fn accumulate_numerators_on_subdomain(
+    subdomain: CircleDomain,
+    sample_batch: &ColumnSampleBatch,
+    columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+    quotient_coeffs: &[(SecureField, SecureField, SecureField)],
+) -> SecureColumnByCoords<SimdBackend> {
+    let mut values =
+        unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = values.chunks_mut(QUOTIENTS_CHUNK_SIZE);
+
+    #[cfg(feature = "parallel")]
+    let iter = values.par_chunks_mut(QUOTIENTS_CHUNK_SIZE);
+
+    iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
+        let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
+        // Initialize accumulators for the chunk.
+        let mut accumulators = [PackedSecureField::zero(); QUOTIENTS_CHUNK_SIZE];
+        // This is needed because because the last chunk may be smaller than
+        // `QUOTIENTS_CHUNK_SIZE`.
+        let packed_chunk_len = values_dst.0[0].0.len();
+        let accumulators = &mut accumulators[..packed_chunk_len];
+
+        for (numerator_data, (_, b, c)) in zip_eq(&sample_batch.cols_vals_randpows, quotient_coeffs)
+        {
+            let col_data = &columns[numerator_data.column_index].data;
+            let b_broadcast = PackedSecureField::broadcast(*b);
+            let c_broadcast = PackedSecureField::broadcast(*c);
+            for (local_i, acc) in accumulators.iter_mut().enumerate() {
+                let val = col_data[chunk_start + local_i];
+                *acc += c_broadcast * val - b_broadcast;
+            }
+        }
+
+        for (local_i, acc) in accumulators.iter().enumerate() {
+            unsafe {
+                values_dst.set_packed(local_i, *acc);
+            }
+        }
+    });
+    values
+}
+
+pub fn accumulate_numerators_no_fft(
+    domain: CircleDomain,
+    columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+    sample_batches: &[ColumnSampleBatch],
+    accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<SimdBackend>>,
+) {
+    let quotient_constants = quotient_constants(sample_batches);
+    for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
+        let partial_numerators_acc =
+            accumulate_numerators_on_subdomain(domain, batch, columns, &coeffs);
+        let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
+        accumulated_numerators_vec.push(AccumulatedNumerators {
+            sample_point: batch.point,
+            partial_numerators_acc,
+            first_linear_term_acc,
+        })
+    }
+}
+
 fn denominator_inverses(
     sample_points: &[CirclePoint<SecureField>],
     domain: CircleDomain,
@@ -191,21 +257,28 @@ mod tests {
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
     use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-    use crate::prover::poly::circle::CircleEvaluation;
+    use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::QuotientOps;
     use crate::qm31;
 
     #[test]
     fn test_simd_and_cpu_numerators_are_consistent() {
-        const LOG_SIZE: u32 = 10;
-        const N_COLS: usize = 100;
+        const LOG_SIZE: u32 = 19;
+        const N_COLS: usize = 10;
+        const LOG_BLOWUP_FACTOR: u32 = 4;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let values = BaseColumn::from_cpu(&(0..1 << LOG_SIZE).map(BaseField::from).collect_vec());
+        let values = BaseColumn::from_cpu(
+            (0..1 << LOG_SIZE)
+                .map(BaseField::from)
+                .collect_vec()
+                .as_slice(),
+        );
         let columns =
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, values);
-
+        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let points = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
@@ -246,6 +319,8 @@ mod tests {
             &columns_simd.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
+            &simd_twiddles,
+            LOG_BLOWUP_FACTOR,
         );
         // CPU
         let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
@@ -255,6 +330,8 @@ mod tests {
             &columns_cpu.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_cpu,
+            &cpu_twiddles,
+            LOG_BLOWUP_FACTOR,
         );
 
         accumulated_numerators_vec_simd

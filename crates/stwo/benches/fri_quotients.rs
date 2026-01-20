@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use itertools::Itertools;
 use rand::rngs::SmallRng;
@@ -12,13 +10,13 @@ use stwo::core::pcs::quotients::{
 };
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::backend::simd::quotients::accumulate_numerators_no_fft;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::pcs::quotient_ops::AccumulatedNumerators;
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::QuotientOps;
+use stwo::prover::backend::simd::{AccumulatedNumerators, QuotientOps};
 
-const LOG_BLOWUP_FACTOR: u32 = 1;
+const LOG_BLOWUP_FACTOR: u32 = 2;
 
 struct BenchSetup {
     columns: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -82,17 +80,38 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
     let log_size = 20;
     let n_cols = 100;
     let s = setup(log_size, n_cols);
-    // let domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR).circle_domain();
+    let domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR).circle_domain();
     let col_refs: Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
         s.columns.iter().collect();
 
     c.bench_function(
-        &format!("accumulate_numerators 2^{log_size} x {n_cols} cols"),
+        &format!("accumulate_numerators (fft) 2^{log_size} x {n_cols} cols"),
         |b| {
             b.iter_batched(
                 || Vec::<AccumulatedNumerators<SimdBackend>>::new(),
                 |mut acc| {
                     SimdBackend::accumulate_numerators(
+                        black_box(&col_refs),
+                        black_box(&s.sample_batches),
+                        black_box(&mut acc),
+                        black_box(&s.twiddles),
+                        black_box(LOG_BLOWUP_FACTOR),
+                    );
+                    acc
+                },
+                BatchSize::LargeInput,
+            );
+        },
+    );
+
+    c.bench_function(
+        &format!("accumulate_numerators (no_fft) 2^{log_size} x {n_cols} cols"),
+        |b| {
+            b.iter_batched(
+                || Vec::<AccumulatedNumerators<SimdBackend>>::new(),
+                |mut acc| {
+                    accumulate_numerators_no_fft(
+                        black_box(domain),
                         black_box(&col_refs),
                         black_box(&s.sample_batches),
                         black_box(&mut acc),

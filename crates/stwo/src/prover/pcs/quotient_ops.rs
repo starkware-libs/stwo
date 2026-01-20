@@ -12,6 +12,7 @@ use crate::core::pcs::quotients::{
 use crate::core::pcs::TreeVec;
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::AccumulationOps;
@@ -28,6 +29,8 @@ pub trait QuotientOps: PolyOps {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+        twiddles: &TwiddleTree<Self>,
+        log_blowup_factor: u32,
     );
 
     /// Given a vector of `AccumulatedNumerators`, the function iterates over the points of the
@@ -75,7 +78,8 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     samples: &TreeVec<Vec<Vec<PointSample>>>,
     random_coeff: SecureField,
     lifting_log_size: u32,
-    _log_blowup_factor: u32,
+    twiddles: &TwiddleTree<B>,
+    log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
@@ -106,7 +110,13 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
         // TODO: slice.
         let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec)
+        B::accumulate_numerators(
+            &columns,
+            &sample_batches,
+            &mut accumulated_numerators_vec,
+            twiddles,
+            log_blowup_factor,
+        )
     });
 
     // Group and accumulate the numerators per sample point: the accumulations (of different
@@ -163,7 +173,7 @@ mod tests {
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Backend, BackendForChannel, CpuBackend};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-    use crate::prover::poly::circle::CircleCoefficients;
+    use crate::prover::poly::circle::{CircleCoefficients, PolyOps};
     use crate::prover::{CommitmentSchemeProver, SecureField};
 
     #[test]
@@ -194,6 +204,7 @@ mod tests {
             &TreeVec(vec![vec![samples]]),
             rand_coeff,
             LOG_SIZE + LOG_BLOWUP_FACTOR,
+            &CpuBackend::precompute_twiddles(eval_domain.half_coset),
             LOG_BLOWUP_FACTOR,
         );
         let mut coeffs = quot_eval
