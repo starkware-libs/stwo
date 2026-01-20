@@ -14,7 +14,6 @@ use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::pcs::quotient_ops::AccumulatedNumerators;
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
-use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::QuotientOps;
@@ -27,7 +26,6 @@ fn setup(
 ) -> (
     Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     Vec<ColumnSampleBatch>,
-    TwiddleTree<SimdBackend>,
 ) {
     let mut rng = SmallRng::seed_from_u64(0);
 
@@ -75,7 +73,7 @@ fn setup(
         .flatten()
         .collect_vec(),
     );
-    (columns, sample_batches, twiddles)
+    (columns, sample_batches)
 }
 
 fn bench_accumulate_numerators(c: &mut Criterion) {
@@ -83,7 +81,7 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
     let log_blowup_factor = 1;
     let eval_log_size = trace_log_size + log_blowup_factor;
     let n_cols = 100;
-    let (columns, sample_batches, _twiddles) = setup(trace_log_size, log_blowup_factor, n_cols);
+    let (columns, sample_batches) = setup(trace_log_size, log_blowup_factor, n_cols);
     let col_refs: Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
         columns.iter().collect();
 
@@ -97,6 +95,7 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
                         black_box(&col_refs),
                         black_box(&sample_batches),
                         black_box(&mut acc),
+                        black_box(log_blowup_factor),
                     );
                     acc
                 },
@@ -105,18 +104,23 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
         },
     );
 }
+
 fn bench_compute_quotients_and_combine(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
 
+    let trace_log_size = 19;
+    let log_blowup_factor = 2;
+    let eval_log_size = trace_log_size + log_blowup_factor;
+    let eval_domain = CanonicCoset::new(eval_log_size).circle_domain();
+    let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
     let n_sample_points = 10;
-    let lifting_log_size = 21;
 
     let accumulations: Vec<AccumulatedNumerators<SimdBackend>> = (0..n_sample_points)
         .map(|i| {
             let partial_numerators_acc = SecureColumnByCoords {
                 columns: std::array::from_fn(|_| {
                     BaseColumn::from_cpu(
-                        &(0..(1 << lifting_log_size))
+                        &(0..(1 << trace_log_size))
                             .map(|_| rng.gen::<M31>())
                             .collect::<Vec<_>>(),
                     )
@@ -133,11 +137,18 @@ fn bench_compute_quotients_and_combine(c: &mut Criterion) {
         .collect();
 
     c.bench_function(
-        &format!("compute_quotients_and_combine 2^{lifting_log_size} x {n_sample_points} pts"),
+        &format!("compute_quotients_and_combine 2^{eval_log_size} x {n_sample_points} pts"),
         |b| {
             b.iter_batched(
                 || accumulations.clone(),
-                |acc| SimdBackend::compute_quotients_and_combine(black_box(acc), lifting_log_size),
+                |acc| {
+                    SimdBackend::compute_quotients_and_combine(
+                        black_box(acc),
+                        eval_log_size,
+                        log_blowup_factor,
+                        &twiddles,
+                    )
+                },
                 BatchSize::LargeInput,
             );
         },
