@@ -149,39 +149,22 @@ fn accumulate_numerators_on_subdomain(
     let mut values =
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
 
-        // #[cfg(not(feature = "parallel"))]
-        // let iter = values.chunks_mut(1);
-        // // TODO(Leo): make chunk size configurable.
-        // #[cfg(feature = "parallel")]
-        // let iter = values.par_chunks_mut(1);
-        for (NumeratorData {column_index: idx, ..}, (_, b, c)) in sample_batch.cols_vals_randpows.iter().zip(quotient_coeffs) {
-            let column = columns[*idx];
-            #[cfg(not(feature = "parallel"))]
-            let iter = values.chunks_mut(1);
-            // TODO(Leo): make chunk size configurable.
-            #[cfg(feature = "parallel")]
-            let iter = values.par_chunks_mut(1);
-            iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-                let value = PackedSecureField::broadcast(*c) * column.data[chunk_idx];
-                let mut res = unsafe {values_dst.packed_at(0)};
-                res += value - PackedSecureField::broadcast(*b);
-                unsafe {
-                    values_dst.set_packed(0, res);
-            }});
-    }
-
-
-        // iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-        //     let query_values_at_row = sample_batch.cols_vals_randpows.iter().map(
-        //         |NumeratorData {
-        //                 column_index: idx, ..
-        //             }| columns[*idx].data[chunk_idx],
-        //     );
-        //     let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
-        //     unsafe {
-        //         values_dst.set_packed(0, row_value);
-        //     }
-        // });
+        #[cfg(not(feature = "parallel"))]
+        let iter = values.chunks_mut(1);
+        // TODO(Leo): make chunk size configurable.
+        #[cfg(feature = "parallel")]
+        let iter = values.par_chunks_mut(1);
+        iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
+            let query_values_at_row = sample_batch.cols_vals_randpows.iter().map(
+                |NumeratorData {
+                        column_index: idx, ..
+                    }| columns[*idx].data[chunk_idx],
+            );
+            let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
+            unsafe {
+                values_dst.set_packed(0, row_value);
+            }
+        });
         // for 
 
     let values = values.columns;
