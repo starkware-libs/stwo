@@ -32,14 +32,16 @@ pub struct QuotientConstants {
 impl QuotientOps for SimdBackend {
     // TODO(Leo): optimize.
     fn accumulate_numerators(
+        // All columns are of the same size.
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].length;
         let quotient_constants = quotient_constants(sample_batches);
-
+        
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
+            
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
 
             #[cfg(not(feature = "parallel"))]
