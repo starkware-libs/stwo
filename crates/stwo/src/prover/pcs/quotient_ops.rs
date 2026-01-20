@@ -178,10 +178,11 @@ mod tests {
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::verifier::VerificationError;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::backend::{Backend, BackendForChannel, CpuBackend};
+    use crate::prover::backend::{Backend, BackendForChannel, Column, CpuBackend};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-    use crate::prover::poly::circle::{CircleCoefficients, PolyOps};
+    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
     use crate::prover::{CommitmentSchemeProver, SecureField};
 
     #[test]
@@ -302,5 +303,51 @@ mod tests {
     #[test]
     fn test_pcs_prove_and_verify_simd_with_barycentric() {
         assert!(prove_and_verify_pcs::<SimdBackend, false>().is_ok());
+    }
+
+    /// Tests that SIMD quotient computation produces low-degree quotients even when the trace
+    /// polynomial is very small (subdomain size < N_LANES).
+    #[test]
+    fn test_simd_quotients_are_low_degree_small_trace() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        const LOG_SIZE: u32 = 3;
+        const LOG_BLOWUP_FACTOR: u32 = 4;
+
+        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(M31::from).collect());
+        let eval_domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
+        let cpu_eval = polynomial.evaluate(eval_domain);
+        let simd_eval = CircleEvaluation::new(eval_domain, BaseColumn::from_cpu(&cpu_eval.values));
+
+        let sample_points = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let samples = sample_points
+            .into_iter()
+            .map(|x| PointSample {
+                point: x,
+                value: polynomial.eval_at_point(x),
+            })
+            .collect_vec();
+        let rand_coeff =
+            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
+        let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
+        let quot_eval = compute_fri_quotients(
+            &TreeVec(vec![vec![&simd_eval]]),
+            &TreeVec(vec![vec![samples]]),
+            rand_coeff,
+            LOG_SIZE + LOG_BLOWUP_FACTOR,
+            &twiddles,
+            LOG_BLOWUP_FACTOR,
+        );
+        let mut coeffs = quot_eval
+            .values
+            .columns
+            .iter()
+            .map(|c| CpuCircleEvaluation::new(eval_domain, c.to_cpu()).interpolate())
+            .collect_vec();
+        let zeros = coeffs[0].coeffs.split_off((1 << LOG_SIZE) - 1);
+
+        assert!(zeros.iter().all(|c| c.is_zero()));
     }
 }

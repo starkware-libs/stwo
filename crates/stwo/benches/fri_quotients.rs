@@ -104,6 +104,7 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
         },
     );
 }
+
 fn bench_compute_quotients_and_combine(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
 
