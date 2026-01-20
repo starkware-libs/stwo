@@ -5,7 +5,7 @@ use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 #[cfg(feature = "parallel")]
-use rayon::slice::{ParallelSlice, ParallelSliceMut};
+use rayon::slice::{ParallelSliceMut};
 
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
@@ -74,15 +74,10 @@ impl QuotientOps for SimdBackend {
                     // Sanity check.
                     // inlined(ci, subdomain_basefield_poly, subdomain, &twiddles, &mut partial_numerators_acc_col);
                         let eval = subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
-                    // let stride = 1 << 4;
-                    // partial_numerators_acc_col.data[(ci * eval.data.len())..((ci + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
-                    // dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
-                    // );
-                    partial_numerators_acc_col
-                    .data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
-                    .par_chunks_mut(1 << 4)
-                    .zip(eval.data.par_chunks(1 << 4))
-                    .for_each(|(dest, val)| dest.copy_from_slice(val));
+                    let stride = 1 << 4;
+                    partial_numerators_acc_col.data[(ci * eval.data.len())..((ci + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
+                    dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
+                    );
                     // let eval =
                     //     subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
                     // partial_numerators_acc_col.data
