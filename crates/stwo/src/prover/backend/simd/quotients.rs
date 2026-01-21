@@ -73,8 +73,8 @@ impl QuotientOps for SimdBackend {
                 let eval = subdomain_basefield_poly.evaluate_with_twiddles(domain, &twiddles);
                 partial_numerators_acc_col
                     .data
-                    .par_chunks_mut(2)
-                    .zip(eval.data.par_chunks(2))
+                    .par_chunks_mut(1 << 4)
+                    .zip(eval.data.par_chunks(1 << 4))
                     .for_each(|(dest, val)| dest.copy_from_slice(val));
             }
             // }
