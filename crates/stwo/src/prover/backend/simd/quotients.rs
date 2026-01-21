@@ -25,7 +25,7 @@ use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{
-    CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
+    CircleCoefficients, CircleEvaluation, SecureEvaluation,
 };
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -44,6 +44,7 @@ impl QuotientOps for SimdBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+        twiddles: &TwiddleTree<SimdBackend>
     ) {
         let size = columns[0].length;
 
@@ -57,7 +58,7 @@ impl QuotientOps for SimdBackend {
         let quotient_constants = quotient_constants(sample_batches);
 
         // To delete
-        let twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        // let twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let subdomain_secure_poly =
                 accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs, &twiddles);
@@ -298,7 +299,7 @@ mod tests {
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
     use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
+    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::QuotientOps;
     use crate::qm31;
@@ -313,7 +314,8 @@ mod tests {
         let values = BaseColumn::from_cpu(&(0..1 << LOG_SIZE).map(BaseField::from).collect_vec());
         let columns =
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, values);
-
+        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let points = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
@@ -354,6 +356,7 @@ mod tests {
             &columns_simd.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
+            &simd_twiddles
         );
         // CPU
         let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
@@ -363,6 +366,7 @@ mod tests {
             &columns_cpu.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_cpu,
+            &cpu_twiddles
         );
 
         accumulated_numerators_vec_simd
@@ -428,10 +432,13 @@ mod tests {
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| column.clone()).collect();
 
+                    let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         SimdBackend::accumulate_numerators(
             &columns_simd.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
+            &simd_twiddles
         );
         // CPU
         let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
@@ -441,6 +448,7 @@ mod tests {
             &columns_cpu.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_cpu,
+            &cpu_twiddles
         );
 
         accumulated_numerators_vec_simd
@@ -506,10 +514,12 @@ mod tests {
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| column.clone()).collect();
 
+                    let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
         SimdBackend::accumulate_numerators(
             &columns_simd.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
+            &simd_twiddles,
         );
     }
 

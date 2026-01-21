@@ -231,7 +231,7 @@ impl PolyOps for CpuBackend {
 
         let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
         let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
-        
+
         for (layer, layer_twiddles) in line_twiddles.iter().enumerate().rev() {
             for (h, &t) in layer_twiddles.iter().enumerate() {
                 fft_layer_loop(&mut buffer, layer + 1, h, t, butterfly);

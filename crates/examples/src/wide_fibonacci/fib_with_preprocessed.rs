@@ -190,7 +190,6 @@ mod tests {
                     .half_coset,
             );
 
-
             // Setup protocol.
             let prover_channel = &mut Blake2sM31Channel::default();
             let mut commitment_scheme = CommitmentSchemeProver::<
