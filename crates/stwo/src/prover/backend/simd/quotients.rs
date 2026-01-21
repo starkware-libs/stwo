@@ -5,7 +5,7 @@ use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 #[cfg(feature = "parallel")]
-use rayon::slice::{ParallelSliceMut};
+use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
@@ -18,9 +18,8 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::utils::bit_reverse;
 use crate::prover::backend::simd::cm31::PackedCM31;
-use crate::prover::backend::simd::column::{BaseColumn};
+use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
@@ -46,45 +45,39 @@ impl QuotientOps for SimdBackend {
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].length;
+        // println!("Log size: {}, n cols: {}", size.ilog2(), columns.len());
+
+        // Change the 1 constant.
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
-        let (subdomain, mut subdomain_shifts) = domain.split(1);
+        let (subdomain, _) = domain.split(1);
         if (subdomain.log_size() < LOG_N_LANES + 2) | (columns.len() < 20) {
             accumulate_numerators_without_fft(columns, sample_batches, accumulated_numerators_vec);
-            return
+            return;
         }
         let quotient_constants = quotient_constants(sample_batches);
-        // Change the 1 constant.
-        bit_reverse(&mut subdomain_shifts);
 
+        // To delete
+        let twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let subdomain_secure_poly =
-                accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs);
+                accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs, &twiddles);
 
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
-            for (ci, &c) in subdomain_shifts.iter().enumerate() {
-                let subdomain = subdomain.shift(c);
 
-                let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
-                for (subdomain_basefield_poly, partial_numerators_acc_col) in
-                    zip_eq::<_, &mut [BaseColumn; 4]>(
-                        &subdomain_secure_poly,
-                        &mut partial_numerators_acc.columns,
-                    )
-                {
-                    // Sanity check.
-                    // inlined(ci, subdomain_basefield_poly, subdomain, &twiddles, &mut partial_numerators_acc_col);
-                        let eval = subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
-                    let stride = 1 << 4;
-                    partial_numerators_acc_col.data[(ci * eval.data.len())..((ci + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
-                    dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
-                    );
-                    // let eval =
-                    //     subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
-                    // partial_numerators_acc_col.data
-                    //     [(ci * eval.data.len())..((ci + 1) * eval.data.len())]
-                    //     .copy_from_slice(&eval.data);
-                }
+            for (subdomain_basefield_poly, partial_numerators_acc_col) in
+                zip_eq::<_, &mut [BaseColumn; 4]>(
+                    &subdomain_secure_poly,
+                    &mut partial_numerators_acc.columns,
+                )
+            {
+                let eval = subdomain_basefield_poly.evaluate_with_twiddles(domain, &twiddles);
+                partial_numerators_acc_col
+                    .data
+                    .par_chunks_mut(2)
+                    .zip(eval.data.par_chunks(2))
+                    .for_each(|(dest, val)| dest.copy_from_slice(val));
             }
+            // }
 
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
             accumulated_numerators_vec.push(AccumulatedNumerators {
@@ -147,46 +140,36 @@ impl QuotientOps for SimdBackend {
     }
 }
 
-#[allow(unused)]
-fn inlined(idx: usize, subdomain_basefield_poly: &CircleCoefficients<SimdBackend>, subdomain: CircleDomain, twiddles: &TwiddleTree<SimdBackend>, partial_numerators_acc_col: &mut BaseColumn) {
-    let eval = subdomain_basefield_poly.evaluate_with_twiddles(subdomain, twiddles);
-    let stride = 1 << 4;
-        partial_numerators_acc_col.data[(idx * eval.data.len())..((idx + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
-            dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
-        );
-}
 
-#[allow(unused)]
 fn accumulate_numerators_on_subdomain(
     subdomain: CircleDomain,
     sample_batch: &ColumnSampleBatch,
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     quotient_coeffs: &[(SecureField, SecureField, SecureField)],
+    twiddles: &TwiddleTree<SimdBackend>
 ) -> [CircleCoefficients<SimdBackend>; SECURE_EXTENSION_DEGREE] {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
 
-        #[cfg(not(feature = "parallel"))]
-        let iter = values.chunks_mut(1);
-        // TODO(Leo): make chunk size configurable.
-        #[cfg(feature = "parallel")]
-        let iter = values.par_chunks_mut(1);
-        iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-            let query_values_at_row = sample_batch.cols_vals_randpows.iter().map(
-                |NumeratorData {
-                        column_index: idx, ..
-                    }| columns[*idx].data[chunk_idx],
-            );
-            let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
-            unsafe {
-                values_dst.set_packed(0, row_value);
-            }
-        });
-        // for 
+    #[cfg(not(feature = "parallel"))]
+    let iter = values.chunks_mut(1);
+    // TODO(Leo): make chunk size configurable.
+    #[cfg(feature = "parallel")]
+    let iter = values.par_chunks_mut(1);
+    iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
+        let query_values_at_row = sample_batch.cols_vals_randpows.iter().map(
+            |NumeratorData {
+                 column_index: idx, ..
+             }| columns[*idx].data[chunk_idx],
+        );
+        let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
+        unsafe {
+            values_dst.set_packed(0, row_value);
+        }
+    });
 
     let values = values.columns;
-    let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
     let subdomain_secure_poly = values.map(|c| {
         CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
             .interpolate_with_twiddles(&twiddles)
@@ -228,7 +211,6 @@ fn accumulate_row_chunk_partial_numerators(
     numerator_chunk
 }
 
-
 fn accumulate_numerators_without_fft(
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     sample_batches: &[ColumnSampleBatch],
@@ -250,8 +232,8 @@ fn accumulate_numerators_without_fft(
         iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
             let query_values_at_row = batch.cols_vals_randpows.iter().map(
                 |NumeratorData {
-                        column_index: idx, ..
-                    }| columns[*idx].data[chunk_idx],
+                     column_index: idx, ..
+                 }| columns[*idx].data[chunk_idx],
             );
             let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
             unsafe {
@@ -408,7 +390,7 @@ mod tests {
         let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect());
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
-        
+
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let points = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
@@ -486,7 +468,7 @@ mod tests {
         let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect());
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
-        
+
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let points = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
@@ -530,7 +512,7 @@ mod tests {
         );
     }
 
-        #[test]
+    #[test]
     fn test_bench_no_fft() {
         const LOG_DEGREE: u32 = 21;
         const N_COLS: usize = 84;
@@ -541,7 +523,7 @@ mod tests {
         let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect());
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
-        
+
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let points = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
