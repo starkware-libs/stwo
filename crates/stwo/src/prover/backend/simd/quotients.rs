@@ -18,6 +18,7 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::prover::backend::simd::circle::to_subdomain_twiddle_tree;
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::m31::LOG_N_LANES;
@@ -45,7 +46,6 @@ impl QuotientOps for SimdBackend {
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].length;
-        // println!("Log size: {}, n cols: {}", size.ilog2(), columns.len());
 
         // Change the 1 constant.
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
@@ -170,6 +170,7 @@ fn accumulate_numerators_on_subdomain(
     });
 
     let values = values.columns;
+    let twiddles = to_subdomain_twiddle_tree(subdomain, twiddles);
     let subdomain_secure_poly = values.map(|c| {
         CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
             .interpolate_with_twiddles(&twiddles)

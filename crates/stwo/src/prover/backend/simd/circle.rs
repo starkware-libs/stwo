@@ -448,7 +448,6 @@ impl PolyOps for SimdBackend {
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
         let _span = span!(Level::TRACE, "", class = "PrecomputeTwiddles").entered();
         let root_coset = coset;
-
         if root_coset.size() < N_LANES {
             return compute_small_coset_twiddles(root_coset);
         }
@@ -621,6 +620,23 @@ fn slow_eval_at_point(
     fold(poly.coeffs.as_slice(), &mappings)
 }
 
+pub fn to_subdomain_twiddle_tree(subdomain: CircleDomain, twiddle_tree: &TwiddleTree<SimdBackend>) -> TwiddleTree<SimdBackend> {
+    let mut twiddles = Vec::with_capacity(twiddle_tree.twiddles.len() / 2);
+    let mut itwiddles = Vec::with_capacity(twiddle_tree.itwiddles.len() / 2);
+    let mut start = 0;
+    let mut stride = twiddle_tree.twiddles.len() / 4;
+    while stride > 0 {
+        twiddles.extend_from_slice(&twiddle_tree.twiddles[start..start + stride]);
+        itwiddles.extend_from_slice(&twiddle_tree.itwiddles[start..start + stride]);
+        start += 2 * stride;
+        stride /= 2;
+    };
+    twiddles.push(2);
+    itwiddles.push(2);
+    TwiddleTree { root_coset: subdomain.half_coset, twiddles, itwiddles }
+}
+
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
@@ -630,7 +646,7 @@ mod tests {
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::prover::backend::simd::circle::slow_eval_at_point;
+    use crate::prover::backend::simd::circle::{slow_eval_at_point, to_subdomain_twiddle_tree};
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::prover::backend::simd::m31::LOG_N_LANES;
@@ -898,5 +914,22 @@ mod tests {
             .for_each(|(cpu_weights, simd_weights)| {
                 assert_eq!(*cpu_weights, simd_weights.to_cpu());
             });
+    }
+
+    #[test]
+    fn test_twid_() {
+        let domain = CanonicCoset::new(7)
+                    .circle_domain();
+        let (subdomain, _) = domain.split(1);
+        let twiddles = SimdBackend::precompute_twiddles(
+                domain.half_coset,
+            );
+        let subdomain_twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
+        let expectation = to_subdomain_twiddle_tree(subdomain, &twiddles);
+
+        println!("Domain twiddles: {:?}", twiddles.twiddles);
+        println!("Subomain twiddles: {:?}", subdomain_twiddles.twiddles);
+        println!("Expectation twiddles: {:?}", expectation.twiddles);
+
     }
 }
