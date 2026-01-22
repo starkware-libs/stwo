@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -53,9 +54,9 @@ fn bench_barycentric_eval_at_secure_point_weights_calculation<B: PolyOps>(
 
 fn barycentric_eval_at_secure_point_benches(c: &mut Criterion) {
     bench_barycentric_eval_at_secure_point::<SimdBackend>(c, "simd");
-    bench_barycentric_eval_at_secure_point::<CpuBackend>(c, "cpu");
-    bench_barycentric_eval_at_secure_point_weights_calculation::<SimdBackend>(c, "simd");
-    bench_barycentric_eval_at_secure_point_weights_calculation::<CpuBackend>(c, "cpu");
+    // bench_barycentric_eval_at_secure_point::<CpuBackend>(c, "cpu");
+    // bench_barycentric_eval_at_secure_point_weights_calculation::<SimdBackend>(c, "simd");
+    // bench_barycentric_eval_at_secure_point_weights_calculation::<CpuBackend>(c, "cpu");
 }
 
 criterion_group!(

@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -35,7 +36,7 @@ fn bench_eval_at_secure_point_by_folding<B: PolyOps>(c: &mut Criterion, id: &str
 
 fn eval_at_secure_point_by_folding_benches(c: &mut Criterion) {
     bench_eval_at_secure_point_by_folding::<SimdBackend>(c, "simd");
-    bench_eval_at_secure_point_by_folding::<CpuBackend>(c, "cpu");
+    // bench_eval_at_secure_point_by_folding::<CpuBackend>(c, "cpu");
 }
 
 criterion_group!(

@@ -69,6 +69,13 @@ impl BaseColumn {
             .collect_vec()
     }
 
+    pub fn chunks(&self, chunk_size: usize) -> Vec<BaseColumnSlice<'_>> {
+        self.data
+            .chunks(chunk_size)
+            .map(BaseColumnSlice)
+            .collect_vec()
+    }
+
     pub fn into_secure_column(self) -> SecureColumn {
         let length = self.len();
         let data = self.data.into_iter().map(PackedSecureField::from).collect();
@@ -250,6 +257,10 @@ impl BaseColumnMutSlice<'_> {
     }
 }
 
+
+/// A mutable slice of a BaseColumn.
+pub struct BaseColumnSlice<'a>(pub &'a [PackedBaseField]);
+
 pub struct VeryPackedBaseColumnMutSlice<'a>(pub &'a mut [VeryPackedBaseField]);
 
 /// An efficient structure for storing and operating on a arbitrary number of [`SecureField`]
@@ -410,6 +421,26 @@ impl<'a> SecureColumnByCoordsMutSlice<'a> {
 }
 
 /// A mutable slice of a SecureColumnByCoords.
+pub struct SecureColumnByCoordsSlice<'a>(pub [BaseColumnSlice<'a>; SECURE_EXTENSION_DEGREE]);
+
+impl<'a> SecureColumnByCoordsSlice<'a> {
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
+        PackedQM31([
+            PackedCM31([
+                *self.0[0].0.get_unchecked(vec_index),
+                *self.0[1].0.get_unchecked(vec_index),
+            ]),
+            PackedCM31([
+                *self.0[2].0.get_unchecked(vec_index),
+                *self.0[3].0.get_unchecked(vec_index),
+            ]),
+        ])
+    }
+}
+/// A mutable slice of a SecureColumnByCoords.
 pub struct VeryPackedSecureColumnByCoordsMutSlice<'a>(
     pub [VeryPackedBaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE],
 );
@@ -503,6 +534,17 @@ impl SecureColumnByCoords<SimdBackend> {
         (a, b, c, d)
             .into_par_iter()
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl IndexedParallelIterator<Item = SecureColumnByCoordsSlice<'_>> {
+        let [a, b, c, d] = self.columns.each_ref().map(|c| c.chunks(chunk_size));
+        (a, b, c, d)
+            .into_par_iter()
+            .map(|(a, b, c, d)| SecureColumnByCoordsSlice([a, b, c, d]))
     }
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
