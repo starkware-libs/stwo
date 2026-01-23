@@ -27,12 +27,12 @@ use crate::prover::secure_column::SecureColumnByCoords;
 /// Chunk size for parallel `fold_line` operations. Each parallel task processes this many
 /// `PackedSecureField` elements (each containing 16 field elements).
 /// Increase this value to reduce parallelization overhead at the cost of fewer parallel tasks.
-pub const FOLD_LINE_CHUNK_SIZE: usize = 1 << 8;
+pub const FOLD_LINE_CHUNK_SIZE: usize = 1 << 7;
 
 /// Chunk size for parallel `fold_circle_into_line` operations. Each parallel task processes this
 /// many `PackedSecureField` elements (each containing 16 field elements).
 /// Increase this value to reduce parallelization overhead at the cost of fewer parallel tasks.
-pub const FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE: usize = 1 << 8;
+pub const FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE: usize = 1 << 7;
 impl FriOps for SimdBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,
@@ -194,7 +194,11 @@ pub fn fold_circle_evaluation_into_line(
     line_evaluation
         .values
         .par_chunks_mut(FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE)
-        .zip_eq(eval.values.data.par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
+        .zip_eq(
+            eval.values
+                .data
+                .par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE),
+        )
         .zip_eq(itwiddles.par_chunks(8 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
         .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
             for i in 0..dst_chunk.len() {
@@ -211,21 +215,13 @@ pub fn fold_circle_evaluation_into_line(
                         let (a, b) = val0.deinterleave(val1);
                         simd_ibutterfly(a, b, t0)
                     };
-                    let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|j| {
-                        if j == 0 {
-                            pairs.0
-                        } else {
-                            PackedBaseField::zero()
-                        }
-                    }));
-                    let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|j| {
-                        if j == 0 {
-                            pairs.1
-                        } else {
-                            PackedBaseField::zero()
-                        }
-                    }));
-                    val0 + PackedSecureField::broadcast(alpha) * val1
+                    let [alpha_1, alpha_2, alpha_3, alpha_4] = alpha.to_m31_array();
+                    PackedSecureField::from_packed_m31s([
+                        pairs.0 + PackedBaseField::broadcast(alpha_1) * pairs.1,
+                        PackedBaseField::broadcast(alpha_2) * pairs.1,
+                        PackedBaseField::broadcast(alpha_3) * pairs.1,
+                        PackedBaseField::broadcast(alpha_4) * pairs.1,
+                    ])
                 };
 
                 unsafe {
