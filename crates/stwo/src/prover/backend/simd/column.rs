@@ -257,7 +257,6 @@ impl BaseColumnMutSlice<'_> {
     }
 }
 
-
 /// A mutable slice of a BaseColumn.
 pub struct BaseColumnSlice<'a>(pub &'a [PackedBaseField]);
 
@@ -530,10 +529,26 @@ impl SecureColumnByCoords<SimdBackend> {
         &mut self,
         chunk_size: usize,
     ) -> impl IndexedParallelIterator<Item = SecureColumnByCoordsMutSlice<'_>> {
-        let [a, b, c, d] = self.columns.each_mut().map(|c| c.chunks_mut(chunk_size));
-        (a, b, c, d)
-            .into_par_iter()
-            .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
+        // let [a, b, c, d] = self.columns.each_mut().map(|c| c.chunks_mut(chunk_size));
+
+        // (a, b, c, d)
+        //     .into_par_iter()
+        //     .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
+
+        let [a, b, c, d] = &mut self.columns;
+        a.data
+            .par_chunks_mut(chunk_size)
+            .zip(b.data.par_chunks_mut(chunk_size))
+            .zip(c.data.par_chunks_mut(chunk_size))
+            .zip(d.data.par_chunks_mut(chunk_size))
+            .map(|(((a, b), c), d)| {
+                SecureColumnByCoordsMutSlice([
+                    BaseColumnMutSlice(a),
+                    BaseColumnMutSlice(b),
+                    BaseColumnMutSlice(c),
+                    BaseColumnMutSlice(d),
+                ])
+            })
     }
 
     #[cfg(feature = "parallel")]
@@ -541,10 +556,21 @@ impl SecureColumnByCoords<SimdBackend> {
         &self,
         chunk_size: usize,
     ) -> impl IndexedParallelIterator<Item = SecureColumnByCoordsSlice<'_>> {
-        let [a, b, c, d] = self.columns.each_ref().map(|c| c.chunks(chunk_size));
-        (a, b, c, d)
-            .into_par_iter()
-            .map(|(a, b, c, d)| SecureColumnByCoordsSlice([a, b, c, d]))
+        // let [a, b, c, d] = self.columns.each_ref().map(|c| c.chunks(chunk_size));
+        let [a, b, c, d] = &self.columns;
+        a.data
+            .par_chunks(chunk_size)
+            .zip(b.data.par_chunks(chunk_size))
+            .zip(c.data.par_chunks(chunk_size))
+            .zip(d.data.par_chunks(chunk_size))
+            .map(|(((a, b), c), d)| {
+                SecureColumnByCoordsSlice([
+                    BaseColumnSlice(a),
+                    BaseColumnSlice(b),
+                    BaseColumnSlice(c),
+                    BaseColumnSlice(d),
+                ])
+            })
     }
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {

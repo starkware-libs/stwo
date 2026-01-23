@@ -3,6 +3,7 @@ use std::simd::{u32x16, u32x8};
 
 use num_traits::Zero;
 use rayon::iter::IndexedParallelIterator;
+use rayon::prelude::*;
 
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
@@ -23,8 +24,6 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
-use rayon::prelude::*;
-
 // TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
     fn fold_line(
@@ -41,25 +40,34 @@ impl FriOps for SimdBackend {
         let domain = eval.domain();
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-        let mut folded_values = SecureColumnByCoords::<Self>::zeros(1 << (log_size - 1));
+        let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
 
-        for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
-            let value = {
-                let twiddle_dbl = u32x16::from_array(array::from_fn(|i| unsafe {
-                    *itwiddles.get_unchecked(vec_index * 16 + i)
-                }));
-                let val0 = unsafe { eval.values.packed_at(vec_index * 2) }.into_packed_m31s();
-                let val1 = unsafe { eval.values.packed_at(vec_index * 2 + 1) }.into_packed_m31s();
-                let pairs: [_; 4] = array::from_fn(|i| {
-                    let (a, b) = val0[i].deinterleave(val1[i]);
-                    simd_ibutterfly(a, b, twiddle_dbl)
-                });
-                let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].0));
-                let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
-                val0 + PackedSecureField::broadcast(alpha) * val1
-            };
-            unsafe { folded_values.set_packed(vec_index, value) };
-        }
+        folded_values
+            .par_chunks_mut(1)
+            .zip_eq(eval.values.par_chunks(2))
+            .zip_eq(itwiddles.par_chunks(16))
+            .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
+                let value = unsafe {
+                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
+                    // the next line domain. See `compute_first_twiddles()`.
+                    let twiddle_dbl =
+                        u32x16::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
+                    let val0 = src_chunk.packed_at(0).into_packed_m31s();
+                    let val1 = src_chunk.packed_at(1).into_packed_m31s();
+                    let pairs: [_; 4] = array::from_fn(|i| {
+                        let (a, b) = val0[i].deinterleave(val1[i]);
+                        simd_ibutterfly(a, b, twiddle_dbl)
+                    });
+                    let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].0));
+                    let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
+                    val0 + PackedSecureField::broadcast(alpha) * val1
+                };
+
+                // chunk is &mut [PackedSecureField] of length 1; write into first slot.
+                unsafe {
+                    dst_chunk.set_packed(0, value);
+                }
+            });
 
         LineEvaluation::new(domain.double(), folded_values)
     }
@@ -85,18 +93,16 @@ impl FriOps for SimdBackend {
         let domain = src.domain;
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-        // Parallelize by iterating over one-element mutable chunks of dst.values.
         dst.values
             .par_chunks_mut(1)
             .zip_eq(src.values.par_chunks(2))
-            .enumerate()
-            .for_each(|(vec_index, (mut dst_chunk, src_chunk))| {
+            .zip_eq(itwiddles.par_chunks(8))
+            .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
                 let value = unsafe {
-                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
-                    // next line domain. See `compute_first_twiddles()`.
-                    let twiddle_dbl = u32x8::from_array(array::from_fn(|i| {
-                        *itwiddles.get_unchecked(vec_index * 8 + i)
-                    }));
+                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
+                    // the next line domain. See `compute_first_twiddles()`.
+                    let twiddle_dbl =
+                        u32x8::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
                     let (t0, _) = compute_first_twiddles(twiddle_dbl);
                     let val0 = src_chunk.packed_at(0).into_packed_m31s();
                     let val1 = src_chunk.packed_at(1).into_packed_m31s();
@@ -110,7 +116,9 @@ impl FriOps for SimdBackend {
                 };
 
                 // chunk is &mut [PackedSecureField] of length 1; write into first slot.
-                unsafe { dst_chunk.set_packed(0, value);}
+                unsafe {
+                    dst_chunk.set_packed(0, value);
+                }
             });
     }
 
@@ -147,7 +155,8 @@ pub fn fold_circle_evaluation_into_line(
 ) -> LineEvaluation<SimdBackend> {
     let log_size = eval.domain.log_size();
     let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
-    let mut line_evaluation = LineEvaluation::new_zero(line_domain);
+    let uninit_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
+    let mut line_evaluation = LineEvaluation::new(line_domain, uninit_values);
 
     if log_size <= LOG_N_LANES {
         // Fall back to CPU implementation.
@@ -163,41 +172,49 @@ pub fn fold_circle_evaluation_into_line(
         );
     }
 
-    let itwiddles = domain_line_twiddles_from_tree(line_domain, &twiddles.itwiddles)[0];
+    let domain = eval.domain;
+    let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-    for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
-        let value = {
-            // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
-            // next line domain. See `compute_first_twiddles()`.
-            let twiddle_dbl = u32x8::from_array(array::from_fn(|i| unsafe {
-                *itwiddles.get_unchecked(vec_index * 8 + i)
-            }));
-            let (t0, _) = compute_first_twiddles(twiddle_dbl);
-            let val0 = eval.values.data[vec_index * 2];
-            let val1 = eval.values.data[vec_index * 2 + 1];
-            let pairs = {
-                let (a, b) = val0.deinterleave(val1);
-                simd_ibutterfly(a, b, t0)
+    line_evaluation
+        .values
+        .par_chunks_mut(1)
+        .zip_eq(eval.values.data.par_chunks(2))
+        .zip_eq(itwiddles.par_chunks(8))
+        .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
+            let value = unsafe {
+                // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
+                // the next line domain. See `compute_first_twiddles()`.
+                let twiddle_dbl =
+                    u32x8::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
+                let (t0, _) = compute_first_twiddles(twiddle_dbl);
+                let val0 = src_chunk[0];
+                let val1 = src_chunk[1];
+                let pairs = {
+                    let (a, b) = val0.deinterleave(val1);
+                    simd_ibutterfly(a, b, t0)
+                };
+                let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                    if i == 0 {
+                        pairs.0
+                    } else {
+                        PackedBaseField::zero()
+                    }
+                }));
+                let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                    if i == 0 {
+                        pairs.1
+                    } else {
+                        PackedBaseField::zero()
+                    }
+                }));
+                val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                if i == 0 {
-                    pairs.0
-                } else {
-                    PackedBaseField::zero()
-                }
-            }));
-            let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                if i == 0 {
-                    pairs.1
-                } else {
-                    PackedBaseField::zero()
-                }
-            }));
-            val0 + PackedSecureField::broadcast(alpha) * val1
-        };
 
-        unsafe { line_evaluation.values.set_packed(vec_index, value) };
-    }
+            // chunk is &mut [PackedSecureField] of length 1; write into first slot.
+            unsafe {
+                dst_chunk.set_packed(0, value);
+            }
+        });
 
     line_evaluation
 }
@@ -341,5 +358,27 @@ mod tests {
         for i in 0..1 << DOMAIN_LOG_SIZE {
             assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
         }
+    }
+
+    #[test]
+    fn test_fold_circle_into_line_v2() {
+        const LOG_SIZE: u32 = 25;
+        let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
+            .map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
+            .collect();
+        let alpha = qm31!(1, 3, 5, 7);
+        let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let line_domain = LineDomain::new(circle_domain.half_coset);
+
+        let mut simd_fold = LineEvaluation::new(
+            line_domain,
+            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
+        );
+        SimdBackend::fold_circle_into_line(
+            &mut simd_fold,
+            &SecureEvaluation::new(circle_domain, values.iter().copied().collect()),
+            alpha,
+            &SimdBackend::precompute_twiddles(line_domain.coset()),
+        );
     }
 }
