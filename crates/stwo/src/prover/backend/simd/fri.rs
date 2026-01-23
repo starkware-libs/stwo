@@ -24,7 +24,15 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
-// TODO(andrew) Is this optimized?
+/// Chunk size for parallel `fold_line` operations. Each parallel task processes this many
+/// `PackedSecureField` elements (each containing 16 field elements).
+/// Increase this value to reduce parallelization overhead at the cost of fewer parallel tasks.
+pub const FOLD_LINE_CHUNK_SIZE: usize = 1 << 8;
+
+/// Chunk size for parallel `fold_circle_into_line` operations. Each parallel task processes this
+/// many `PackedSecureField` elements (each containing 16 field elements).
+/// Increase this value to reduce parallelization overhead at the cost of fewer parallel tasks.
+pub const FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE: usize = 1 << 8;
 impl FriOps for SimdBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,
@@ -43,29 +51,33 @@ impl FriOps for SimdBackend {
         let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
 
         folded_values
-            .par_chunks_mut(1)
-            .zip_eq(eval.values.par_chunks(2))
-            .zip_eq(itwiddles.par_chunks(16))
+            .par_chunks_mut(FOLD_LINE_CHUNK_SIZE)
+            .zip_eq(eval.values.par_chunks(2 * FOLD_LINE_CHUNK_SIZE))
+            .zip_eq(itwiddles.par_chunks(16 * FOLD_LINE_CHUNK_SIZE))
             .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
-                let value = unsafe {
-                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
-                    // the next line domain. See `compute_first_twiddles()`.
-                    let twiddle_dbl =
-                        u32x16::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
-                    let val0 = src_chunk.packed_at(0).into_packed_m31s();
-                    let val1 = src_chunk.packed_at(1).into_packed_m31s();
-                    let pairs: [_; 4] = array::from_fn(|i| {
-                        let (a, b) = val0[i].deinterleave(val1[i]);
-                        simd_ibutterfly(a, b, twiddle_dbl)
-                    });
-                    let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].0));
-                    let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
-                    val0 + PackedSecureField::broadcast(alpha) * val1
-                };
+                for i in 0..dst_chunk.len() {
+                    let value = unsafe {
+                        // The 16 twiddles of the circle domain can be derived from the 8 twiddles
+                        // of the next line domain. See `compute_first_twiddles()`.
+                        let twiddle_dbl = u32x16::from_array(array::from_fn(|j| {
+                            *itwiddles_chunk.get_unchecked(i * 16 + j)
+                        }));
+                        let val0 = src_chunk.packed_at(2 * i).into_packed_m31s();
+                        let val1 = src_chunk.packed_at(2 * i + 1).into_packed_m31s();
+                        let pairs: [_; 4] = array::from_fn(|j| {
+                            let (a, b) = val0[j].deinterleave(val1[j]);
+                            simd_ibutterfly(a, b, twiddle_dbl)
+                        });
+                        let val0 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].0));
+                        let val1 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].1));
+                        val0 + PackedSecureField::broadcast(alpha) * val1
+                    };
 
-                // chunk is &mut [PackedSecureField] of length 1; write into first slot.
-                unsafe {
-                    dst_chunk.set_packed(0, value);
+                    unsafe {
+                        dst_chunk.set_packed(i, value);
+                    }
                 }
             });
 
@@ -94,30 +106,34 @@ impl FriOps for SimdBackend {
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
         dst.values
-            .par_chunks_mut(1)
-            .zip_eq(src.values.par_chunks(2))
-            .zip_eq(itwiddles.par_chunks(8))
+            .par_chunks_mut(FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE)
+            .zip_eq(src.values.par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
+            .zip_eq(itwiddles.par_chunks(8 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
             .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
-                let value = unsafe {
-                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
-                    // the next line domain. See `compute_first_twiddles()`.
-                    let twiddle_dbl =
-                        u32x8::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
-                    let (t0, _) = compute_first_twiddles(twiddle_dbl);
-                    let val0 = src_chunk.packed_at(0).into_packed_m31s();
-                    let val1 = src_chunk.packed_at(1).into_packed_m31s();
-                    let pairs: [_; 4] = array::from_fn(|i| {
-                        let (a, b) = val0[i].deinterleave(val1[i]);
-                        simd_ibutterfly(a, b, t0)
-                    });
-                    let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].0));
-                    let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
-                    val0 + PackedSecureField::broadcast(alpha) * val1
-                };
+                for i in 0..dst_chunk.len() {
+                    let value = unsafe {
+                        // The 16 twiddles of the circle domain can be derived from the 8 twiddles
+                        // of the next line domain. See `compute_first_twiddles()`.
+                        let twiddle_dbl = u32x8::from_array(array::from_fn(|j| {
+                            *itwiddles_chunk.get_unchecked(i * 8 + j)
+                        }));
+                        let (t0, _) = compute_first_twiddles(twiddle_dbl);
+                        let val0 = src_chunk.packed_at(2 * i).into_packed_m31s();
+                        let val1 = src_chunk.packed_at(2 * i + 1).into_packed_m31s();
+                        let pairs: [_; 4] = array::from_fn(|j| {
+                            let (a, b) = val0[j].deinterleave(val1[j]);
+                            simd_ibutterfly(a, b, t0)
+                        });
+                        let val0 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].0));
+                        let val1 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].1));
+                        val0 + PackedSecureField::broadcast(alpha) * val1
+                    };
 
-                // chunk is &mut [PackedSecureField] of length 1; write into first slot.
-                unsafe {
-                    dst_chunk.set_packed(0, value);
+                    unsafe {
+                        dst_chunk.set_packed(i, value);
+                    }
                 }
             });
     }
@@ -177,42 +193,44 @@ pub fn fold_circle_evaluation_into_line(
 
     line_evaluation
         .values
-        .par_chunks_mut(1)
-        .zip_eq(eval.values.data.par_chunks(2))
-        .zip_eq(itwiddles.par_chunks(8))
+        .par_chunks_mut(FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE)
+        .zip_eq(eval.values.data.par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
+        .zip_eq(itwiddles.par_chunks(8 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
         .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
-            let value = unsafe {
-                // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
-                // the next line domain. See `compute_first_twiddles()`.
-                let twiddle_dbl =
-                    u32x8::from_array(array::from_fn(|i| *itwiddles_chunk.get_unchecked(i)));
-                let (t0, _) = compute_first_twiddles(twiddle_dbl);
-                let val0 = src_chunk[0];
-                let val1 = src_chunk[1];
-                let pairs = {
-                    let (a, b) = val0.deinterleave(val1);
-                    simd_ibutterfly(a, b, t0)
+            for i in 0..dst_chunk.len() {
+                let value = unsafe {
+                    // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
+                    // the next line domain. See `compute_first_twiddles()`.
+                    let twiddle_dbl = u32x8::from_array(array::from_fn(|j| {
+                        *itwiddles_chunk.get_unchecked(i * 8 + j)
+                    }));
+                    let (t0, _) = compute_first_twiddles(twiddle_dbl);
+                    let val0 = src_chunk[2 * i];
+                    let val1 = src_chunk[2 * i + 1];
+                    let pairs = {
+                        let (a, b) = val0.deinterleave(val1);
+                        simd_ibutterfly(a, b, t0)
+                    };
+                    let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|j| {
+                        if j == 0 {
+                            pairs.0
+                        } else {
+                            PackedBaseField::zero()
+                        }
+                    }));
+                    let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|j| {
+                        if j == 0 {
+                            pairs.1
+                        } else {
+                            PackedBaseField::zero()
+                        }
+                    }));
+                    val0 + PackedSecureField::broadcast(alpha) * val1
                 };
-                let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                    if i == 0 {
-                        pairs.0
-                    } else {
-                        PackedBaseField::zero()
-                    }
-                }));
-                let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                    if i == 0 {
-                        pairs.1
-                    } else {
-                        PackedBaseField::zero()
-                    }
-                }));
-                val0 + PackedSecureField::broadcast(alpha) * val1
-            };
 
-            // chunk is &mut [PackedSecureField] of length 1; write into first slot.
-            unsafe {
-                dst_chunk.set_packed(0, value);
+                unsafe {
+                    dst_chunk.set_packed(i, value);
+                }
             }
         });
 

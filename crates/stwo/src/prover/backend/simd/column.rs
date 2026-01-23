@@ -382,6 +382,11 @@ impl FromIterator<PackedSecureField> for SecureColumn {
 pub struct SecureColumnByCoordsMutSlice<'a>(pub [BaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE]);
 
 impl<'a> SecureColumnByCoordsMutSlice<'a> {
+    /// Returns the number of packed elements in this slice.
+    pub fn len(&self) -> usize {
+        self.0[0].0.len()
+    }
+
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
@@ -423,6 +428,11 @@ impl<'a> SecureColumnByCoordsMutSlice<'a> {
 pub struct SecureColumnByCoordsSlice<'a>(pub [BaseColumnSlice<'a>; SECURE_EXTENSION_DEGREE]);
 
 impl<'a> SecureColumnByCoordsSlice<'a> {
+    /// Returns the number of packed elements in this slice.
+    pub fn len(&self) -> usize {
+        self.0[0].0.len()
+    }
+
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
