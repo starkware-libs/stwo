@@ -25,10 +25,10 @@ use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
-use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
+use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+use crate::prover::fri::FriOps;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
-use crate::prover::fri::FriOps;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -356,17 +356,6 @@ impl PolyOps for SimdBackend {
         let mut layer_evaluation =
             fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
 
-        // Use batched 4x folding when we have enough elements remaining
-        while layer_evaluation.len() > 16 && folding_alphas.len() >= 4 {
-            let alpha3 = folding_alphas.pop().unwrap();
-            let alpha2 = folding_alphas.pop().unwrap();
-            let alpha1 = folding_alphas.pop().unwrap();
-            let alpha0 = folding_alphas.pop().unwrap();
-            layer_evaluation =
-                fold_line_4x(&layer_evaluation, [alpha0, alpha1, alpha2, alpha3], twiddles);
-        }
-
-        // Handle remaining folds one at a time
         while layer_evaluation.len() > 1 {
             layer_evaluation =
                 SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
