@@ -16,10 +16,6 @@
       Paper
     </a>
     <span> | </span>
-    <a href="https://github.com/starkware-libs/stwo">
-      Documentation
-    </a>
-    <span> | </span>
     <a href="https://starkware-libs.github.io/stwo/dev/bench/index.html">
       Benchmarks
     </a>
@@ -28,35 +24,103 @@
 
 # Stwo
 
+> **⚠️ Work in Progress**
+>
+> Stwo is currently under active development and is not recommended for production use.
+
+## Table of Contents
+
+- [About](#-about)
+- [Key Features](#-key-features)
+- [Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Building](#building)
+  - [Running Examples](#running-examples)
+- [Project Structure](#-project-structure)
+- [Real-World Applications](#-real-world-applications)
+- [Benchmarks](#-benchmarks)
+- [License](#-license)
+
 ## 🌟 About
 
-Stwo is a next generation implementation of a [CSTARK](https://eprint.iacr.org/2024/278) prover and verifier, written in Rust 🦀.
+**Stwo** is a next-generation implementation of a [Circle STARK (CSTARK)](https://eprint.iacr.org/2024/278) prover and verifier framework, written in Rust 🦀. While it includes example implementations for demonstration purposes, the **primary purpose of this repository is to serve as a foundational framework** for building more complex, production-grade provers.
 
-> **Stwo is a work in progress.**
->
-> It is not recommended to use it in a production setting yet.
+The framework provides a high-performance, flexible foundation for generating and verifying STARK proofs using the latest cryptographic research and innovations in STARK proof systems. It is designed to be extended and customized for specific use cases beyond the simple examples included in this repository.
 
 ## 🚀 Key Features
 
-- **Circle STARKs:** Based on the latest cryptographic research and innovations in the ZK field.
-- **High performance:** Stwo is designed to be extremely fast and efficient.
-- **Flexible:** Adaptable for various validity proof applications.
+- **Circle STARKs:** Implementation based on the latest cryptographic research and innovations in STARK proof systems
+- **High Performance:** Designed for extreme speed and efficiency with optimized SIMD operations
+
+## 🛠️ Getting Started
+
+### Prerequisites
+
+- **Rust Toolchain:** This project requires Rust nightly (see `rust-toolchain.toml` for the specific version)
+
+### Building
+
+Clone the repository and build the project:
+
+```bash
+git clone https://github.com/starkware-libs/stwo.git
+cd stwo
+cargo build --release
+```
+
+### Running Examples
+
+The project includes example implementations in the `crates/examples` directory:
+
+```bash
+# Run examples
+cargo run --release --example <example_name>
+```
+
+## 📁 Project Structure
+
+This is a Rust workspace containing multiple crates:
+
+- **`crates/stwo`** - Core library implementing the Circle STARK prover and verifier
+- **`crates/constraint-framework`** - Framework for expressing and evaluating constraints
+- **`crates/air-utils`** - Utilities for working with Arithmetic Intermediate Representation (AIR)
+- **`crates/air-utils-derive`** - Derive macros for AIR utilities
+- **`crates/examples`** - Example implementations demonstrating basic usage
+- **`crates/std-shims`** - Standard library shims for `no_std` compatibility
+
+## 🌍 Real-World Applications
+
+While the examples in this repository demonstrate basic usage patterns, Stwo is designed as a **framework for building sophisticated provers** that handle complex real-world scenarios. A prominent example of such an application is:
+
+### [stwo-cairo](https://github.com/starkware-libs/stwo-cairo)
+
+**stwo-cairo** is a production-oriented prover built on top of the Stwo framework that enables proving Cairo program executions.
 
 ## 📊 Benchmarks
 
-Run `poseidon_benchmark.sh` to run a single-threaded poseidon2 hash proof benchmark.
+### Quick Benchmark
 
-Further benchmarks can be run using `cargo bench`.
+Run a single-threaded Poseidon2 hash proof benchmark:
 
-Visual representation of benchmarks can be found [here](https://starkware-libs.github.io/stwo/dev/bench/index.html).
+```bash
+./poseidon_benchmark.sh
+```
+
+### Comprehensive Benchmarks
+
+Run all benchmarks using Cargo:
+
+```bash
+cargo bench
+```
+
+### Benchmark Reports
+
+Visual representation of benchmark results can be found at:
+[https://starkware-libs.github.io/stwo/dev/bench/index.html](https://starkware-libs.github.io/stwo/dev/bench/index.html)
 
 ## 📜 License
 
-This project is licensed under the **Apache 2.0 license**.
+This project is licensed under the **Apache License 2.0**.
 
-See [LICENSE](LICENSE) for more information.
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-
-<!-- ALL-CONTRIBUTORS-LIST:END -->
+See the [LICENSE](LICENSE) file for more information.
