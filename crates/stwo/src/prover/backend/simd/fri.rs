@@ -1,6 +1,9 @@
 use std::array;
 use std::simd::{u32x16, u32x8};
 
+#[cfg(target_feature = "avx512f")]
+use std::arch::x86_64::{__m512i, _mm512_stream_si512};
+
 use num_traits::Zero;
 use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
@@ -215,19 +218,48 @@ pub fn fold_circle_evaluation_into_line(
                         let (a, b) = val0.deinterleave(val1);
                         simd_ibutterfly(a, b, t0)
                     };
-                    PackedSecureField::from_packed_m31s([
+                    [
                         pairs.0 + alpha_1_packed * pairs.1,
                         alpha_2_packed * pairs.1,
                         alpha_3_packed * pairs.1,
                         alpha_4_packed * pairs.1,
-                    ])
+                    ]
                 };
 
+                // Use streaming stores to bypass cache when AVX-512 is available.
+                // This avoids write-allocate cache misses for large output buffers.
+                #[cfg(target_feature = "avx512f")]
                 unsafe {
-                    dst_chunk.set_packed(i, value);
+                    _mm512_stream_si512(
+                        dst_chunk.0[0].0.as_mut_ptr().add(i) as *mut __m512i,
+                        std::mem::transmute(value[0].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[1].0.as_mut_ptr().add(i) as *mut __m512i,
+                        std::mem::transmute(value[1].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[2].0.as_mut_ptr().add(i) as *mut __m512i,
+                        std::mem::transmute(value[2].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[3].0.as_mut_ptr().add(i) as *mut __m512i,
+                        std::mem::transmute(value[3].into_simd()),
+                    );
+                }
+
+                #[cfg(not(target_feature = "avx512f"))]
+                unsafe {
+                    dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
                 }
             }
         });
+
+    // Memory fence to ensure all streaming stores are globally visible.
+    #[cfg(target_feature = "avx512f")]
+    unsafe {
+        std::arch::x86_64::_mm_sfence();
+    }
 
     line_evaluation
 }
