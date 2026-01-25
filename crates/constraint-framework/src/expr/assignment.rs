@@ -111,7 +111,7 @@ impl AddAssign for ExprVariables {
     fn add_assign(&mut self, rhs: Self) {
         self.cols = self.cols.union(&rhs.cols).cloned().collect();
         self.params = self.params.union(&rhs.params).cloned().collect();
-        self.cols = self.cols.union(&rhs.cols).cloned().collect();
+        self.ext_params = self.ext_params.union(&rhs.ext_params).cloned().collect();
     }
 }
 

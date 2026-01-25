@@ -64,7 +64,6 @@ pub trait EvalAtRow {
         + Mul<BaseField, Output = Self::F>
         + Add<SecureField, Output = Self::EF>
         + Mul<SecureField, Output = Self::EF>
-        + Neg<Output = Self::F>
         + From<BaseField>;
 
     /// A field type representing the closure of `F` with multiplying by [SecureField]. Constraints
