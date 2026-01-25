@@ -15,6 +15,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::poly::line::LineDomain;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::prover::backend::cpu::{fold_circle_into_line_cpu, fold_line_cpu};
+use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::compute_first_twiddles;
 use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::prover::backend::simd::qm31::PackedSecureField;
@@ -190,8 +191,8 @@ pub fn fold_circle_evaluation_into_line(
 ) -> LineEvaluation<SimdBackend> {
     let log_size = eval.domain.log_size();
     let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
-    let uninit_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
-    let mut line_evaluation = LineEvaluation::new(line_domain, uninit_values);
+    let uninit_values = unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(1 << (log_size - 1)) };
+    let line_evaluation = LineEvaluation::new(line_domain, uninit_values);
 
     if log_size <= LOG_N_LANES {
         // Fall back to CPU implementation.
@@ -209,6 +210,7 @@ pub fn fold_circle_evaluation_into_line(
 
     let domain = eval.domain;
     let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
+    let mut line_evaluation = unsafe { BaseColumn::uninitialized(1 << (log_size - 1))};
 
     // Precompute alpha components outside the loop
     let [alpha_1, alpha_2, alpha_3, alpha_4] = alpha.to_m31_array();
@@ -217,8 +219,8 @@ pub fn fold_circle_evaluation_into_line(
     let alpha_3_packed = PackedBaseField::broadcast(alpha_3);
     let alpha_4_packed = PackedBaseField::broadcast(alpha_4);
 
-    line_evaluation
-        .values
+    line_evaluation.data
+        // .values
         .par_chunks_mut(FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE)
         .zip_eq(
             eval.values
@@ -226,7 +228,7 @@ pub fn fold_circle_evaluation_into_line(
                 .par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE),
         )
         .zip_eq(itwiddles.par_chunks(8 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
-        .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
+        .for_each(|((dst_chunk, src_chunk), itwiddles_chunk)| {
             for i in 0..dst_chunk.len() {
                 let value = unsafe {
                     // The 16 twiddles of the circle domain can be derived from the 8 twiddles of
@@ -248,6 +250,7 @@ pub fn fold_circle_evaluation_into_line(
                         alpha_4_packed * pairs.1,
                     ]
                 };
+                
 
                 // Use streaming stores to bypass cache when AVX-512 is available.
                 // This avoids write-allocate cache misses for large output buffers.
@@ -272,9 +275,13 @@ pub fn fold_circle_evaluation_into_line(
                 }
 
                 #[cfg(not(target_feature = "avx512f"))]
-                unsafe {
-                    dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
+                 {
+                    dst_chunk[i] = value[0];
                 }
+                // #[cfg(not(target_feature = "avx512f"))]
+                // unsafe {
+                //     dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
+                // }
             }
         });
 
@@ -284,7 +291,8 @@ pub fn fold_circle_evaluation_into_line(
         std::arch::x86_64::_mm_sfence();
     }
 
-    line_evaluation
+    let v = unsafe { SecureColumnByCoords { columns: [line_evaluation, BaseColumn::uninitialized(1 << (log_size - 1)), BaseColumn::uninitialized(1 << (log_size - 1)), BaseColumn::uninitialized(1 << (log_size - 1))] }};
+     LineEvaluation::new(line_domain, v)
 }
 
 /// See [`decomposition_coefficient`].
