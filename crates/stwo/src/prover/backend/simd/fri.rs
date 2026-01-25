@@ -1,8 +1,7 @@
-use std::array;
-use std::simd::{u32x16, u32x8};
-
 #[cfg(target_feature = "avx512f")]
 use std::arch::x86_64::{__m512i, _mm512_stream_si512};
+use std::array;
+use std::simd::{u32x16, u32x8};
 
 use num_traits::Zero;
 use rayon::iter::IndexedParallelIterator;
@@ -68,11 +67,35 @@ impl FriOps for SimdBackend {
                             PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].0));
                         let val1 =
                             PackedSecureField::from_packed_m31s(array::from_fn(|j| pairs[j].1));
-                        val0 + PackedSecureField::broadcast(alpha) * val1
+                        let res = val0 + PackedSecureField::broadcast(alpha) * val1;
+                        res.into_packed_m31s()
                     };
 
+                    // Use streaming stores to bypass cache when AVX-512 is available.
+                    // This avoids write-allocate cache misses for large output buffers.
+                    #[cfg(target_feature = "avx512f")]
                     unsafe {
-                        dst_chunk.set_packed(i, value);
+                        _mm512_stream_si512(
+                            dst_chunk.0[0].0.as_mut_ptr().add(i) as *mut __m512i,
+                            std::mem::transmute(value[0].into_simd()),
+                        );
+                        _mm512_stream_si512(
+                            dst_chunk.0[1].0.as_mut_ptr().add(i) as *mut __m512i,
+                            std::mem::transmute(value[1].into_simd()),
+                        );
+                        _mm512_stream_si512(
+                            dst_chunk.0[2].0.as_mut_ptr().add(i) as *mut __m512i,
+                            std::mem::transmute(value[2].into_simd()),
+                        );
+                        _mm512_stream_si512(
+                            dst_chunk.0[3].0.as_mut_ptr().add(i) as *mut __m512i,
+                            std::mem::transmute(value[3].into_simd()),
+                        );
+                    }
+
+                    #[cfg(not(target_feature = "avx512f"))]
+                    unsafe {
+                        dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
                     }
                 }
             });
@@ -309,12 +332,14 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::LineDomain;
     use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::fri::FriOps;
     use crate::prover::line::LineEvaluation;
-    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation};
+    use crate::prover::poly::circle::{
+        CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
+    };
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
     use crate::{m31, qm31};
@@ -409,21 +434,17 @@ mod tests {
     #[test]
     fn test_fold_circle_into_line_v2() {
         const LOG_SIZE: u32 = 25;
-        let values: Vec<BaseField> = (0..(1 << LOG_SIZE))
-            .map(|i| m31!(4 * i))
-            .collect();
+        let values: Vec<BaseField> = (0..(1 << LOG_SIZE)).map(|i| m31!(4 * i)).collect();
         let alpha = qm31!(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);
 
         for _ in 0..50 {
-
-        fold_circle_evaluation_into_line(
-            &CircleEvaluation::new(circle_domain, values.iter().copied().collect()),
-            alpha,
-            &SimdBackend::precompute_twiddles(line_domain.coset()),
-        );
+            fold_circle_evaluation_into_line(
+                &CircleEvaluation::new(circle_domain, values.iter().copied().collect()),
+                alpha,
+                &SimdBackend::precompute_twiddles(line_domain.coset()),
+            );
         }
     }
-
 }
