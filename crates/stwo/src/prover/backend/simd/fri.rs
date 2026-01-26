@@ -1,5 +1,7 @@
 #[cfg(target_feature = "avx512f")]
 use std::arch::x86_64::{__m512i, _mm512_stream_si512};
+#[cfg(all(target_arch = "x86_64", not(target_feature = "avx512f")))]
+use std::arch::x86_64::{__m256i, _mm256_stream_si256};
 use std::array;
 use std::simd::{u32x16, u32x8};
 
@@ -49,7 +51,11 @@ impl FriOps for SimdBackend {
             .par_chunks_mut(FOLD_LINE_CHUNK_SIZE)
             .zip_eq(eval.values.par_chunks(2 * FOLD_LINE_CHUNK_SIZE))
             .zip_eq(itwiddles.par_chunks(16 * FOLD_LINE_CHUNK_SIZE))
-            .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
+            .for_each(|((_dst_chunk, src_chunk), itwiddles_chunk)| {
+                // SAFETY: We use raw pointers with streaming stores below, but need the slice
+                // for length calculation. The mutation happens through raw pointers.
+                #[allow(unused_mut)]
+                let mut dst_chunk = _dst_chunk;
                 for i in 0..dst_chunk.len() {
                     let value = unsafe {
                         // The 16 twiddles of the circle domain can be derived from the 8 twiddles
@@ -71,29 +77,6 @@ impl FriOps for SimdBackend {
                         res.into_packed_m31s()
                     };
 
-                    // Use streaming stores to bypass cache when AVX-512 is available.
-                    // This avoids write-allocate cache misses for large output buffers.
-                    #[cfg(target_feature = "avx512f")]
-                    unsafe {
-                        _mm512_stream_si512(
-                            dst_chunk.0[0].0.as_mut_ptr().add(i) as *mut __m512i,
-                            std::mem::transmute(value[0].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[1].0.as_mut_ptr().add(i) as *mut __m512i,
-                            std::mem::transmute(value[1].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[2].0.as_mut_ptr().add(i) as *mut __m512i,
-                            std::mem::transmute(value[2].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[3].0.as_mut_ptr().add(i) as *mut __m512i,
-                            std::mem::transmute(value[3].into_simd()),
-                        );
-                    }
-
-                    #[cfg(not(target_feature = "avx512f"))]
                     unsafe {
                         dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
                     }
@@ -227,7 +210,11 @@ pub fn fold_circle_evaluation_into_line(
                 .par_chunks(2 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE),
         )
         .zip_eq(itwiddles.par_chunks(8 * FOLD_CIRCLE_INTO_LINE_CHUNK_SIZE))
-        .for_each(|((mut dst_chunk, src_chunk), itwiddles_chunk)| {
+        .for_each(|((_dst_chunk, src_chunk), itwiddles_chunk)| {
+            // SAFETY: We use raw pointers with streaming stores below, but need the slice
+            // for length calculation. The mutation happens through raw pointers.
+            #[allow(unused_mut)]
+            let mut dst_chunk = _dst_chunk;
             for i in 0..dst_chunk.len() {
                 let value = unsafe {
                     let twiddle_dbl = u32x8::from_array(array::from_fn(|j| {
@@ -248,10 +235,9 @@ pub fn fold_circle_evaluation_into_line(
                     ]
                 };
 
-                // Use streaming stores when AVX-512 is available
+                // Use streaming stores to bypass cache (write-allocate).
                 #[cfg(target_feature = "avx512f")]
                 unsafe {
-                    use std::arch::x86_64::{__m512i, _mm512_stream_si512};
                     _mm512_stream_si512(
                         dst_chunk.0[0].0.as_mut_ptr().add(i) as *mut __m512i,
                         std::mem::transmute(value[0].into_simd()),
@@ -270,20 +256,190 @@ pub fn fold_circle_evaluation_into_line(
                     );
                 }
 
-                #[cfg(not(target_feature = "avx512f"))]
+                // Use AVX2 streaming stores when AVX-512 is not available.
+                #[cfg(all(target_arch = "x86_64", not(target_feature = "avx512f")))]
+                unsafe {
+                    for col_idx in 0..4 {
+                        let simd = value[col_idx].into_simd();
+                        let ptr = dst_chunk.0[col_idx].0.as_mut_ptr().add(i) as *mut __m256i;
+                        // Store low 256 bits
+                        _mm256_stream_si256(
+                            ptr,
+                            std::mem::transmute::<[u32; 8], __m256i>(
+                                simd.to_array()[0..8].try_into().unwrap(),
+                            ),
+                        );
+                        // Store high 256 bits
+                        _mm256_stream_si256(
+                            ptr.add(1),
+                            std::mem::transmute::<[u32; 8], __m256i>(
+                                simd.to_array()[8..16].try_into().unwrap(),
+                            ),
+                        );
+                    }
+                }
+
+                #[cfg(not(any(target_feature = "avx512f", target_arch = "x86_64")))]
                 unsafe {
                     dst_chunk.set_packed(i, PackedSecureField::from_packed_m31s(value));
                 }
             }
         });
 
-    // Memory fence for streaming stores
-    #[cfg(target_feature = "avx512f")]
-    unsafe {
-        std::arch::x86_64::_mm_sfence();
-    }
-
     line_evaluation
+}
+
+/// Folds a line evaluation 4 times in a single pass, keeping intermediate results in registers.
+/// This reduces memory traffic by reading 16 packed elements and writing 1 packed element,
+/// instead of 4 separate read-write passes.
+///
+/// Requires that the input has at least 2^(LOG_N_LANES + 4) scalar elements.
+pub fn fold_line_4x(
+    eval: &LineEvaluation<SimdBackend>,
+    alphas: [SecureField; 4],
+    twiddles: &TwiddleTree<SimdBackend>,
+) -> LineEvaluation<SimdBackend> {
+    let log_size = eval.len().ilog2();
+    assert!(
+        log_size >= LOG_N_LANES + 4,
+        "fold_line_4x requires at least {} elements, got {}",
+        1 << (LOG_N_LANES + 4),
+        eval.len()
+    );
+
+    let domain = eval.domain();
+    // Get twiddles for all 4 layers
+    let all_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles);
+    let itwiddles_0 = all_twiddles[0]; // First layer twiddles
+    let itwiddles_1 = all_twiddles[1]; // Second layer twiddles
+    let itwiddles_2 = all_twiddles[2]; // Third layer twiddles
+    let itwiddles_3 = all_twiddles[3]; // Fourth layer twiddles
+
+    let output_size = 1 << (log_size - 4);
+    let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(output_size) };
+
+    folded_values
+        .par_chunks_mut(FOLD_LINE_CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, mut dst_chunk)| {
+            let chunk_start = chunk_idx * FOLD_LINE_CHUNK_SIZE;
+
+            for local_i in 0..dst_chunk.len() {
+                let i = chunk_start + local_i;
+
+                // Read 16 input packed elements
+                let input_base = i * 16;
+                let values: [[PackedBaseField; 4]; 16] = unsafe {
+                    array::from_fn(|j| {
+                        eval.values.packed_at(input_base + j).into_packed_m31s()
+                    })
+                };
+
+                // Layer 1: 16 -> 8 elements
+                // Twiddle indices: i*8 .. i*8+8 in itwiddles_0
+                let layer1: [[PackedBaseField; 4]; 8] = unsafe {
+                    array::from_fn(|j| {
+                        let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
+                            *itwiddles_0.get_unchecked((i * 8 + j) * 16 + k)
+                        }));
+                        let val0 = values[2 * j];
+                        let val1 = values[2 * j + 1];
+                        let pairs: [_; 4] = array::from_fn(|c| {
+                            let (a, b) = val0[c].deinterleave(val1[c]);
+                            simd_ibutterfly(a, b, twiddle_dbl)
+                        });
+                        let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                        let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                        (v0 + PackedSecureField::broadcast(alphas[0]) * v1).into_packed_m31s()
+                    })
+                };
+
+                // Layer 2: 8 -> 4 elements
+                // Twiddle indices: i*4 .. i*4+4 in itwiddles_1
+                let layer2: [[PackedBaseField; 4]; 4] = unsafe {
+                    array::from_fn(|j| {
+                        let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
+                            *itwiddles_1.get_unchecked((i * 4 + j) * 16 + k)
+                        }));
+                        let val0 = layer1[2 * j];
+                        let val1 = layer1[2 * j + 1];
+                        let pairs: [_; 4] = array::from_fn(|c| {
+                            let (a, b) = val0[c].deinterleave(val1[c]);
+                            simd_ibutterfly(a, b, twiddle_dbl)
+                        });
+                        let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                        let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                        (v0 + PackedSecureField::broadcast(alphas[1]) * v1).into_packed_m31s()
+                    })
+                };
+
+                // Layer 3: 4 -> 2 elements
+                // Twiddle indices: i*2 .. i*2+2 in itwiddles_2
+                let layer3: [[PackedBaseField; 4]; 2] = unsafe {
+                    array::from_fn(|j| {
+                        let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
+                            *itwiddles_2.get_unchecked((i * 2 + j) * 16 + k)
+                        }));
+                        let val0 = layer2[2 * j];
+                        let val1 = layer2[2 * j + 1];
+                        let pairs: [_; 4] = array::from_fn(|c| {
+                            let (a, b) = val0[c].deinterleave(val1[c]);
+                            simd_ibutterfly(a, b, twiddle_dbl)
+                        });
+                        let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                        let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                        (v0 + PackedSecureField::broadcast(alphas[2]) * v1).into_packed_m31s()
+                    })
+                };
+
+                // Layer 4: 2 -> 1 element
+                // Twiddle index: i in itwiddles_3
+                let result: [PackedBaseField; 4] = unsafe {
+                    let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
+                        *itwiddles_3.get_unchecked(i * 16 + k)
+                    }));
+                    let val0 = layer3[0];
+                    let val1 = layer3[1];
+                    let pairs: [_; 4] = array::from_fn(|c| {
+                        let (a, b) = val0[c].deinterleave(val1[c]);
+                        simd_ibutterfly(a, b, twiddle_dbl)
+                    });
+                    let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                    let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                    (v0 + PackedSecureField::broadcast(alphas[3]) * v1).into_packed_m31s()
+                };
+
+                // Use non-temporal stores to bypass cache when AVX-512 is available.
+                #[cfg(target_feature = "avx512f")]
+                unsafe {
+                    _mm512_stream_si512(
+                        dst_chunk.0[0].0.as_mut_ptr().add(local_i) as *mut __m512i,
+                        std::mem::transmute(result[0].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[1].0.as_mut_ptr().add(local_i) as *mut __m512i,
+                        std::mem::transmute(result[1].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[2].0.as_mut_ptr().add(local_i) as *mut __m512i,
+                        std::mem::transmute(result[2].into_simd()),
+                    );
+                    _mm512_stream_si512(
+                        dst_chunk.0[3].0.as_mut_ptr().add(local_i) as *mut __m512i,
+                        std::mem::transmute(result[3].into_simd()),
+                    );
+                }
+
+                #[cfg(not(target_feature = "avx512f"))]
+                unsafe {
+                    dst_chunk.set_packed(local_i, PackedSecureField::from_packed_m31s(result));
+                }
+            }
+        });
+
+    // Domain doubles 4 times
+    let new_domain = domain.double().double().double().double();
+    LineEvaluation::new(new_domain, folded_values)
 }
 
 /// See [`decomposition_coefficient`].
@@ -331,7 +487,7 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::LineDomain;
     use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+    use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::fri::FriOps;
@@ -443,5 +599,97 @@ mod tests {
         for _ in 0..50 {
             fold_circle_evaluation_into_line(&eval, alpha, &twiddles);
         }
+    }
+
+    #[test]
+    fn test_fold_line_4x_correctness() {
+        // Test that fold_line_4x produces the same result as 4 sequential fold_line calls
+        const LOG_SIZE: u32 = 12; // Must be >= LOG_N_LANES + 4 = 4 + 4 = 8
+        let mut rng = SmallRng::seed_from_u64(42);
+        let values: Vec<SecureField> = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let alphas = [
+            qm31!(1, 3, 5, 7),
+            qm31!(2, 4, 6, 8),
+            qm31!(9, 11, 13, 15),
+            qm31!(10, 12, 14, 16),
+        ];
+        let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
+        let twiddles = SimdBackend::precompute_twiddles(domain.coset());
+
+        // Method 1: Use fold_line_4x
+        let eval = LineEvaluation::new(domain, values.iter().copied().collect());
+        let result_4x = fold_line_4x(&eval, alphas, &twiddles);
+
+        // Method 2: Use 4 sequential fold_line calls
+        let mut result_sequential = LineEvaluation::new(domain, values.iter().copied().collect());
+        for alpha in alphas.iter() {
+            result_sequential = SimdBackend::fold_line(&result_sequential, *alpha, &twiddles);
+        }
+
+        // Compare results
+        assert_eq!(
+            result_4x.values.to_vec(),
+            result_sequential.values.to_vec(),
+            "fold_line_4x should produce same result as 4 sequential fold_line calls"
+        );
+        assert_eq!(
+            result_4x.domain().log_size(),
+            result_sequential.domain().log_size(),
+            "domain log sizes should match"
+        );
+    }
+
+    #[test]
+    fn bench_fold_line_4x_vs_sequential() {
+        // Benchmark comparing fold_line_4x vs 4 sequential fold_line calls
+        const LOG_SIZE: u32 = 20; // Large enough for meaningful benchmark
+        let mut rng = SmallRng::seed_from_u64(42);
+        let values: Vec<SecureField> = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let alphas = [
+            qm31!(1, 3, 5, 7),
+            qm31!(2, 4, 6, 8),
+            qm31!(9, 11, 13, 15),
+            qm31!(10, 12, 14, 16),
+        ];
+        let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
+        let twiddles = SimdBackend::precompute_twiddles(domain.coset());
+
+        const ITERATIONS: u32 = 10;
+
+        // Pre-create the evaluation to avoid allocation overhead in the benchmark
+        let eval_for_4x = LineEvaluation::new(domain, values.iter().copied().collect());
+        let eval_for_seq = LineEvaluation::new(domain, values.iter().copied().collect());
+
+        // Benchmark fold_line_4x
+        let start_4x = std::time::Instant::now();
+        for _ in 0..ITERATIONS {
+            let _ = fold_line_4x(&eval_for_4x, alphas, &twiddles);
+        }
+        let elapsed_4x = start_4x.elapsed();
+
+        // Benchmark 4 sequential fold_line calls
+        // Note: sequential fold_line creates intermediate allocations, which is part of what
+        // fold_line_4x is designed to avoid
+        let start_seq = std::time::Instant::now();
+        for _ in 0..ITERATIONS {
+            let mut result = SimdBackend::fold_line(&eval_for_seq, alphas[0], &twiddles);
+            for alpha in alphas.iter().skip(1) {
+                result = SimdBackend::fold_line(&result, *alpha, &twiddles);
+            }
+        }
+        let elapsed_seq = start_seq.elapsed();
+
+        println!(
+            "fold_line_4x: {:?} per iteration",
+            elapsed_4x / ITERATIONS
+        );
+        println!(
+            "4x sequential fold_line: {:?} per iteration",
+            elapsed_seq / ITERATIONS
+        );
+        println!(
+            "Speedup: {:.2}x",
+            elapsed_seq.as_secs_f64() / elapsed_4x.as_secs_f64()
+        );
     }
 }

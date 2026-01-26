@@ -25,7 +25,8 @@ use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
-use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+#[allow(unused_imports)]
+use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::fri::FriOps;
@@ -356,6 +357,20 @@ impl PolyOps for SimdBackend {
         let mut layer_evaluation =
             fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
 
+        // Use fold_line_4x when we have enough elements and alphas.
+        // fold_line_4x requires at least 2^(LOG_N_LANES + 4) = 256 elements.
+        let min_size_for_4x = 1 << (LOG_N_LANES + 4);
+        while layer_evaluation.len() >= min_size_for_4x && folding_alphas.len() >= 4 {
+            let alphas = [
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+            ];
+            layer_evaluation = fold_line_4x(&layer_evaluation, alphas, twiddles);
+        }
+
+        // Handle remaining folds with single fold_line calls
         while layer_evaluation.len() > 1 {
             layer_evaluation =
                 SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
@@ -897,4 +912,183 @@ mod tests {
                 assert_eq!(*cpu_weights, simd_weights.to_cpu());
             });
     }
+
+    #[test]
+    fn bench_eval_at_point_by_folding() {
+        const LOG_SIZE: u32 = 25;
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let evaluation = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
+            domain,
+            (0..1 << LOG_SIZE).map(BaseField::from).collect(),
+        );
+        let twiddles =
+            SimdBackend::precompute_twiddles(CanonicCoset::new(LOG_SIZE + 1).circle_domain().half_coset);
+        let point = CirclePoint::get_point(123456789);
+
+        // Warmup and benchmark
+        for _ in 0..10 {
+            std::hint::black_box(evaluation.eval_at_point_by_folding(point, &twiddles));
+        }
+    }
+
+    #[test]
+    fn bench_eval_at_point_by_folding_breakdown() {
+        use std::time::Instant;
+        use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
+        use crate::prover::fri::FriOps;
+        use crate::core::poly::utils::get_folding_alphas;
+        use crate::prover::backend::simd::m31::LOG_N_LANES;
+
+        const LOG_SIZE: u32 = 25;
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let evaluation = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
+            domain,
+            (0..1 << LOG_SIZE).map(BaseField::from).collect(),
+        );
+        let twiddles =
+            SimdBackend::precompute_twiddles(CanonicCoset::new(LOG_SIZE + 1).circle_domain().half_coset);
+        let point = CirclePoint::get_point(123456789);
+
+        // === OLD APPROACH: individual fold_line calls ===
+        println!("=== OLD APPROACH (individual fold_line) ===");
+        let mut folding_alphas = get_folding_alphas(point, LOG_SIZE as usize);
+        let start = Instant::now();
+        let mut layer_evaluation =
+            fold_circle_evaluation_into_line(&evaluation, folding_alphas.pop().unwrap(), &twiddles);
+        let circle_fold_time = start.elapsed();
+        println!("fold_circle_evaluation_into_line: {:?} (size: {})", circle_fold_time, layer_evaluation.len());
+
+        let mut total_line_fold_time = std::time::Duration::ZERO;
+        while layer_evaluation.len() > 1 {
+            let start = Instant::now();
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), &twiddles);
+            total_line_fold_time += start.elapsed();
+        }
+        println!("fold_line total: {:?}", total_line_fold_time);
+        println!("OLD Total: {:?}", circle_fold_time + total_line_fold_time);
+
+        // === NEW APPROACH: using fold_line_4x ===
+        println!("\n=== NEW APPROACH (fold_line_4x) ===");
+        let mut folding_alphas = get_folding_alphas(point, LOG_SIZE as usize);
+        let start = Instant::now();
+        let mut layer_evaluation =
+            fold_circle_evaluation_into_line(&evaluation, folding_alphas.pop().unwrap(), &twiddles);
+        let circle_fold_time = start.elapsed();
+        println!("fold_circle_evaluation_into_line: {:?} (size: {})", circle_fold_time, layer_evaluation.len());
+
+        let min_size_for_4x = 1 << (LOG_N_LANES + 4);
+        let mut fold_4x_time = std::time::Duration::ZERO;
+        let mut fold_1x_time = std::time::Duration::ZERO;
+        let mut fold_4x_count = 0;
+        let mut fold_1x_count = 0;
+
+        while layer_evaluation.len() >= min_size_for_4x && folding_alphas.len() >= 4 {
+            let alphas = [
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+            ];
+            let start = Instant::now();
+            layer_evaluation = fold_line_4x(&layer_evaluation, alphas, &twiddles);
+            fold_4x_time += start.elapsed();
+            fold_4x_count += 1;
+        }
+
+        while layer_evaluation.len() > 1 {
+            let start = Instant::now();
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), &twiddles);
+            fold_1x_time += start.elapsed();
+            fold_1x_count += 1;
+        }
+
+        println!("fold_line_4x ({} calls): {:?}", fold_4x_count, fold_4x_time);
+        println!("fold_line ({} calls): {:?}", fold_1x_count, fold_1x_time);
+        println!("NEW Total: {:?}", circle_fold_time + fold_4x_time + fold_1x_time);
+    }
+
+    #[test]
+    fn bench_eval_at_point_by_folding_breakdown_log20() {
+        use std::time::Instant;
+        use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
+        use crate::prover::fri::FriOps;
+        use crate::core::poly::utils::get_folding_alphas;
+        use crate::prover::backend::simd::m31::LOG_N_LANES;
+
+        const LOG_SIZE: u32 = 21; // Same as the criterion benchmark
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let evaluation = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
+            domain,
+            (0..1 << LOG_SIZE).map(BaseField::from).collect(),
+        );
+        let twiddles =
+            SimdBackend::precompute_twiddles(CanonicCoset::new(LOG_SIZE + 1).circle_domain().half_coset);
+        let point = CirclePoint::get_point(123456789);
+
+        println!("=== LOG_SIZE = {} ===", LOG_SIZE);
+
+        // === OLD APPROACH: individual fold_line calls ===
+        println!("\n=== OLD APPROACH (individual fold_line) ===");
+        let mut folding_alphas = get_folding_alphas(point, LOG_SIZE as usize);
+        let start = Instant::now();
+        let mut layer_evaluation =
+            fold_circle_evaluation_into_line(&evaluation, folding_alphas.pop().unwrap(), &twiddles);
+        let circle_fold_time = start.elapsed();
+        println!("fold_circle_evaluation_into_line: {:?} (size: {})", circle_fold_time, layer_evaluation.len());
+
+        let mut total_line_fold_time = std::time::Duration::ZERO;
+        let mut fold_count = 0;
+        while layer_evaluation.len() > 1 {
+            let start = Instant::now();
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), &twiddles);
+            total_line_fold_time += start.elapsed();
+            fold_count += 1;
+        }
+        println!("fold_line ({} calls): {:?}", fold_count, total_line_fold_time);
+        println!("OLD Total: {:?}", circle_fold_time + total_line_fold_time);
+
+        // === NEW APPROACH: using fold_line_4x ===
+        println!("\n=== NEW APPROACH (fold_line_4x) ===");
+        let mut folding_alphas = get_folding_alphas(point, LOG_SIZE as usize);
+        let start = Instant::now();
+        let mut layer_evaluation =
+            fold_circle_evaluation_into_line(&evaluation, folding_alphas.pop().unwrap(), &twiddles);
+        let circle_fold_time = start.elapsed();
+        println!("fold_circle_evaluation_into_line: {:?} (size: {})", circle_fold_time, layer_evaluation.len());
+
+        let min_size_for_4x = 1 << (LOG_N_LANES + 4);
+        let mut fold_4x_time = std::time::Duration::ZERO;
+        let mut fold_1x_time = std::time::Duration::ZERO;
+        let mut fold_4x_count = 0;
+        let mut fold_1x_count = 0;
+
+        while layer_evaluation.len() >= min_size_for_4x && folding_alphas.len() >= 4 {
+            let alphas = [
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+            ];
+            let start = Instant::now();
+            layer_evaluation = fold_line_4x(&layer_evaluation, alphas, &twiddles);
+            fold_4x_time += start.elapsed();
+            fold_4x_count += 1;
+        }
+
+        while layer_evaluation.len() > 1 {
+            let start = Instant::now();
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), &twiddles);
+            fold_1x_time += start.elapsed();
+            fold_1x_count += 1;
+        }
+
+        println!("fold_line_4x ({} calls): {:?}", fold_4x_count, fold_4x_time);
+        println!("fold_line ({} calls): {:?}", fold_1x_count, fold_1x_time);
+        println!("NEW Total: {:?}", circle_fold_time + fold_4x_time + fold_1x_time);
+    }
+
 }
