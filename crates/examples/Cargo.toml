@@ -18,8 +18,8 @@ itertools.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
-stwo = { path = "../stwo", features = ["prover"] }
-stwo-constraint-framework = { path = "../constraint-framework", features = [
+stwo = { path = "../stwo", version = "2.0.0", features = ["prover"] }
+stwo-constraint-framework = { path = "../constraint-framework", version = "2.0.0", features = [
     "prover",
     "parallel",
 ] }
