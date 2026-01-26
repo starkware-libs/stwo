@@ -1221,7 +1221,7 @@ version = "0.1.0"
 
 [[package]]
 name = "stwo"
-version = "0.1.1"
+version = "2.0.0"
 dependencies = [
  "aligned",
  "blake2",
@@ -1252,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-air-utils"
-version = "0.1.1"
+version = "2.0.0"
 dependencies = [
  "bytemuck",
  "itertools 0.12.1",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-air-utils-derive"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-constraint-framework"
-version = "0.1.1"
+version = "2.0.0"
 dependencies = [
  "hashbrown 0.15.4",
  "itertools 0.12.1",
@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-examples"
-version = "0.1.1"
+version = "2.0.0"
 dependencies = [
  "criterion",
  "educe",
