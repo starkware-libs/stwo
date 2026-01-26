@@ -17,7 +17,7 @@ std = [
     "tracing/std",
     "serde/std",
     "tracing-subscriber/std",
-    "std-shims/std",
+    "stwo-std-shims/std",
 ]
 prover = ["std", "tracing/attributes"]
 parallel = ["rayon", "indexmap/rayon"]
@@ -50,7 +50,7 @@ rayon = { workspace = true, optional = true }
 serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
-std-shims.workspace = true
+stwo-std-shims = { version = "1.0.0", default-features = false }
 dashmap = "6.1.0"
 
 [dev-dependencies]
