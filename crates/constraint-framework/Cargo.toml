@@ -5,7 +5,7 @@ edition.workspace = true
 
 [features]
 default = ["std"]
-std = ["stwo/std", "itertools/use_std", "tracing/std", "num-traits/std", "std-shims/std"]
+std = ["stwo/std", "itertools/use_std", "tracing/std", "num-traits/std", "stwo-std-shims/std"]
 parallel = ["dep:rayon", "stwo/parallel"]
 prover = ["stwo/prover", "std"]
 
@@ -17,4 +17,7 @@ tracing.workspace = true
 stwo = { path = "../stwo", version = "2.0.0", default-features = false }
 rand.workspace = true
 hashbrown.workspace = true
-std-shims.workspace = true
+stwo-std-shims = { version = "1.0.0", default-features = false }
+
+[package.metadata.cargo-machete]
+ignored = ["stwo-std-shims"]

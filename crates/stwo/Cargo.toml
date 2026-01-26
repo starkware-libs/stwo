@@ -17,7 +17,7 @@ std = [
     "tracing/std",
     "serde/std",
     "tracing-subscriber/std",
-    "std-shims/std",
+    "stwo-std-shims/std",
 ]
 prover = ["std", "tracing/attributes"]
 parallel = ["rayon", "indexmap/rayon"]
@@ -50,12 +50,15 @@ rayon = { workspace = true, optional = true }
 serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
-std-shims.workspace = true
+stwo-std-shims = { version = "1.0.0", default-features = false }
 dashmap = "6.1.0"
 
 [dev-dependencies]
 aligned = "0.4.2"
 test-log = { version = "0.2.15", features = ["trace"] }
+
+[package.metadata.cargo-machete]
+ignored = ["stwo-std-shims"]
 
 [target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dev-dependencies]
 wasm-bindgen-test = "0.3.43"
