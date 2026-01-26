@@ -284,6 +284,16 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         self.extend_polys(polys)
     }
 
+    pub fn compute_polys(
+        &mut self,
+        columns: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    ) -> Vec<CircleCoefficients<B>> {
+        let span = span!(Level::INFO, "Interpolation for commitment").entered();
+        let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);
+        span.exit();
+        polys
+    }
+
     pub fn extend_polys(
         &mut self,
         columns: impl IntoIterator<Item = CircleCoefficients<B>>,
