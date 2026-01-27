@@ -38,6 +38,16 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
             .collect()
     }
 
+    fn interpolate_columns2(
+        columns: Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> Vec<CircleCoefficients<Self>> {
+        let iter = columns.into_iter();
+
+        iter.map(|eval| eval.interpolate_with_twiddles(twiddles))
+            .collect()
+    }
+
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CircleCoefficients::eval_at_point()`] function.
     fn eval_at_point(

@@ -289,7 +289,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         columns: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> Vec<CircleCoefficients<B>> {
         let span = span!(Level::INFO, "Interpolation for commitment").entered();
-        let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);
+        let polys = B::interpolate_columns2(columns, self.commitment_scheme.twiddles);
         span.exit();
         polys
     }
