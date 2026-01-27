@@ -2,6 +2,7 @@
 name = "stwo-air-utils-derive"
 version.workspace = true
 edition = "2021"
+description = "Procedural macros for stwo-air-utils"
 
 [lib]
 proc-macro = true

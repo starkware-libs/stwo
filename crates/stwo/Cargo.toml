@@ -2,6 +2,7 @@
 name = "stwo"
 version.workspace = true
 edition.workspace = true
+description = "Implementation of the Circle STARK prover."
 
 [features]
 default = ["std"]
