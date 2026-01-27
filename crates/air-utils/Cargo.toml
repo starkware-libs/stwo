@@ -2,6 +2,8 @@
 name = "stwo-air-utils"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Utility functions for AIR (Algebraic Intermediate Representation) in STWO"
 
 [dependencies]
 bytemuck.workspace = true

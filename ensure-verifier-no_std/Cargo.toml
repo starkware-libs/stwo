@@ -2,6 +2,7 @@
 name = "ensure-verifier-no_std"
 version = "0.1.0"
 edition = "2021"
+description = "Test crate to ensure the STWO verifier compiles in no_std environments"
 
 [dependencies]
 stwo = { path = "../crates/stwo", default-features = false }

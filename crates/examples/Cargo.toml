@@ -2,6 +2,8 @@
 name = "stwo-examples"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Example implementations using the STWO prover"
 
 [features]
 parallel = ["dep:rayon", "stwo/parallel"]
