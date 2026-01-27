@@ -49,8 +49,8 @@ impl BaseColumn {
         res
     }
 
-    pub fn from_cpu(values: Vec<BaseField>) -> Self {
-        values.into_iter().collect()
+    pub fn from_cpu(values: &[BaseField]) -> Self {
+        values.iter().copied().collect()
     }
 
     pub const fn from_simd(values: Vec<PackedBaseField>) -> Self {
@@ -507,7 +507,7 @@ impl SecureColumnByCoords<SimdBackend> {
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
         Self {
-            columns: cpu.columns.map(BaseColumn::from_cpu),
+            columns: cpu.columns.map(|col| BaseColumn::from_cpu(&col)),
         }
     }
 }

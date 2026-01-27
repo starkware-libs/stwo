@@ -317,10 +317,7 @@ mod tests {
         cols[1] = (0..1 << (MAX_LOG_N_ROWS - 3))
             .map(M31::from_u32_unchecked)
             .collect_vec();
-        let cols_simd: Vec<BaseColumn> = cols
-            .iter()
-            .map(|c| BaseColumn::from_cpu(c.clone()))
-            .collect();
+        let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 
         (
             MerkleProverLifted::<CpuBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
@@ -349,7 +346,7 @@ mod tests {
     #[test]
     fn test_merkle_commit_small_column() {
         for log_size in 1..8 {
-            let col = BaseColumn::from_cpu((0..1 << log_size).map(M31::from).collect());
+            let col = BaseColumn::from_cpu(&(0..1 << log_size).map(M31::from).collect_vec());
 
             assert_eq!(
                 <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col

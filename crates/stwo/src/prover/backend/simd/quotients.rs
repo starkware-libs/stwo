@@ -198,7 +198,7 @@ mod tests {
         const N_COLS: usize = 100;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let values = BaseColumn::from_cpu((0..1 << LOG_SIZE).map(BaseField::from).collect());
+        let values = BaseColumn::from_cpu(&(0..1 << LOG_SIZE).map(BaseField::from).collect_vec());
         let columns =
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, values);
 

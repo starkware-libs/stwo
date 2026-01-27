@@ -698,9 +698,7 @@ mod tests {
     #[test]
     fn test_simd_eval_at_point_by_folding() {
         let poly = CircleCoefficients::<SimdBackend>::new(BaseColumn::from_cpu(
-            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
-                .map(BaseField::from)
-                .to_vec(),
+            &[691, 805673, 5, 435684, 4832, 23876431, 197, 897346068].map(BaseField::from),
         ));
         let s = CanonicCoset::new(10);
         let domain = s.circle_domain();
@@ -831,9 +829,7 @@ mod tests {
     #[test]
     fn test_simd_barycentric_evaluation() {
         let poly = CircleCoefficients::<SimdBackend>::new(BaseColumn::from_cpu(
-            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
-                .map(BaseField::from)
-                .to_vec(),
+            &[691, 805673, 5, 435684, 4832, 23876431, 197, 897346068].map(BaseField::from),
         ));
         let s = CanonicCoset::new(10);
         let domain = s.circle_domain();

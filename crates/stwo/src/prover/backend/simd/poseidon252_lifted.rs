@@ -157,10 +157,7 @@ mod tests {
                 .map(M31::from_u32_unchecked)
                 .collect_vec()
         });
-        let cols_simd: Vec<BaseColumn> = cols
-            .iter()
-            .map(|c| BaseColumn::from_cpu(c.clone()))
-            .collect();
+        let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 
         (
             MerkleProverLifted::<CpuBackend, Poseidon252MerkleHasher>::commit(
@@ -190,10 +187,7 @@ mod tests {
                         .collect_vec()
                 })
                 .collect();
-            let cols_simd: Vec<BaseColumn> = cols
-                .iter()
-                .map(|c| BaseColumn::from_cpu(c.clone()))
-                .collect();
+            let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 
             assert_eq!(
                 <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_leaves(
