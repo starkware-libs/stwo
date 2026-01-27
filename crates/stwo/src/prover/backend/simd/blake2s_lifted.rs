@@ -319,7 +319,7 @@ mod tests {
             .collect_vec();
         let cols_simd: Vec<BaseColumn> = cols
             .iter()
-            .map(|c| BaseColumn::from_cpu(c.clone()))
+            .map(|c| BaseColumn::from_cpu(c))
             .collect();
 
         (
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn test_merkle_commit_small_column() {
         for log_size in 1..8 {
-            let col = BaseColumn::from_cpu((0..1 << log_size).map(M31::from).collect());
+            let col = BaseColumn::from_cpu(&(0..1 << log_size).map(M31::from).collect_vec());
 
             assert_eq!(
                 <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col

@@ -159,7 +159,7 @@ mod tests {
         });
         let cols_simd: Vec<BaseColumn> = cols
             .iter()
-            .map(|c| BaseColumn::from_cpu(c.clone()))
+            .map(|c| BaseColumn::from_cpu(c))
             .collect();
 
         (
@@ -192,7 +192,7 @@ mod tests {
                 .collect();
             let cols_simd: Vec<BaseColumn> = cols
                 .iter()
-                .map(|c| BaseColumn::from_cpu(c.clone()))
+                .map(|c| BaseColumn::from_cpu(c))
                 .collect();
 
             assert_eq!(

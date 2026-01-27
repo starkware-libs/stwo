@@ -134,10 +134,10 @@ mod tests {
 
         // Prepare SIMD inputs.
         let secure_col_short_simd = SecureColumnByCoords::<SimdBackend> {
-            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_short.clone())),
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(&col_short)),
         };
         let secure_col_long_simd = SecureColumnByCoords::<SimdBackend> {
-            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_long.clone())),
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(&col_long)),
         };
         let res_simd = <SimdBackend as AccumulationOps>::lift_and_accumulate(vec![
             secure_col_short_simd,
