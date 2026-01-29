@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 use super::channel::Channel;
+use super::fields::qm31::SecureField;
 use super::fri::FriConfig;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
@@ -36,12 +37,12 @@ impl PcsConfig {
     }
 
     pub fn mix_into(&self, channel: &mut impl Channel) {
-        let Self {
-            pow_bits,
-            fri_config,
-        } = self;
-        channel.mix_u64(*pow_bits as u64);
-        fri_config.mix_into(channel);
+        channel.mix_felts(&[SecureField::from_u32_unchecked(
+            self.pow_bits,
+            self.fri_config.log_blowup_factor,
+            self.fri_config.n_queries as u32,
+            self.fri_config.log_last_layer_degree_bound,
+        )]);
     }
 }
 
