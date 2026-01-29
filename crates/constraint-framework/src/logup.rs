@@ -99,10 +99,18 @@ impl<const N: usize> LookupElements<N> {
     }
 
     pub fn dummy() -> Self {
+        let z = SecureField::from_u32_unchecked(1, 2, 3, 4);
+        let alpha = SecureField::from_u32_unchecked(4, 3, 2, 1);
+        let mut cur = SecureField::one();
+        let alpha_powers = array::from_fn(|_| {
+            let res = cur;
+            cur *= alpha;
+            res
+        });
         Self {
-            z: SecureField::from_u32_unchecked(1, 2, 3, 4),
-            alpha: SecureField::one(),
-            alpha_powers: [SecureField::one(); N],
+            z,
+            alpha,
+            alpha_powers,
         }
     }
 }
