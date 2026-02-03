@@ -30,6 +30,7 @@ pub struct TreeSubspan {
 pub struct PcsConfig {
     pub pow_bits: u32,
     pub fri_config: FriConfig,
+    pub lifting_log_size: Option<u32>,
 }
 impl PcsConfig {
     pub const fn security_bits(&self) -> u32 {
@@ -40,6 +41,7 @@ impl PcsConfig {
         let PcsConfig {
             pow_bits,
             fri_config,
+            lifting_log_size,
         } = self;
         let FriConfig {
             log_blowup_factor,
@@ -53,6 +55,9 @@ impl PcsConfig {
             *n_queries as u32,
             *log_last_layer_degree_bound,
         )]);
+        if let Some(lifting_log_size) = *lifting_log_size {
+            channel.mix_felts(&[lifting_log_size.into()])
+        }
     }
 }
 
@@ -61,6 +66,7 @@ impl Default for PcsConfig {
         Self {
             pow_bits: 10,
             fri_config: FriConfig::new(0, 1, 3),
+            lifting_log_size: None,
         }
     }
 }
@@ -72,6 +78,7 @@ mod tests {
         let config = super::PcsConfig {
             pow_bits: 42,
             fri_config: super::FriConfig::new(10, 10, 70),
+            lifting_log_size: None,
         };
         assert!(config.security_bits() == 10 * 70 + 42);
     }
