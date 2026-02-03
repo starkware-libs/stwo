@@ -27,9 +27,17 @@ pub struct TreeSubspan {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Configuration parameters for the committment scheme prover.
 pub struct PcsConfig {
+    /// Number of zeros for the proof of work before the FRI queries.
     pub pow_bits: u32,
     pub fri_config: FriConfig,
+    /// An optional integer which controls the size of the lifting domain. If `None`, then for each
+    /// batch (= tree) of polynomials to commit, the prover lifts them to the largest domain of a
+    /// polynomial in that batch (an implicit assumption here is that the largest domains are all
+    /// of equal size across batches, except possibly for the preprocessed). If not `None`, all
+    /// polynomials are lifted to the domain of given log size.
+    pub lifting_log_size: Option<u32>,
 }
 impl PcsConfig {
     pub const fn security_bits(&self) -> u32 {
@@ -40,6 +48,7 @@ impl PcsConfig {
         let PcsConfig {
             pow_bits,
             fri_config,
+            lifting_log_size,
         } = self;
         let FriConfig {
             log_blowup_factor,
@@ -53,6 +62,9 @@ impl PcsConfig {
             *n_queries as u32,
             *log_last_layer_degree_bound,
         )]);
+        if let Some(lifting_log_size) = *lifting_log_size {
+            channel.mix_felts(&[lifting_log_size.into()])
+        }
     }
 }
 
@@ -61,6 +73,7 @@ impl Default for PcsConfig {
         Self {
             pow_bits: 10,
             fri_config: FriConfig::new(0, 1, 3),
+            lifting_log_size: None,
         }
     }
 }
@@ -72,6 +85,7 @@ mod tests {
         let config = super::PcsConfig {
             pow_bits: 42,
             fri_config: super::FriConfig::new(10, 10, 70),
+            lifting_log_size: None,
         };
         assert!(config.security_bits() == 10 * 70 + 42);
     }

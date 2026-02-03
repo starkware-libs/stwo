@@ -9,7 +9,8 @@ pub trait MerkleOpsLifted<H: MerkleHasherLifted>:
     ColumnOps<BaseField> + ColumnOps<H::Hash> + for<'de> Deserialize<'de> + Serialize
 {
     /// Computes the leaves of the lifted Merkle commitment.
-    fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, H::Hash>;
+    fn build_leaves(columns: &[&Col<Self, BaseField>], lifting_log_size: u32)
+        -> Col<Self, H::Hash>;
 
     /// Given a layer of hashes as input, computes a new layer by hashing pairs
     /// of adjacent elements of the input, as in a standard Merkle tree.
