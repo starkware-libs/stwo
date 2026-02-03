@@ -29,7 +29,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     channel: &mut MC::C,
     commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    Ok(prove_ex(components, channel, commitment_scheme)?.proof)
+    Ok(prove_ex(components, channel, commitment_scheme, false)?.proof)
 }
 
 #[instrument(skip_all)]
@@ -37,6 +37,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
     mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
+    include_all_preprocessed_columns: bool,
 ) -> Result<ExtendedStarkProof<MC::H>, ProvingError> {
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .polynomials
@@ -77,9 +78,11 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // 2^COMPOSITION_LOG_SPLIT.
     let max_log_degree_bound = composition_log_size - COMPOSITION_LOG_SPLIT;
     // Get mask sample points relative to oods point.
-    let mut sample_points = component_provers
-        .components()
-        .mask_points(oods_point, max_log_degree_bound);
+    let mut sample_points = component_provers.components().mask_points(
+        oods_point,
+        max_log_degree_bound,
+        include_all_preprocessed_columns,
+    );
 
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);

@@ -49,7 +49,7 @@ pub fn verify<MC: MerkleChannel>(
     // 2^COMPOSITION_LOG_SPLIT.
     let max_log_degree_bound = composition_log_size - COMPOSITION_LOG_SPLIT;
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point, max_log_degree_bound);
+    let mut sample_points = components.mask_points(oods_point, max_log_degree_bound, false);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
