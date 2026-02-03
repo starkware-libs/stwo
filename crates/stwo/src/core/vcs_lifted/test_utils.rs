@@ -40,9 +40,10 @@ where
                 .collect_vec()
         })
         .collect_vec();
-    let merkle = MerkleProverLifted::<CpuBackend, H>::commit(cols.iter().collect_vec());
-
     let max_log_size: u32 = *log_sizes.iter().max().unwrap();
+    let merkle =
+        MerkleProverLifted::<CpuBackend, H>::commit(cols.iter().collect_vec(), max_log_size);
+
     let queries = (0..N_QUERIES)
         .map(|_| rng.gen_range(0..(1 << max_log_size)))
         .sorted()

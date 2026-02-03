@@ -254,7 +254,8 @@ struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLi
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
     fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>) -> Self {
         let coordinate_columns = first_layer_column.columns.iter().collect();
-        let merkle_tree = MerkleProverLifted::commit(coordinate_columns);
+        let merkle_tree =
+            MerkleProverLifted::commit(coordinate_columns, first_layer_column.domain.log_size());
 
         FriFirstLayerProver {
             column: first_layer_column,
@@ -305,8 +306,10 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
-        let merkle_tree =
-            MerkleProverLifted::commit(evaluation.values.columns.iter().collect_vec());
+        let merkle_tree = MerkleProverLifted::commit(
+            evaluation.values.columns.iter().collect_vec(),
+            evaluation.values.len().ilog2(),
+        );
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
