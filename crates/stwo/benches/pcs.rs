@@ -34,6 +34,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         channel,
         twiddles,
         false,
+        None,
     );
 }
 
