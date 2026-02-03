@@ -308,6 +308,7 @@ mod tests {
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 4, 64),
+            lifting_log_size: None,
         };
 
         // Prove.
