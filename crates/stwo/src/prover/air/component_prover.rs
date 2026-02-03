@@ -93,6 +93,7 @@ impl<B: Backend> ComponentProvers<'_, B> {
                 .map(|c| *c as &dyn Component)
                 .collect_vec(),
             n_preprocessed_columns: self.n_preprocessed_columns,
+            all_preprocessed_columns: false,
         }
     }
     pub fn compute_composition_polynomial(

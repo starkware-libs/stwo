@@ -13,6 +13,8 @@ use crate::core::ColumnVec;
 pub struct Components<'a> {
     pub components: Vec<&'a dyn Component>,
     pub n_preprocessed_columns: usize,
+    /// Whether `maks_points` should include all preprocessed columns, regardles of usage.
+    pub all_preprocessed_columns: bool,
 }
 
 impl Components<'_> {
@@ -36,11 +38,14 @@ impl Components<'_> {
         );
 
         let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
-        *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
-
-        for component in &self.components {
-            for idx in component.preprocessed_column_indices() {
-                preprocessed_mask_points[idx] = vec![point];
+        if self.all_preprocessed_columns {
+            *preprocessed_mask_points = vec![vec![point]; self.n_preprocessed_columns];
+        } else {
+            *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
+            for component in &self.components {
+                for idx in component.preprocessed_column_indices() {
+                    preprocessed_mask_points[idx] = vec![point];
+                }
             }
         }
 

@@ -846,6 +846,7 @@ mod tests {
         let components = Components {
             components: components.iter().map(|&c| c as &dyn Component).collect(),
             n_preprocessed_columns: 0,
+            all_preprocessed_columns: false,
         };
 
         let log_sizes = components.column_log_sizes();
@@ -937,6 +938,7 @@ mod tests {
         let components = Components {
             components: vec![&mle_coeffs_col_component, &mle_eval_component],
             n_preprocessed_columns: 0,
+            all_preprocessed_columns: false,
         };
 
         let log_sizes = components.column_log_sizes();

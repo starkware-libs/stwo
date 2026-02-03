@@ -28,6 +28,7 @@ pub fn verify<MC: MerkleChannel>(
     let components = Components {
         components: components.to_vec(),
         n_preprocessed_columns,
+        all_preprocessed_columns: false,
     };
     let composition_log_size = components.composition_log_degree_bound();
     tracing::info!(
