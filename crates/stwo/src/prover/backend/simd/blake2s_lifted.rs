@@ -39,7 +39,10 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     /// If the length of a smallest column (e.g. the first) is smaller than `N_LANES`, the
     /// implementation falls back to the CPU implementation.
     #[allow(clippy::uninit_vec)]
-    fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
+    fn build_leaves(
+        columns: &[&Col<Self, BaseField>],
+        lifting_log_size: u32,
+    ) -> Col<Self, Blake2sHash> {
         if columns.is_empty() {
             let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default();
             return vec![hasher.finalize()];
@@ -48,6 +51,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             let cpu_cols = columns.iter().map(|column| column.to_cpu()).collect_vec();
             return <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_leaves(
                 &cpu_cols.iter().collect_vec(),
+                lifting_log_size,
             );
         }
         // Note that, in this function, all variables that track log sizes
@@ -160,22 +164,46 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             curr_state.copy_from_slice(&state);
         });
 
+        // let additional_lifting_ratio = (lifting_log_size - LOG_N_LANES) - max_log_size;
+        let lifting_log_size_packed = lifting_log_size - LOG_N_LANES;
         // Prepare the output buffer.
         // TODO(Leo): ideally, we wouldn't need to write to a new buffer and instead we could
         // transmute `next_layer_states`, but there are alignment issues. Think about how to avoid
         // this copy.
-        let mut res = Vec::with_capacity(1 << (max_log_size + LOG_N_HASHES_PER_SIMD_STATE));
+        let mut res =
+            Vec::with_capacity(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE));
         // Safety: we never read from `res`, only write to it.
         unsafe {
-            res.set_len(1 << (max_log_size + LOG_N_HASHES_PER_SIMD_STATE));
+            res.set_len(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE));
         }
+
+        // Lift the next_layer_states if needed.
+        let mut trasposed_states = if lifting_log_size_packed == max_log_size {
+            next_layer_states
+        } else {
+            let mut tmp: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
+                Vec::with_capacity(1 << (lifting_log_size_packed));
+            unsafe {
+                tmp.set_len(1 << (lifting_log_size_packed));
+            }
+            let log_ratio = lifting_log_size_packed - max_log_size;
+            // TODO(Leo): add parallel.
+            for i in 0..tmp.len() {
+                let packed_before_lift: [u32x16; 8] = next_layer_states[i >> log_ratio];
+                let packed_after_lift =
+                    std::array::from_fn(|j| to_lifted_simd(packed_before_lift[j], log_ratio, i));
+                tmp[i] = packed_after_lift;
+            }
+            tmp
+        };
+
         // Untranspose the states and reduce modulo M31 if `IS_M31_OUTPUT == true`.
         #[cfg(not(feature = "parallel"))]
-        let iter_states = next_layer_states
+        let iter_states = trasposed_states
             .iter_mut()
             .zip(res.chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
         #[cfg(feature = "parallel")]
-        let iter_states = next_layer_states
+        let iter_states = trasposed_states
             .par_iter_mut()
             .zip(res.par_chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
 
@@ -190,6 +218,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 unsafe { transmute(untransposed) };
             target.copy_from_slice(&state);
         });
+
         res
     }
 
@@ -316,10 +345,12 @@ mod tests {
         (
             MerkleProverLifted::<CpuBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols.iter().collect(),
+                MAX_LOG_N_ROWS,
             )
             .root(),
             MerkleProverLifted::<SimdBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols_simd.iter().collect(),
+                MAX_LOG_N_ROWS,
             )
             .root(),
         )
@@ -343,10 +374,14 @@ mod tests {
             let col = BaseColumn::from_cpu(&(0..1 << log_size).map(M31::from).collect_vec());
 
             assert_eq!(
-                <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col
-                    .clone()
-                    .to_cpu()]),
-                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col])
+                <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(
+                    &[&col.clone().to_cpu()],
+                    log_size
+                ),
+                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(
+                    &[&col],
+                    log_size
+                )
             );
         }
     }

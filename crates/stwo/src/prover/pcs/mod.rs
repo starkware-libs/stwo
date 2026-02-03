@@ -61,6 +61,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             channel,
             self.twiddles,
             self.store_polynomials_coefficients,
+            self.config.lifting_log_size,
         );
         self.trees.push(tree);
     }
@@ -151,7 +152,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
 
-        let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        let lifting_log_size = self
+            .config
+            .lifting_log_size
+            .unwrap_or(self.trees.last().unwrap().commitment.layers.len() as u32 - 1);
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
@@ -318,6 +322,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
+        lifting_log_size: Option<u32>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
         let polynomials = B::evaluate_polynomials(
@@ -329,11 +334,18 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
+        let max_log_domain_size = polynomials
+            .iter()
+            .map(|poly| poly.evals.domain.log_size())
+            .max()
+            .unwrap_or_default();
+        let lifting_log_size = lifting_log_size.unwrap_or(max_log_domain_size);
         let tree = MerkleProverLifted::commit(
             polynomials
                 .iter()
                 .map(|poly: &Poly<B>| &poly.evals.values)
                 .collect(),
+            lifting_log_size,
         );
         MC::mix_root(channel, tree.root());
 

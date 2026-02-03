@@ -41,14 +41,13 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
     ///     f   h
     ///     g   d
     ///     h   h
-    fn build_leaves(columns: &[&Vec<BaseField>]) -> Vec<H::Hash> {
+    fn build_leaves(columns: &[&Vec<BaseField>], lifting_log_size: u32) -> Vec<H::Hash> {
         let hasher = H::default();
         if columns.is_empty() {
             return vec![hasher.finalize()];
         }
-        if columns[0].len() == 1 {
-            panic!("A column must be of length >= 2.")
-        }
+
+        assert!(columns[0].len() >= 2, "A column must be of length >= 2.");
         let mut prev_layer: Vec<H> = vec![hasher; 2];
         let mut prev_layer_log_size: u32 = 1;
         for (log_size, group) in columns.iter().group_by(|c| c.len().ilog2()).into_iter() {
@@ -67,6 +66,13 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
                 })
             }
             prev_layer_log_size = log_size;
+        }
+
+        let log_ratio = lifting_log_size - prev_layer_log_size;
+        if log_ratio > 0 {
+            prev_layer = (0..1 << lifting_log_size)
+                .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
+                .collect();
         }
         prev_layer.into_iter().map(|x| x.finalize()).collect()
     }
