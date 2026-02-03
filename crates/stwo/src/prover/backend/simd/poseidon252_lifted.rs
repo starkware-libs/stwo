@@ -19,6 +19,7 @@ use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
     fn build_leaves(
         columns: &[&Col<Self, BaseField>],
+        lifting_log_size: u32,
     ) -> Col<Self, <Poseidon252MerkleHasher as MerkleHasherLifted>::Hash> {
         if columns.is_empty() {
             return vec![<Poseidon252MerkleHasher as MerkleHasherLifted>::Hash::default()];
@@ -27,6 +28,7 @@ impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
             let cpu_cols = columns.iter().map(|column| column.to_cpu()).collect_vec();
             return <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_leaves(
                 &cpu_cols.iter().collect_vec(),
+                lifting_log_size
             );
         }
         let max_log_size: u32 = columns.last().unwrap().len().ilog2();
@@ -68,6 +70,13 @@ impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
             prev_chunk_max_log_size = chunk_max_log_size;
         }
 
+        let log_ratio = lifting_log_size - prev_chunk_max_log_size;
+        if log_ratio > 0 {
+            prev_layer_states = (0..1 << lifting_log_size)
+                .map(|idx| prev_layer_states[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
+                .collect();
+        }
+
         #[cfg(not(feature = "parallel"))]
         let iter_states = next_layer_states.iter_mut();
         #[cfg(feature = "parallel")]
@@ -86,6 +95,8 @@ impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
             *curr_state = poseidon_finalize_m31s(&msgs[..last_chunk.len()], prev_state);
         });
         next_layer_states.iter().map(|[fin, ..]| *fin).collect()
+
+       
     }
 
     fn build_next_layer(
@@ -162,10 +173,12 @@ mod tests {
         (
             MerkleProverLifted::<CpuBackend, Poseidon252MerkleHasher>::commit(
                 cols.iter().collect(),
+                MAX_LOG_N_ROWS
             )
             .root(),
             MerkleProverLifted::<SimdBackend, Poseidon252MerkleHasher>::commit(
                 cols_simd.iter().collect(),
+                MAX_LOG_N_ROWS
             )
             .root(),
         )
@@ -178,6 +191,7 @@ mod tests {
     }
     #[test]
     fn test_small_columns_leaves() {
+        let lifting_log_size = 9;
         for log_size in 2..9 {
             const N_COLS: usize = 2;
             let cols: Vec<Vec<BaseField>> = (0..N_COLS)
@@ -191,10 +205,13 @@ mod tests {
 
             assert_eq!(
                 <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_leaves(
-                    &cols.iter().collect::<Vec<_>>()
+                    &cols.iter().collect::<Vec<_>>(),
+                    lifting_log_size
+
                 ),
                 <SimdBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_leaves(
-                    &cols_simd.iter().collect::<Vec<_>>()
+                    &cols_simd.iter().collect::<Vec<_>>(),
+                    lifting_log_size
                 )
             );
         }

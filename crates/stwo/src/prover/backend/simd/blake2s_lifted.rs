@@ -41,15 +41,16 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     /// If the length of a smallest column (e.g. the first) is smaller than `N_LANES`, the
     /// implementation falls back to the CPU implementation.
     #[allow(clippy::uninit_vec)]
-    fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
+    fn build_leaves(columns: &[&Col<Self, BaseField>], lifting_log_size: u32) -> Col<Self, Blake2sHash> {
         if columns.is_empty() {
             let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default_with_initial_state();
-            return vec![hasher.finalize()];
+            return Col::from_cpu(vec![hasher.finalize()]);
         }
         if columns.first().unwrap().len() < N_LANES {
             let cpu_cols = columns.iter().map(|column| column.to_cpu()).collect_vec();
             return <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_leaves(
                 &cpu_cols.iter().collect_vec(),
+                lifting_log_size,
             );
         }
         // Note that, in this function, all variables that track log sizes
@@ -322,10 +323,12 @@ mod tests {
         (
             MerkleProverLifted::<CpuBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols.iter().collect(),
+                MAX_LOG_N_ROWS
             )
             .root(),
             MerkleProverLifted::<SimdBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols_simd.iter().collect(),
+                MAX_LOG_N_ROWS
             )
             .root(),
         )
@@ -351,8 +354,8 @@ mod tests {
             assert_eq!(
                 <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col
                     .clone()
-                    .to_cpu()]),
-                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col])
+                    .to_cpu()], log_size),
+                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col], log_size)
             );
         }
     }

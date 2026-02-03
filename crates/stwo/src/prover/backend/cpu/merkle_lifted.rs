@@ -67,6 +67,14 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
             }
             prev_layer_log_size = log_size;
         }
+
+        let log_ratio = lifting_log_size - prev_layer_log_size;
+        if log_ratio > 0 {
+            prev_layer = (0..1 << lifting_log_size)
+                // We only clone when starting a column chunk of different size.
+                .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
+                .collect();
+        }
         prev_layer.into_iter().map(|x| x.finalize()).collect()
     }
 
