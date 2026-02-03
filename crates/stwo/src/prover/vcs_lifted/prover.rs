@@ -17,6 +17,8 @@ pub struct MerkleProverLifted<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     /// Layers of the Merkle tree, sorted by increasing length.
     /// The first layer is a column of length 1, containing the root commitment.
     pub layers: Vec<Col<B, H::Hash>>,
+    /// The log size of the domain we are lifting to.
+    pub lifting_log_size: u32,
 }
 
 impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
@@ -30,26 +32,28 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     /// # Returns
     ///
     /// A new instance of `MerkleProverLifted` with the committed layers.
-    pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
+    pub fn commit(columns: Vec<&Col<B, BaseField>>, lifting_log_size: u32) -> Self {
         let _span = span!(Level::TRACE, "Merkle", class = "MerkleCommitment").entered();
         if columns.is_empty() {
             return Self {
                 layers: vec![B::build_leaves(&[])],
+                lifting_log_size,
             };
         }
 
         let columns = &mut columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();
 
         let max_log_size = columns.last().unwrap().len().ilog2();
+        assert!(lifting_log_size >= max_log_size);
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
         layers.push(B::build_leaves(columns));
 
-        (0..max_log_size).for_each(|_| {
+        (0..lifting_log_size).for_each(|_| {
             layers.push(B::build_next_layer(layers.last().unwrap()));
         });
         layers.reverse();
 
-        Self { layers }
+        Self { layers, lifting_log_size}
     }
 
     /// Decommits to columns on the given queries.

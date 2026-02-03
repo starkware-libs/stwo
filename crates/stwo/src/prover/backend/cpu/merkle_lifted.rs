@@ -41,14 +41,13 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
     ///     f   h
     ///     g   d
     ///     h   h
-    fn build_leaves(columns: &[&Vec<BaseField>]) -> Vec<H::Hash> {
+    fn build_leaves(columns: &[&Vec<BaseField>], lifting_log_size: u32) -> Vec<H::Hash> {
         let hasher = H::default_with_initial_state();
         if columns.is_empty() {
             return vec![hasher.finalize()];
         }
-        if columns[0].len() == 1 {
-            panic!("A column must be of length >= 2.")
-        }
+
+        assert!(columns[0].len() >= 2, "A column must be of length >= 2.");
         let mut prev_layer: Vec<H> = vec![hasher; 2];
         let mut prev_layer_log_size: u32 = 1;
         for (log_size, group) in columns.iter().group_by(|c| c.len().ilog2()).into_iter() {
