@@ -27,7 +27,7 @@ impl<H: MerkleHasherLifted> StarkProof<H> {
     pub(crate) fn extract_composition_oods_eval(
         &self,
         oods_point: CirclePoint<SecureField>,
-        composition_log_size: u32,
+        max_log_degree_bound: u32,
     ) -> Option<SecureField> {
         // TODO(andrew): `[.., composition_mask, _quotients_mask]` when add quotients
         // commitment.
@@ -52,7 +52,7 @@ impl<H: MerkleHasherLifted> StarkProof<H> {
 
         let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
         let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
-        let value = left_eval + oods_point.repeated_double(composition_log_size - 2).x * right_eval;
+        let value = left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval;
         Some(value)
     }
 
