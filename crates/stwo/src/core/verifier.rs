@@ -29,25 +29,31 @@ pub fn verify<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
-    let composition_log_size = components.composition_log_degree_bound();
+    let composition_log_degree_bound = components.composition_log_degree_bound();
     tracing::info!(
         "Composition polynomial log degree bound: {}",
-        composition_log_size
+        composition_log_degree_bound
     );
+    // The max degree of a committed polynomial. If `lifting_log_size` is not set,
+    // the largest degree is attained by the splits of the composition polynomial.
+    let max_log_degree_bound =
+        if let Some(lifting_log_size) = commitment_scheme.config.lifting_log_size {
+            lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor
+        } else {
+            composition_log_degree_bound - COMPOSITION_LOG_SPLIT
+        };
+
     let random_coeff = channel.draw_secure_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
-        &[composition_log_size - 1; 2 * SECURE_EXTENSION_DEGREE],
+        &[composition_log_degree_bound - 1; 2 * SECURE_EXTENSION_DEGREE],
         channel,
     );
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    // The max degree of a committed polynomial is equal to the degree of the composition poly /
-    // 2^COMPOSITION_LOG_SPLIT.
-    let max_log_degree_bound = composition_log_size - COMPOSITION_LOG_SPLIT;
     // Get mask sample points relative to oods point.
     let mut sample_points = components.mask_points(oods_point, max_log_degree_bound, false);
     // Add the composition polynomial mask points.
@@ -61,7 +67,7 @@ pub fn verify<MC: MerkleChannel>(
     );
 
     let composition_oods_eval = proof
-        .extract_composition_oods_eval(oods_point, composition_log_size)
+        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
         .ok_or(VerificationError::InvalidStructure(
             std_shims::ToString::to_string(&"Unexpected sampled_values structure"),
         ))?;
@@ -76,7 +82,6 @@ pub fn verify<MC: MerkleChannel>(
     {
         return Err(VerificationError::OodsNotMatching);
     }
-
     commitment_scheme.verify_values(sample_points, proof.0, channel)
 }
 
