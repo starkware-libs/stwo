@@ -38,6 +38,7 @@ pub trait QuotientOps: PolyOps {
     /// * sums across sample points.
     fn compute_quotients_and_combine(
         accs: Vec<AccumulatedNumerators<Self>>,
+        lifting_log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
 }
 
@@ -140,8 +141,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         })
         .collect_vec();
 
-    // Finally, compute the denominators and compute the lifted quotients.
-    B::compute_quotients_and_combine(accumulations_per_sample_point)
+    B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size)
 }
 
 #[cfg(test)]

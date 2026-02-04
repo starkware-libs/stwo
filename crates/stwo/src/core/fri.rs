@@ -471,6 +471,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
             vec![self.column_commitment_domain.log_size(); SECURE_EXTENSION_DEGREE],
+            None,
         );
 
         merkle_verifier
@@ -552,6 +553,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
             vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
+            None,
         );
 
         merkle_verifier

@@ -193,9 +193,11 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
 
             // TODO(Leo): add parallel.
             for i in 0..tmp.len() {
-                let packed_before_lift: [u32x16; 8] = next_layer_states[i >> log_ratio];
-                let packed_after_lift =
-                    std::array::from_fn(|j| to_lifted_simd(packed_before_lift[j], log_ratio, i));
+                let packed_before_lift: [u32x16; 8] =
+                    next_layer_states[i >> additional_lifting_ratio];
+                let packed_after_lift = std::array::from_fn(|j| {
+                    to_lifted_simd(packed_before_lift[j], additional_lifting_ratio, i)
+                });
                 tmp[i] = packed_after_lift;
             }
             tmp
