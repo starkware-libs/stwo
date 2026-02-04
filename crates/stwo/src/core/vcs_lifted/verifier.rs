@@ -1,7 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, BTreeMap, Vec};
+use std_shims::{vec, Vec};
 use thiserror::Error;
 
 use crate::core::fields::m31::BaseField;
@@ -36,31 +36,32 @@ pub struct ExtendedMerkleDecommitmentLifted<H: MerkleHasherLifted> {
 }
 
 /// The verifier part of the vector commitment scheme.
-// TODO(Leo): the fields column_log_sizes and n_colums_per_log_size contain more information than
-// needed for implementing a merkle verifier (knowing the max and length of column_log_sizes is
-// enough). However, this info is needed by the pcs and storing it here makes integration easier.
-// Consider refactoring the API.
+// TODO(Leo): the fields column_log_sizes contains more information than needed for implementing a
+// merkle verifier (knowing the max and length of column_log_sizes is enough). However, this info is
+// needed by the pcs and storing it here makes integration easier. Consider refactoring the API.
 pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
     /// The commitment value.
     pub root: H::Hash,
     /// A vector containing the log sizes of the columns that were committed, in the order they
     /// were sent to the MerkleProver (i.e. before sorting).
     pub column_log_sizes: Vec<u32>,
-    /// A dictionary mapping an integer n to the number of columns of log size n.
-    pub n_columns_per_log_size: BTreeMap<u32, usize>,
+    /// The height of the Merkle tree. Note that it can be different than the largest committed
+    /// column if the verifier has set a larger lifting size.
+    pub height: u32,
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
-    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>) -> Self {
-        let mut n_columns_per_log_size = BTreeMap::new();
-        for log_size in &column_log_sizes {
-            *n_columns_per_log_size.entry(*log_size).or_insert(0) += 1;
-        }
-
+    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, lifting_log_size: Option<u32>) -> Self {
+        let max_column_log_size = column_log_sizes.iter().copied().max().unwrap_or_default();
+        let height = lifting_log_size.unwrap_or(max_column_log_size);
+        assert!(
+            max_column_log_size <= height,
+            "The lifting log size is smaller than the largest column."
+        );
         Self {
             root,
             column_log_sizes,
-            n_columns_per_log_size,
+            height,
         }
     }
 
@@ -98,7 +99,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
-        let Some(max_log_size) = self.column_log_sizes.iter().max() else {
+        if self.height == 0 {
             return Ok(());
         };
 
@@ -144,7 +145,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
         // Verify inner layers
-        for _ in 0..*max_log_size {
+        for _ in 0..self.height {
             let mut curr_layer_hashes: Vec<(usize, H::Hash)> = vec![];
             // Chunk the previous layer by siblings.
             for chunk in prev_layer_hashes.as_slice().chunk_by(|a, b| a.0 ^ 1 == b.0) {

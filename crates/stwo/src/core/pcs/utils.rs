@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std_shims::{vec, BTreeSet, Vec};
 
 use super::TreeSubspan;
+use crate::core::pcs::PcsConfig;
 use crate::core::ColumnVec;
 
 /// A container that holds an element for each commitment tree.
@@ -209,4 +210,11 @@ pub fn prepare_preprocessed_query_positions(
         .iter()
         .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
         .collect()
+}
+
+pub fn get_lifting_log_size(config: &PcsConfig, log_trace_size: u32) -> u32 {
+    let lifting_log_size = config.lifting_log_size.unwrap_or(log_trace_size);
+    assert!(log_trace_size <= lifting_log_size);
+
+    lifting_log_size
 }

@@ -11,7 +11,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
-use crate::core::pcs::utils::prepare_preprocessed_query_positions;
+use crate::core::pcs::utils::{get_lifting_log_size, prepare_preprocessed_query_positions};
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -152,10 +152,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
 
-        let lifting_log_size = self
-            .config
-            .lifting_log_size
-            .unwrap_or(self.trees.last().unwrap().commitment.layers.len() as u32 - 1);
+        let split_composition_log_size =
+            self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        let lifting_log_size = get_lifting_log_size(&self.config, split_composition_log_size);
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
@@ -221,7 +220,6 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
-
         // Build the query position tree.
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
