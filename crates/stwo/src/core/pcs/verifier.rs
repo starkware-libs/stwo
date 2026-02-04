@@ -51,7 +51,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .iter()
             .map(|&log_size| log_size + self.config.fri_config.log_blowup_factor)
             .collect();
-        let verifier = MerkleVerifierLifted::new(commitment, extended_log_sizes);
+        let verifier =
+            MerkleVerifierLifted::new(commitment, extended_log_sizes, self.config.lifting_log_size);
         self.trees.push(verifier);
     }
 
@@ -63,18 +64,14 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
-        // The lifting log size is the length of the longest column which has at least one sample
-        // (i.e. a column which is actually used in the constraints). Usually, the only columns
-        // that have an empty vector of samples are among the preprocessed columns.
+        let log_trace_size = self.trees.last().unwrap().height;
+        // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
+        // composition polynomials' domain.
         let lifting_log_size = self
-            .column_log_sizes()
-            .zip_cols(&sampled_points)
-            .flatten()
-            .iter()
-            .filter(|(_, sampled_points)| !sampled_points.is_empty())
-            .map(|(log_size, _)| *log_size)
-            .max()
-            .unwrap();
+            .config
+            .lifting_log_size
+            .unwrap_or(self.trees.last().unwrap().height);
+        assert!(lifting_log_size >= log_trace_size);
 
         let bound =
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
@@ -93,11 +90,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
             lifting_log_size,
-            self.column_log_sizes()[0]
-                .iter()
-                .max()
-                .copied()
-                .unwrap_or_default(),
+            self.trees[0].height,
         );
 
         // Build the query positions tree: the preprocessed tree needs a different treatment than

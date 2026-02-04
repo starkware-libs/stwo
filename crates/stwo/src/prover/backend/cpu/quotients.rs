@@ -46,27 +46,21 @@ impl QuotientOps for CpuBackend {
 
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
+        lifting_log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
-        let max_log_size = accumulations
-            .iter()
-            .map(|x| x.partial_numerators_acc.len())
-            .max()
-            .unwrap()
-            .ilog2();
-
-        let domain = CanonicCoset::new(max_log_size).circle_domain();
+        let domain = CanonicCoset::new(lifting_log_size).circle_domain();
         let mut quotients: SecureColumnByCoords<CpuBackend> =
-            unsafe { SecureColumnByCoords::uninitialized(1 << max_log_size) };
+            unsafe { SecureColumnByCoords::uninitialized(1 << lifting_log_size) };
         let sample_points: Vec<CirclePoint<SecureField>> =
             accumulations.iter().map(|x| x.sample_point).collect();
         // Populate `quotients`.
         for row in 0..quotients.len() {
-            let domain_point = domain.at(bit_reverse_index(row, max_log_size));
+            let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
             let inverses = denominator_inverses(&sample_points, domain_point);
             let mut quotient = SecureField::zero();
             for (acc, den_inv) in accumulations.iter().zip_eq(inverses) {
                 let mut full_numerator = SecureField::zero();
-                let log_ratio = max_log_size - acc.partial_numerators_acc.len().ilog2();
+                let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
                 let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
 
                 full_numerator += acc.partial_numerators_acc.at(lifted_idx)

@@ -52,7 +52,7 @@ where
 
     let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect_vec());
 
-    let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes);
+    let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
     (queries, decommitment.decommitment, values, verifier)
 }
 

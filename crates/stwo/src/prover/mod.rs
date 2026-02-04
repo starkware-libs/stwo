@@ -59,7 +59,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     )
     .entered();
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
-    let composition_log_size = composition_poly.log_size();
+    let composition_log_degree_bound = composition_poly.log_size();
     span1.exit();
 
     // Commit on the Composition Polynomial by splitting its coeffs to two polynomialsof degree
@@ -74,9 +74,14 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    // The max degree of a committed polynomial is equal to the degree of the composition poly /
-    // 2^COMPOSITION_LOG_SPLIT.
-    let max_log_degree_bound = composition_log_size - COMPOSITION_LOG_SPLIT;
+    // The max degree of a committed polynomial. If `lifting_log_size` is not set,
+    // the largest degree is attained by the splits of the composition polynomial.
+    let max_log_degree_bound =
+        if let Some(lifting_log_size) = commitment_scheme.config.lifting_log_size {
+            lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor
+        } else {
+            composition_log_degree_bound - COMPOSITION_LOG_SPLIT
+        };
     // Get mask sample points relative to oods point.
     let mut sample_points = component_provers.components().mask_points(
         oods_point,
@@ -95,7 +100,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if proof
-        .extract_composition_oods_eval(oods_point, composition_log_size)
+        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
         .unwrap()
         != component_provers
             .components()
