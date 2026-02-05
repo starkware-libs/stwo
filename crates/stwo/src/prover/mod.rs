@@ -24,12 +24,19 @@ pub mod secure_column;
 pub mod vcs;
 pub mod vcs_lifted;
 
+#[derive(Default)]
+pub struct ProvingConfig {
+    /// Whether to include all preprocessed columns in the proof.
+    /// If false, only the preprocessed columns that are used by the components will be included.
+    include_all_preprocessed_columns: bool,
+}
+
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
     commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    Ok(prove_ex(components, channel, commitment_scheme, false)?.proof)
+    Ok(prove_ex(components, channel, commitment_scheme, ProvingConfig::default())?.proof)
 }
 
 #[instrument(skip_all)]
@@ -37,8 +44,11 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
     mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
-    include_all_preprocessed_columns: bool,
+    proving_config: ProvingConfig,
 ) -> Result<ExtendedStarkProof<MC::H>, ProvingError> {
+    let ProvingConfig {
+        include_all_preprocessed_columns,
+    } = proving_config;
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .polynomials
         .len();
