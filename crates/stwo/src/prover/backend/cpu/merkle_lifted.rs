@@ -42,7 +42,7 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
     ///     g   d
     ///     h   h
     fn build_leaves(columns: &[&Vec<BaseField>]) -> Vec<H::Hash> {
-        let hasher = H::default_with_initial_state();
+        let hasher = H::default();
         if columns.is_empty() {
             return vec![hasher.finalize()];
         }

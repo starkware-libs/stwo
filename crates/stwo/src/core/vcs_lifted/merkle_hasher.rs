@@ -9,9 +9,6 @@ use crate::core::vcs::hash::Hash;
 pub trait MerkleHasherLifted: Debug + Default + Clone {
     type Hash: Hash;
 
-    /// Constructs an hasher with a state that is already updated with a prefix.
-    fn default_with_initial_state() -> Self;
-
     /// Hashes an inner Merkle node.
     fn hash_children(children_hashes: (Self::Hash, Self::Hash)) -> Self::Hash;
 

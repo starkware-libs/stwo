@@ -16,8 +16,7 @@ use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasherGeneric;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
-    compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states,
-    SIMD_LEAF_INITIAL_STATE, SIMD_NODE_INITIAL_STATE,
+    compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states, INITIAL_STATE,
 };
 use crate::prover::backend::simd::m31::{reduce_to_m31_simd, N_LANES};
 use crate::prover::backend::{Col, Column, CpuBackend};
@@ -26,7 +25,6 @@ use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 const N_FELTS_IN_BLAKE_MESSAGE: usize = 16;
 const N_FELTS_IN_BLAKE_STATE: usize = 8;
 const N_BYTES_IN_BLAKE_MESSAGE: u64 = N_FELTS_IN_BLAKE_MESSAGE as u64 * N_BYTES_FELT as u64;
-const N_BYTES_IN_PREFIX: u64 = 64;
 const LOG_N_HASHES_PER_SIMD_STATE: u32 = 4;
 
 impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>
@@ -43,7 +41,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     #[allow(clippy::uninit_vec)]
     fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
         if columns.is_empty() {
-            let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default_with_initial_state();
+            let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default();
             return vec![hasher.finalize()];
         }
         if columns.first().unwrap().len() < N_LANES {
@@ -73,11 +71,11 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             next_layer_states.set_len(1 << max_log_size);
         }
         #[cfg(not(feature = "parallel"))]
-        prev_layer_states.fill(SIMD_LEAF_INITIAL_STATE);
+        prev_layer_states.fill(INITIAL_STATE);
         #[cfg(feature = "parallel")]
         prev_layer_states
             .par_iter_mut()
-            .for_each(|uninit| *uninit = SIMD_LEAF_INITIAL_STATE);
+            .for_each(|uninit| *uninit = INITIAL_STATE);
 
         // The last column chunk, which requires the `compress_finalize` permutation, is
         // `columns[last_chunk_index..]`. This chunk is treated on its own towards the end of the
@@ -86,7 +84,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             (columns.len() - 1) / N_FELTS_IN_BLAKE_MESSAGE * N_FELTS_IN_BLAKE_MESSAGE;
         let lifting_indices =
             get_lifting_indices(columns.iter().map(|c| c.data.len()), last_chunk_index);
-        let mut byte_count = N_BYTES_IN_PREFIX;
+        let mut byte_count = 0_u64;
 
         // The actual log size of `prev_layer_states` is equal to `max_log_size`, but only the first
         // two entries are accessed for the computation of the first iteration.
@@ -223,16 +221,12 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
         iter.enumerate().for_each(|(i, chunk)| {
-            let state = SIMD_NODE_INITIAL_STATE;
+            let state = INITIAL_STATE;
             let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
             let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = array::from_fn(|j| {
                 u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
             });
-            let state = compress_finalize(
-                state,
-                transpose_msgs(msgs),
-                N_BYTES_IN_PREFIX + N_BYTES_IN_BLAKE_MESSAGE,
-            );
+            let state = compress_finalize(state, transpose_msgs(msgs), N_BYTES_IN_BLAKE_MESSAGE);
             let mut untransposed = untranspose_states(state);
             if IS_M31_OUTPUT {
                 untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));

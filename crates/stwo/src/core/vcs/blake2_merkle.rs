@@ -5,17 +5,6 @@ use super::blake2_hash::{reduce_to_m31, Blake2sHash};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::MerkleHasher;
 
-pub const LEAF_PREFIX: [u8; 64] = [
-    b'l', b'e', b'a', b'f', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0,
-];
-pub const NODE_PREFIX: [u8; 64] = [
-    b'n', b'o', b'd', b'e', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0,
-];
-
 pub type Blake2sMerkleHasher = Blake2sMerkleHasherGeneric<false>;
 /// Same as [Blake2sMerkleHasher], expect that the hash output is taken modulo M31::P.
 pub type Blake2sM31MerkleHasher = Blake2sMerkleHasherGeneric<true>;
@@ -31,13 +20,9 @@ impl<const IS_M31_OUTPUT: bool> MerkleHasher for Blake2sMerkleHasherGeneric<IS_M
     ) -> Self::Hash {
         let mut hasher = Blake2s256::new();
 
-        // TODO(Ilya): Avoid computing the hash of the prefix in runtime.
         if let Some((left_child, right_child)) = children_hashes {
-            hasher.update(NODE_PREFIX);
             hasher.update(left_child);
             hasher.update(right_child);
-        } else {
-            hasher.update(LEAF_PREFIX);
         }
 
         for value in column_values {

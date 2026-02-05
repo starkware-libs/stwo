@@ -153,7 +153,7 @@ mod test {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher as Blake2sMerkleHasherCurrent;
-    use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleHasher, LEAF_PREFIX};
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::vcs_lifted::test_utils::lift_poly;
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::CpuBackend;
@@ -191,14 +191,13 @@ mod test {
 
         // Compute the expected first leaf.
         let mut hasher = Blake2sHasher::default();
-        let mut data = LEAF_PREFIX.to_vec();
-        data.extend([0u8; 12]);
+        let data = [0u8; 12];
         hasher.update(&data);
         assert_eq!(hasher.finalize(), leaves[0]);
 
         // Compute the expected fifth leaf.
         let mut hasher = Blake2sHasher::default();
-        let mut data = LEAF_PREFIX.to_vec();
+        let mut data = Vec::new();
         data.extend(0_u32.to_le_bytes());
         data.extend(2_u32.to_le_bytes());
         data.extend(4_u32.to_le_bytes());
@@ -207,7 +206,7 @@ mod test {
 
         // Compute the expected last leaf.
         let mut hasher = Blake2sHasher::default();
-        let mut data = LEAF_PREFIX.to_vec();
+        let mut data = Vec::new();
         data.extend(3_u32.to_le_bytes());
         data.extend(7_u32.to_le_bytes());
         data.extend(15_u32.to_le_bytes());

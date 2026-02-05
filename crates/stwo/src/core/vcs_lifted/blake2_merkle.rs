@@ -5,17 +5,6 @@ use crate::core::channel::{Blake2sChannelGeneric, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasherGeneric};
 
-pub const LEAF_PREFIX: [u8; 64] = [
-    b'l', b'e', b'a', b'f', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0,
-];
-pub const NODE_PREFIX: [u8; 64] = [
-    b'n', b'o', b'd', b'e', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0,
-];
-
 pub type Blake2sMerkleHasherGeneric<const IS_M31_OUTPUT: bool> =
     Blake2sHasherGeneric<IS_M31_OUTPUT>;
 
@@ -26,18 +15,9 @@ pub type Blake2sM31MerkleHasher = Blake2sMerkleHasherGeneric<true>;
 impl<const IS_M31_OUTPUT: bool> MerkleHasherLifted for Blake2sMerkleHasherGeneric<IS_M31_OUTPUT> {
     type Hash = Blake2sHash;
 
-    fn default_with_initial_state() -> Self {
-        let mut hasher = Self::default();
-        // TODO(Leo): check if domain separation is necessary in lifted Merkle.
-        hasher.update(&LEAF_PREFIX);
-        hasher
-    }
-
     fn hash_children(children_hashes: (Self::Hash, Self::Hash)) -> Self::Hash {
         let mut hasher = Self::default();
         let (left_child, right_child) = children_hashes;
-        // TODO(Ilya): Avoid computing the hash of the prefix in runtime.
-        hasher.update(&NODE_PREFIX);
         hasher.update(&left_child.0);
         hasher.update(&right_child.0);
 

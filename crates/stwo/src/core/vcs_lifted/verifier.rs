@@ -132,7 +132,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
                 .iter_mut()
                 .map(|col_iter| *col_iter.next().unwrap())
                 .collect();
-            let mut hasher = H::default_with_initial_state();
+            let mut hasher = H::default();
             hasher.update_leaf(&row);
             prev_layer_hashes.push((*pos, hasher.finalize()));
         }
