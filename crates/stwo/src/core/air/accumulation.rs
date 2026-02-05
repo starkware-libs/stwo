@@ -12,7 +12,7 @@ use crate::core::fields::qm31::SecureField;
 #[derive(Debug, Clone)]
 pub struct PointEvaluationAccumulator {
     random_coeff: SecureField,
-    accumulation: SecureField,
+   pub accumulation: SecureField,
 }
 
 impl PointEvaluationAccumulator {

@@ -56,7 +56,7 @@ impl EvalAtRow for PointEvaluator<'_> {
     {
         let res = self.denom_inverse * constraint;
 
-        println!("res: {:?}", res/ self.denom_inverse);
+        //println!("res: {:?}", res/ self.denom_inverse);
         self.evaluation_accumulator
             .accumulate(res);
     }

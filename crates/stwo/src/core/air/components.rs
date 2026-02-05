@@ -65,7 +65,9 @@ impl Components<'_> {
                 mask_values,
                 &mut evaluation_accumulator,
                 max_log_degree_bound,
-            )
+            );
+
+            println!("accumulation: {:?}", evaluation_accumulator.accumulation);
         }
         evaluation_accumulator.finalize()
     }
