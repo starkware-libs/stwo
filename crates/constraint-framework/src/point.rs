@@ -54,8 +54,11 @@ impl EvalAtRow for PointEvaluator<'_> {
     where
         Self::EF: Mul<G, Output = Self::EF>,
     {
+        let res = self.denom_inverse * constraint;
+
+        println!("res: {:?}", res/ self.denom_inverse);
         self.evaluation_accumulator
-            .accumulate(self.denom_inverse * constraint);
+            .accumulate(res);
     }
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_partial_evals(values)
