@@ -25,10 +25,6 @@ pub struct Poseidon252MerkleHasher {
 impl MerkleHasherLifted for Poseidon252MerkleHasher {
     type Hash = FieldElement252;
 
-    fn default_with_initial_state() -> Self {
-        Self::default()
-    }
-
     fn hash_children((left, right): (Self::Hash, Self::Hash)) -> Self::Hash {
         poseidon_hash(left, right)
     }
