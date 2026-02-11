@@ -11,7 +11,7 @@ use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
-use crate::core::pcs::utils::{get_lifting_log_size, prepare_preprocessed_query_positions};
+use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
@@ -64,11 +64,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
-        let split_composition_log_size = self.trees.last().unwrap().height;
-        // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
-        // composition polynomials' domain.
-        let lifting_log_size = get_lifting_log_size(&self.config, split_composition_log_size);
-
+        let lifting_log_size = self.trees.last().unwrap().height;
         let bound =
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
 

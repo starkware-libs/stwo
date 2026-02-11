@@ -11,7 +11,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
-use crate::core::pcs::utils::{get_lifting_log_size, prepare_preprocessed_query_positions};
+use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -152,9 +152,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
 
-        let split_composition_log_size =
-            self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
-        let lifting_log_size = get_lifting_log_size(&self.config, split_composition_log_size);
+        let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {

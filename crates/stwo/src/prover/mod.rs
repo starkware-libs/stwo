@@ -4,8 +4,9 @@ use tracing::{info, instrument, span, Level};
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::pcs::utils::get_lifting_log_size;
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
-use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
+use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
 
 mod air;
@@ -59,7 +60,6 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     )
     .entered();
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
-    let composition_log_degree_bound = composition_poly.log_size();
     span1.exit();
 
     // Commit on the Composition Polynomial by splitting its coeffs to two polynomialsof degree
@@ -74,14 +74,33 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    // The max degree of a committed polynomial. If `lifting_log_size` is not set,
-    // the largest degree is attained by the splits of the composition polynomial.
+
+    let split_composition_log_size = commitment_scheme
+        .trees
+        .last()
+        .unwrap()
+        .commitment
+        .layers
+        .len() as u32
+        - 1;
+
+    // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
+    // composition polynomials' domain.
+    let lifting_log_size =
+        get_lifting_log_size(&commitment_scheme.config, split_composition_log_size);
+    if include_all_preprocessed_columns {
+        // If all the preprocessed columns are included, the lifting log size must be greater than
+        // or equal to the preprocessed log size.
+        let preprocessed_log_size = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        assert!(lifting_log_size >= preprocessed_log_size);
+    }
     let max_log_degree_bound =
-        if let Some(lifting_log_size) = commitment_scheme.config.lifting_log_size {
-            lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor
-        } else {
-            composition_log_degree_bound - COMPOSITION_LOG_SPLIT
-        };
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
     // Get mask sample points relative to oods point.
     let mut sample_points = component_provers.components().mask_points(
         oods_point,
