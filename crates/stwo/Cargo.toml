@@ -20,9 +20,10 @@ std = [
     "serde/std",
     "tracing-subscriber/std",
     "stwo-std-shims/std",
+    "stwo-types/std",
 ]
 prover = ["std", "tracing/attributes"]
-parallel = ["rayon", "indexmap/rayon"]
+parallel = ["rayon", "indexmap/rayon", "stwo-types/parallel"]
 slow-tests = []
 tracing = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -53,6 +54,7 @@ serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
 stwo-std-shims = { version = "1.0.0", default-features = false }
+stwo-types = { workspace = true, default-features = false }
 dashmap = "6.1.0"
 
 [dev-dependencies]
