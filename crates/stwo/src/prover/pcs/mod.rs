@@ -152,9 +152,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
 
-        let split_composition_log_size =
-            self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
-        let lifting_log_size = get_lifting_log_size(&self.config, split_composition_log_size);
+        let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
