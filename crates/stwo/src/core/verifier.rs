@@ -6,6 +6,7 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
+use crate::core::pcs::utils::get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
@@ -21,6 +22,23 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
+    let include_all_preprocessed_columns = false;
+    verify_ex(
+        components,
+        channel,
+        commitment_scheme,
+        proof,
+        include_all_preprocessed_columns,
+    )
+}
+
+pub fn verify_ex<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: StarkProof<MC::H>,
+    include_all_preprocessed_columns: bool,
+) -> Result<(), VerificationError> {
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .column_log_sizes
         .len();
@@ -29,33 +47,45 @@ pub fn verify<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
-    let composition_log_degree_bound = components.composition_log_degree_bound();
+    let split_composition_log_degree_bound =
+        components.composition_log_degree_bound() - COMPOSITION_LOG_SPLIT;
     tracing::info!(
-        "Composition polynomial log degree bound: {}",
-        composition_log_degree_bound
+        "Split composition polynomial log degree bound: {}",
+        split_composition_log_degree_bound
     );
+
+    // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
+    // composition polynomials' domain.
+    let lifting_log_size = get_lifting_log_size(
+        &commitment_scheme.config,
+        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
+    );
+    if include_all_preprocessed_columns {
+        assert!(lifting_log_size >= commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height);
+    }
+
     // The max degree of a committed polynomial. If `lifting_log_size` is not set,
     // the largest degree is attained by the splits of the composition polynomial.
     let max_log_degree_bound =
-        if let Some(lifting_log_size) = commitment_scheme.config.lifting_log_size {
-            lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor
-        } else {
-            composition_log_degree_bound - COMPOSITION_LOG_SPLIT
-        };
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
 
     let random_coeff = channel.draw_secure_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
-        &[composition_log_degree_bound - 1; 2 * SECURE_EXTENSION_DEGREE],
+        &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
         channel,
     );
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point, max_log_degree_bound, false);
+    let mut sample_points = components.mask_points(
+        oods_point,
+        max_log_degree_bound,
+        include_all_preprocessed_columns,
+    );
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
