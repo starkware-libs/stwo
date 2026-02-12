@@ -357,8 +357,12 @@ impl PolyOps for SimdBackend {
             fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
 
         while layer_evaluation.len() > 1 {
-            layer_evaluation =
-                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
+            layer_evaluation = SimdBackend::fold_line(
+                &layer_evaluation,
+                folding_alphas.pop().unwrap(),
+                twiddles,
+                1,
+            );
         }
 
         layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))

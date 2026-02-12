@@ -28,7 +28,10 @@ impl FriOps for SimdBackend {
         eval: &LineEvaluation<Self>,
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
+        fold_step: u32,
     ) -> LineEvaluation<Self> {
+        // TODO(Leo): remove in next PRs.
+        assert_eq!(fold_step, 1, "FRI jumps not yet supported in SIMD backend.");
         let log_size = eval.len().ilog2();
         if log_size <= LOG_N_LANES {
             let eval = fold_line_cpu(&eval.to_cpu(), alpha);
@@ -38,7 +41,8 @@ impl FriOps for SimdBackend {
         let domain = eval.domain();
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-        let mut folded_values = SecureColumnByCoords::<Self>::zeros(1 << (log_size - 1));
+        let mut folded_values =
+            unsafe { SecureColumnByCoords::<Self>::uninitialized(1 << (log_size - 1)) };
 
         for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
             let value = {
@@ -264,12 +268,14 @@ mod tests {
             &LineEvaluation::new(domain, values.iter().copied().collect()),
             alpha,
             &CpuBackend::precompute_twiddles(domain.coset()),
+            1,
         );
 
         let avx_fold = SimdBackend::fold_line(
             &LineEvaluation::new(domain, values.iter().copied().collect()),
             alpha,
             &SimdBackend::precompute_twiddles(domain.coset()),
+            1,
         );
 
         assert_eq!(cpu_fold.values.to_vec(), avx_fold.values.to_vec());

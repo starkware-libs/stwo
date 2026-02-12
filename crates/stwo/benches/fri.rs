@@ -28,6 +28,7 @@ fn folding_benchmark(c: &mut Criterion) {
                 black_box(&evals),
                 black_box(alpha),
                 &twiddles,
+                1,
             ));
         })
     });
