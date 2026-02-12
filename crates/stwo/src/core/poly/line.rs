@@ -75,6 +75,13 @@ impl LineDomain {
         }
     }
 
+    /// Returns a new domain comprising of all points in current domain doubled `n_doubles` times.
+    pub fn repeated_double(&self, n_doubles: u32) -> Self {
+        Self {
+            coset: self.coset.repeated_double(n_doubles),
+        }
+    }
+
     /// Returns the domain's underlying coset.
     pub const fn coset(&self) -> Coset {
         self.coset
