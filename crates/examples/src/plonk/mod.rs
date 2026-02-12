@@ -307,7 +307,7 @@ mod tests {
             .unwrap();
         let config = PcsConfig {
             pow_bits: 10,
-            fri_config: FriConfig::new(5, 4, 64),
+            fri_config: FriConfig::new(5, 4, 64, 1),
             lifting_log_size: None,
         };
 
