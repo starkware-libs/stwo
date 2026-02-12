@@ -3,7 +3,7 @@ use core::iter::zip;
 use core::ops::RangeInclusive;
 
 use hashbrown::HashMap;
-use itertools::{zip_eq, Itertools};
+use itertools::Itertools;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, Vec};
@@ -16,7 +16,6 @@ use super::queries::{draw_queries, Queries};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::utils::bit_reverse_index;
@@ -129,20 +128,39 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             layer_bound.log_degree_bound + config.log_blowup_factor,
         ));
 
+        let n_inner_layers = proof.inner_layers.len();
         for (layer_index, proof) in proof.inner_layers.into_iter().enumerate() {
             MC::mix_root(channel, proof.commitment);
+
+            // Compute the folding step.
+            let is_last = layer_index == n_inner_layers - 1;
+            // If we're not at the last inner layer, fold by the config value.
+            let fold_step = if !is_last {
+                config.line_fold_step
+            } else {
+                // At the last inner layer, fold by the number required to get exactly to the last
+                // layer size.
+                let res = (layer_bound.log_degree_bound)
+                    .checked_sub(config.log_last_layer_degree_bound)
+                    .ok_or(FriVerificationError::InvalidNumFriLayers)?;
+                // `res` should be in (0, line_fold_step].
+                if !(1..=config.line_fold_step).contains(&res) {
+                    return Err(FriVerificationError::InvalidNumFriLayers);
+                }
+                res
+            };
 
             inner_layers.push(FriInnerLayerVerifier {
                 domain: layer_domain,
                 folding_alpha: channel.draw_secure_felt(),
                 layer_index,
                 proof,
+                fold_step,
             });
-
             layer_bound = layer_bound
-                .fold(FOLD_STEP)
+                .fold(fold_step)
                 .ok_or(FriVerificationError::InvalidNumFriLayers)?;
-            layer_domain = layer_domain.double();
+            layer_domain = layer_domain.repeated_double(fold_step);
         }
 
         if layer_bound.log_degree_bound != config.log_last_layer_degree_bound {
@@ -221,18 +239,12 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         first_layer_sparse_evals: SparseEvaluation,
     ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
         let mut layer_queries = queries.clone();
-        let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
         let first_layer_column_domain = self.first_layer.column_commitment_domain;
 
         // Fold the first layer.
-        let folded_column_evals = first_layer_sparse_evals
+        let mut layer_query_evals = first_layer_sparse_evals
             .fold_circle(self.first_layer.folding_alpha, first_layer_column_domain);
 
-        accumulate_line(
-            &mut layer_query_evals,
-            &folded_column_evals,
-            self.first_layer.folding_alpha,
-        );
         for layer in self.inner_layers.iter() {
             // Verify the layer and fold it using the current layer's folding alpha.
             (layer_queries, layer_query_evals) =
@@ -273,18 +285,6 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         let queries = Queries::new(&unsorted_query_locations, first_layer_log_size);
         self.queries = Some(queries.clone());
         queries.positions
-    }
-}
-
-fn accumulate_line(
-    layer_query_evals: &mut [SecureField],
-    column_query_evals: &[SecureField],
-    folding_alpha: SecureField,
-) {
-    let folding_alpha_squared = folding_alpha.square();
-    for (curr_layer_eval, folded_column_eval) in zip_eq(layer_query_evals, column_query_evals) {
-        *curr_layer_eval *= folding_alpha_squared;
-        *curr_layer_eval += *folded_column_eval;
     }
 }
 
@@ -498,6 +498,7 @@ struct FriInnerLayerVerifier<H: MerkleHasherLifted> {
     folding_alpha: SecureField,
     layer_index: usize,
     proof: FriLayerProof<H>,
+    fold_step: u32,
 }
 
 impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
@@ -528,7 +529,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
                 &queries,
                 &evals_at_queries,
                 &mut fri_witness,
-                FOLD_STEP,
+                self.fold_step,
             )
             .map_err(|InsufficientWitnessError| {
                 FriVerificationError::InnerLayerEvaluationsInvalid {
@@ -574,8 +575,9 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
                 error: e,
             })?;
 
-        let folded_queries = queries.fold(FOLD_STEP);
-        let folded_evals = sparse_evaluation.fold_line(self.folding_alpha, self.domain);
+        let folded_queries = queries.fold(self.fold_step);
+        let folded_evals =
+            sparse_evaluation.fold_line(self.folding_alpha, self.domain, self.fold_step);
 
         Ok((folded_queries, folded_evals))
     }
@@ -618,7 +620,8 @@ fn compute_decommitment_positions_and_rebuild_evals(
         subset_domain_index_initials.push(bit_reverse_index(subset_start, queries.log_domain_size));
     }
 
-    let sparse_evaluation = SparseEvaluation::new(subset_evals, subset_domain_index_initials);
+    let sparse_evaluation =
+        SparseEvaluation::new(subset_evals, subset_domain_index_initials, fold_step);
 
     Ok((decommitment_positions, sparse_evaluation))
 }
@@ -640,9 +643,14 @@ impl SparseEvaluation {
     ///
     /// Panics if a subset size doesn't equal `2^FOLD_STEP` or there aren't the same number of
     /// domain indexes as subsets.
-    fn new(subset_evals: Vec<Vec<SecureField>>, subset_domain_initial_indexes: Vec<usize>) -> Self {
-        let fold_factor = 1 << FOLD_STEP;
-        assert!(subset_evals.iter().all(|e| e.len() == fold_factor));
+    fn new(
+        subset_evals: Vec<Vec<SecureField>>,
+        subset_domain_initial_indexes: Vec<usize>,
+        fold_step: u32,
+    ) -> Self {
+        assert!(subset_evals
+            .iter()
+            .all(|e| e.len() == 1 << fold_step as usize));
         assert_eq!(subset_evals.len(), subset_domain_initial_indexes.len());
         Self {
             subset_evals,
@@ -650,13 +658,17 @@ impl SparseEvaluation {
         }
     }
 
-    fn fold_line(self, fold_alpha: SecureField, source_domain: LineDomain) -> Vec<SecureField> {
+    fn fold_line(
+        self,
+        fold_alpha: SecureField,
+        source_domain: LineDomain,
+        fold_step: u32,
+    ) -> Vec<SecureField> {
         zip(self.subset_evals, self.subset_domain_initial_indexes)
             .map(|(eval, domain_initial_index)| {
                 let fold_domain_initial = source_domain.coset().index_at(domain_initial_index);
-                let fold_domain = LineDomain::new(Coset::new(fold_domain_initial, FOLD_STEP));
-                let (_, folded_values) = fold_line(&eval, fold_domain, fold_alpha);
-                folded_values[0]
+                let fold_domain = LineDomain::new(Coset::new(fold_domain_initial, fold_step));
+                fold_coset(eval, fold_domain, fold_alpha)
             })
             .collect()
     }
@@ -705,6 +717,27 @@ pub fn fold_line(
     (domain.double(), folded_values)
 }
 
+pub fn fold_coset(
+    mut eval: Vec<SecureField>,
+    domain: LineDomain,
+    alpha: SecureField,
+) -> SecureField {
+    let mut domain = domain;
+    let n = domain.log_size();
+    let mut folding_alpha = alpha;
+    for i in 0..n {
+        for j in (0..1 << (n - i)).step_by(2) {
+            let x = domain.at(bit_reverse_index(j, domain.log_size()));
+            let (mut f0, mut f1) = (eval[j], eval[j + 1]);
+            ibutterfly(&mut f0, &mut f1, x.inverse());
+            eval[j >> 1] = f0 + folding_alpha * f1
+        }
+        folding_alpha = folding_alpha * folding_alpha;
+        domain = domain.double();
+    }
+    eval[0]
+}
+
 /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
 /// polynomial.
 /// See [`crate::prover::fri::FriOps::fold_circle_into_line`].
@@ -745,12 +778,12 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::FriVerificationError;
-    use crate::core::circle::Coset;
+    use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
+        fold_circle_into_line, fold_coset, fold_line, CirclePolyDegreeBound, FriConfig,
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::CircleDomain;
@@ -758,6 +791,7 @@ mod tests {
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use crate::m31;
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::{ColumnOps, CpuBackend};
     use crate::prover::line::LineEvaluation;
@@ -873,10 +907,11 @@ mod tests {
 
         let verifier = FriVerifier::commit(&mut test_channel(), invalid_config, proof, bound);
 
-        assert!(matches!(
-            verifier,
-            Err(FriVerificationError::InvalidNumFriLayers)
-        ));
+        assert!(
+            matches!(verifier, Err(FriVerificationError::InvalidNumFriLayers)),
+            "Got: {:?}",
+            verifier.err()
+        );
     }
 
     #[test]
@@ -896,10 +931,11 @@ mod tests {
 
         let verifier = FriVerifier::commit(&mut test_channel(), invalid_config, proof, bound);
 
-        assert!(matches!(
-            verifier,
-            Err(FriVerificationError::InvalidNumFriLayers)
-        ));
+        assert!(
+            matches!(verifier, Err(FriVerificationError::InvalidNumFriLayers)),
+            "Got: {:?}",
+            verifier.err()
+        );
     }
 
     #[test]
@@ -1057,5 +1093,51 @@ mod tests {
         query_positions: &[usize],
     ) -> Vec<SecureField> {
         query_positions.iter().map(|p| polynomial.at(*p)).collect()
+    }
+
+    #[test]
+    fn test_fold_coset() {
+        const N_FOLDS: usize = 3;
+        let mut domain = LineDomain::new(Coset::new(CirclePointIndex::generator(), N_FOLDS as u32));
+        let mut eval: Vec<_> = (0..1 << N_FOLDS)
+            .map(|i| SecureField::from_m31(m31!(i), m31!(i), m31!(i), m31!(i)))
+            .collect();
+        let alpha = SecureField::from_m31(m31!(9), m31!(8), m31!(7), m31!(6));
+        let actual_value = fold_coset(eval.clone(), domain, alpha);
+
+        let mut random_pow = alpha;
+        for _ in 0..N_FOLDS {
+            (domain, eval) = fold_line(&eval, domain, random_pow);
+            random_pow = random_pow * random_pow;
+        }
+        let expected_value = eval[0];
+        assert_eq!(actual_value, expected_value);
+    }
+
+    #[test]
+    fn valid_proof_with_jumps_passes_verification() {
+        for fold_step in 2..4 {
+            for log_degree in 7..12 {
+                let column = polynomial_evaluation(log_degree, LOG_BLOWUP_FACTOR);
+                let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+                let queries = Queries::from_positions(vec![5], column.domain.log_size());
+                let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), fold_step);
+                let decommitment_value = query_polynomial(&column, &queries);
+                let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+                let proof = prover.decommit_on_queries(&queries).proof;
+                let bound = CirclePolyDegreeBound::new(log_degree);
+                let verifier =
+                    FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+
+                let res = verifier.decommit_on_queries(&queries, decommitment_value);
+                assert!(
+                    res.is_ok(),
+                    "For degree {} and fold_step {}, got: {:?}.",
+                    log_degree,
+                    fold_step,
+                    res.err()
+                );
+            }
+        }
     }
 }
