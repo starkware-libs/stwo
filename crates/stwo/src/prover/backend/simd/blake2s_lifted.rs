@@ -11,6 +11,7 @@ use super::m31::LOG_N_LANES;
 use super::utils::to_lifted_simd;
 use super::SimdBackend;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT};
+use crate::core::utils::uninit_vec;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasherGeneric;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -64,16 +65,13 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         // We use two large buffers to hold the intermediate results of the computation.
         // In every iteration, a possibly larger chunk of the buffer is used. This
         // saves memory allocations.
-        let mut prev_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
-            Vec::with_capacity(1 << max_log_size);
-        let mut next_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
-            Vec::with_capacity(1 << max_log_size);
         // Safety: no index in `next_layer_states` and `prev_layer_states` is ever read without
         // having been written to before.
-        unsafe {
-            prev_layer_states.set_len(1 << max_log_size);
-            next_layer_states.set_len(1 << max_log_size);
-        }
+        let mut prev_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
+            unsafe { uninit_vec(1 << max_log_size) };
+        let mut next_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
+            unsafe { uninit_vec(1 << max_log_size) };
+
         #[cfg(not(feature = "parallel"))]
         prev_layer_states.fill(INITIAL_STATE);
         #[cfg(feature = "parallel")]
@@ -170,31 +168,31 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         // TODO(Leo): ideally, we wouldn't need to write to a new buffer and instead we could
         // transmute `next_layer_states`, but there are alignment issues. Think about how to avoid
         // this copy.
-        let mut res =
-            Vec::with_capacity(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE));
         // Safety: we never read from `res`, only write to it.
-        unsafe {
-            res.set_len(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE));
-        }
+        let mut res =
+            unsafe { uninit_vec(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE)) };
 
         // Lift the next_layer_states if needed.
         let mut trasposed_states = if lifting_log_size_packed == max_log_size {
             next_layer_states
         } else {
-            let mut tmp: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
-                Vec::with_capacity(1 << (lifting_log_size_packed));
-            unsafe {
-                tmp.set_len(1 << (lifting_log_size_packed));
-            }
+            let mut buf: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
+                unsafe { uninit_vec(1 << lifting_log_size_packed) };
             let log_ratio = lifting_log_size_packed - max_log_size;
-            // TODO(Leo): add parallel.
-            for i in 0..tmp.len() {
-                let packed_before_lift: [u32x16; 8] = next_layer_states[i >> log_ratio];
+
+            #[cfg(not(feature = "parallel"))]
+            let iter = buf.iter_mut();
+            #[cfg(feature = "parallel")]
+            let iter = buf.par_iter_mut();
+
+            iter.enumerate().for_each(|(i, dest)| {
+                let packed_before_lift: [u32x16; N_FELTS_IN_BLAKE_STATE] =
+                    next_layer_states[i >> log_ratio];
                 let packed_after_lift =
                     std::array::from_fn(|j| to_lifted_simd(packed_before_lift[j], log_ratio, i));
-                tmp[i] = packed_after_lift;
-            }
-            tmp
+                *dest = packed_after_lift;
+            });
+            buf
         };
 
         // Untranspose the states and reduce modulo M31 if `IS_M31_OUTPUT == true`.
@@ -236,13 +234,9 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 })
                 .collect();
         }
-
-        let mut res: Vec<Blake2sHash> = Vec::with_capacity(1 << log_size);
         // Safety: no index in `res` is ever read without having been written to
         // before.
-        unsafe {
-            res.set_len(1 << log_size);
-        }
+        let mut res: Vec<Blake2sHash> = unsafe { uninit_vec(1 << log_size) };
 
         #[cfg(not(feature = "parallel"))]
         let iter = res.chunks_mut(1 << LOG_N_LANES);

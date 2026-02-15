@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use starknet_ff::FieldElement as FieldElement252;
 
 use crate::core::fields::m31::{BaseField, M31};
+use crate::core::utils::uninit_vec;
 use crate::core::vcs::poseidon252_merkle::{construct_felt252_from_m31s, ELEMENTS_IN_BLOCK};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::poseidon252_merkle::{
@@ -89,13 +90,17 @@ impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
         });
         let res: Vec<FieldElement252> = next_layer_states.iter().map(|[fin, ..]| *fin).collect();
         // Lift if necessary.
-        // TODO(Leo): add parallel.
         if lifting_log_size > max_log_size {
-            let mut lifted_res = Vec::zeros(1 << lifting_log_size);
+            let mut lifted_res = unsafe { uninit_vec(1 << lifting_log_size) };
             let log_ratio = lifting_log_size - max_log_size;
-            for idx in 0..1 << lifting_log_size {
-                lifted_res[idx] = res[(idx >> (log_ratio + 1) << 1) + (idx & 1)];
-            }
+
+            #[cfg(not(feature = "parallel"))]
+            let iter = lifted_res.iter_mut();
+            #[cfg(feature = "parallel")]
+            let iter = lifted_res.par_iter_mut();
+
+            iter.enumerate()
+                .for_each(|(idx, dest)| *dest = res[(idx >> (log_ratio + 1) << 1) + (idx & 1)]);
             return lifted_res;
         }
         res
