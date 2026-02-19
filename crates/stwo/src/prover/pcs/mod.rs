@@ -14,12 +14,14 @@ use crate::core::pcs::quotients::{
 use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
+use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
 use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
+use crate::prover::mempool::BaseColumnPool;
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -34,6 +36,8 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     pub config: PcsConfig,
     twiddles: &'a TwiddleTree<B>,
     pub store_polynomials_coefficients: bool,
+    /// Pre-allocated base field column pool for polynomial evaluation during commit.
+    pub base_column_pool: MaybeOwned<'a, BaseColumnPool<B>>,
 }
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
     /// Creates a new empty commitment scheme prover with the given configuration and twiddles. The
@@ -44,6 +48,21 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             config,
             twiddles,
             store_polynomials_coefficients: false,
+            base_column_pool: MaybeOwned::Owned(BaseColumnPool::new()),
+        }
+    }
+
+    pub fn with_memory_pool(
+        config: PcsConfig,
+        twiddles: &'a TwiddleTree<B>,
+        base_column_pool: &'a mut BaseColumnPool<B>,
+    ) -> Self {
+        CommitmentSchemeProver {
+            trees: TreeVec::default(),
+            config,
+            twiddles,
+            store_polynomials_coefficients: false,
+            base_column_pool: MaybeOwned::Borrowed(base_column_pool),
         }
     }
 
@@ -62,6 +81,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.twiddles,
             self.store_polynomials_coefficients,
             self.config.lifting_log_size,
+            &mut self.base_column_pool,
         );
         self.trees.push(tree);
     }
@@ -319,6 +339,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
         lifting_log_size: Option<u32>,
+        base_column_pool: &mut BaseColumnPool<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
         let polynomials = B::evaluate_polynomials(
@@ -326,6 +347,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             log_blowup_factor,
             twiddles,
             store_polynomials_coefficients,
+            base_column_pool,
         );
         span.exit();
 
