@@ -57,17 +57,15 @@ impl PcsConfig {
             line_fold_step,
         } = fri_config;
 
-        channel.mix_felts(&[SecureField::from_u32_unchecked(
-            *pow_bits,
-            *log_blowup_factor,
-            *n_queries as u32,
-            *log_last_layer_degree_bound,
-        )]);
-        // TODO(Leo): make lifting log size non optional and pack it together with line_fold_step.
-        if let Some(lifting_log_size) = *lifting_log_size {
-            channel.mix_felts(&[lifting_log_size.into()])
-        }
-        channel.mix_felts(&[SecureField::from_u32_unchecked(*line_fold_step, 0, 0, 0)]);
+        channel.mix_felts(&[
+            SecureField::from_u32_unchecked(
+                *pow_bits,
+                *log_blowup_factor,
+                *n_queries as u32,
+                *log_last_layer_degree_bound,
+            ),
+            SecureField::from_u32_unchecked(*line_fold_step, lifting_log_size.unwrap_or(0), 0, 0),
+        ]);
     }
 }
 
