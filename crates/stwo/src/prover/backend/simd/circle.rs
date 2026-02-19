@@ -379,6 +379,17 @@ impl PolyOps for SimdBackend {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
+        // SAFETY: evaluate_into writes all values via FFT before they are read.
+        let buffer = unsafe { Col::<Self, BaseField>::uninitialized(domain.size()) };
+        Self::evaluate_into(poly, domain, twiddles, buffer)
+    }
+
+    fn evaluate_into(
+        poly: &CircleCoefficients<Self>,
+        domain: CircleDomain,
+        twiddles: &TwiddleTree<Self>,
+        mut buffer: Col<Self, BaseField>,
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let _span = span!(Level::TRACE, "", class = "rFFT").entered();
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
@@ -386,6 +397,7 @@ impl PolyOps for SimdBackend {
             log_size >= fft_log_size,
             "Can only evaluate on larger domains"
         );
+        assert_eq!(buffer.len(), domain.size());
 
         if fft_log_size < MIN_FFT_LOG_SIZE {
             let cpu_poly: CircleCoefficients<CpuBackend> =
@@ -399,15 +411,8 @@ impl PolyOps for SimdBackend {
 
         let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
 
-        // Evaluate on a big domains by evaluating on several subdomains.
+        // Evaluate on big domains by evaluating on several subdomains.
         let log_subdomains = log_size - fft_log_size;
-
-        // Allocate the destination buffer without initializing.
-        let mut values = Vec::with_capacity(domain.size() >> LOG_N_LANES);
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            values.set_len(domain.size() >> LOG_N_LANES)
-        };
 
         for i in 0..(1 << log_subdomains) {
             // The subdomain twiddles are a slice of the large domain twiddles.
@@ -418,12 +423,12 @@ impl PolyOps for SimdBackend {
                 })
                 .collect::<Vec<_>>();
 
-            // FFT from the coefficients buffer to the values chunk.
+            // FFT from the coefficients buffer directly into the provided buffer.
             unsafe {
                 rfft::fft(
                     transmute::<*const PackedBaseField, *const u32>(poly.coeffs.data.as_ptr()),
                     transmute::<*mut PackedBaseField, *mut u32>(
-                        values[i << (fft_log_size - LOG_N_LANES)
+                        buffer.data[i << (fft_log_size - LOG_N_LANES)
                             ..(i + 1) << (fft_log_size - LOG_N_LANES)]
                             .as_mut_ptr(),
                     ),
@@ -433,13 +438,7 @@ impl PolyOps for SimdBackend {
             }
         }
 
-        CircleEvaluation::new(
-            domain,
-            BaseColumn {
-                data: values,
-                length: domain.size(),
-            },
-        )
+        CircleEvaluation::new(domain, buffer)
     }
 
     /// Precomputes the (doubled) twiddles for a given coset tower.
