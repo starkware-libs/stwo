@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 use super::channel::Channel;
-use super::fields::qm31::SecureField;
 use super::fri::FriConfig;
+use crate::core::channel::pack_into_secure_felts;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub struct TreeSubspan {
@@ -57,17 +57,19 @@ impl PcsConfig {
             line_fold_step,
         } = fri_config;
 
-        channel.mix_felts(&[SecureField::from_u32_unchecked(
+        let mut config = vec![
             *pow_bits,
             *log_blowup_factor,
             *n_queries as u32,
             *log_last_layer_degree_bound,
-        )]);
-        // TODO(Leo): make lifting log size non optional and pack it together with line_fold_step.
-        if let Some(lifting_log_size) = *lifting_log_size {
-            channel.mix_felts(&[lifting_log_size.into()])
+            *line_fold_step,
+        ];
+
+        if let Some(lifting_log_size) = lifting_log_size {
+            config.push(*lifting_log_size);
         }
-        channel.mix_felts(&[SecureField::from_u32_unchecked(*line_fold_step, 0, 0, 0)]);
+
+        channel.mix_felts(&pack_into_secure_felts(config.into_iter()));
     }
 }
 

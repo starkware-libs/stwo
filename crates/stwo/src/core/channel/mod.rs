@@ -1,8 +1,13 @@
 use core::fmt::Debug;
+use std::array;
 
+use itertools::Itertools;
+use num_traits::Zero;
 use std_shims::Vec;
 
 use super::fields::qm31::SecureField;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -41,4 +46,21 @@ pub trait MerkleChannel: Default {
     type C: Channel;
     type H: MerkleHasherLifted;
     fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash);
+}
+
+/// Packs a sequence of values into a vector of SecureField elements.
+///
+/// Note that this loses information about the number of elements in the original sequence.
+pub fn pack_into_secure_felts<T: Into<BaseField>>(
+    values: impl Iterator<Item = T>,
+) -> Vec<SecureField> {
+    values
+        .chunks(SECURE_EXTENSION_DEGREE)
+        .into_iter()
+        .map(|mut chunk| {
+            SecureField::from_m31_array(array::from_fn(|_| {
+                chunk.next().map(|v| v.into()).unwrap_or(BaseField::zero())
+            }))
+        })
+        .collect_vec()
 }
