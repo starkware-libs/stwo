@@ -12,6 +12,7 @@ use stwo::prover::backend::{BackendForChannel, CpuBackend};
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::mempool::BaseColumnPool;
 use stwo::prover::CommitmentTreeProver;
 
 const LOG_COSET_SIZE: u32 = 20;
@@ -35,6 +36,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         twiddles,
         false,
         None,
+        &mut BaseColumnPool::new(),
     );
 }
 
