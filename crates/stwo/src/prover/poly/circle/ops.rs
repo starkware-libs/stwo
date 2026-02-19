@@ -9,6 +9,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Poly;
 use crate::prover::backend::{Col, ColumnOps};
+use crate::prover::mempool::BaseColumnPool;
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 
@@ -82,25 +83,43 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
+    /// Evaluates the polynomial at all points in the domain, writing results into the provided
+    /// buffer instead of allocating a new one. The buffer must have size `domain.size()`.
+    fn evaluate_into(
+        poly: &CircleCoefficients<Self>,
+        domain: CircleDomain,
+        twiddles: &TwiddleTree<Self>,
+        buffer: Col<Self, BaseField>,
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
+
     fn evaluate_polynomials(
         polynomials: ColumnVec<CircleCoefficients<Self>>,
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
         store_polynomials_coefficients: bool,
+        pool: &mut BaseColumnPool<Self>,
     ) -> Vec<Poly<Self>>
     where
         Self: crate::prover::backend::Backend,
     {
-        #[cfg(feature = "parallel")]
-        let iter = polynomials.into_par_iter();
-        #[cfg(not(feature = "parallel"))]
-        let iter = polynomials.into_iter();
+        // Pre-take all buffers from the pool before the parallel section.
+        let buffers: Vec<_> = polynomials
+            .iter()
+            .map(|poly_coeffs| {
+                let log_eval_size = poly_coeffs.log_size() + log_blowup_factor;
+                pool.take_or_alloc(log_eval_size)
+            })
+            .collect();
 
-        iter.map(|poly_coeffs| {
-            let evals = poly_coeffs.evaluate_with_twiddles(
-                CanonicCoset::new(poly_coeffs.log_size() + log_blowup_factor).circle_domain(),
-                twiddles,
-            );
+        #[cfg(feature = "parallel")]
+        let iter = polynomials.into_par_iter().zip(buffers.into_par_iter());
+        #[cfg(not(feature = "parallel"))]
+        let iter = polynomials.into_iter().zip(buffers);
+
+        iter.map(|(poly_coeffs, buffer)| {
+            let domain =
+                CanonicCoset::new(poly_coeffs.log_size() + log_blowup_factor).circle_domain();
+            let evals = Self::evaluate_into(&poly_coeffs, domain, twiddles, buffer);
             Poly::new(store_polynomials_coefficients.then_some(poly_coeffs), evals)
         })
         .collect()
