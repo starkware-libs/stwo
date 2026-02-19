@@ -9,6 +9,7 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{BackendForChannel, CpuBackend};
+use stwo::prover::mempool::BaseColumnPool;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
@@ -35,6 +36,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         twiddles,
         false,
         None,
+        &mut BaseColumnPool::new(),
     );
 }
 
