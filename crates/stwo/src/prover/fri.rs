@@ -22,7 +22,7 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
-use crate::prover::vcs_lifted::prover::{pack_leaves_input, MerkleProverLifted};
+use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
@@ -345,8 +345,10 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
         let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
+        // TODO(Leo): move this logic to the Merkle prover.
         let merkle_tree = if pack_leaves {
-            let packed_columns = pack_leaves_input::<B>(&evaluation.values.columns);
+            let packed_columns =
+                <B as MerkleOpsLifted<H>>::pack_leaves_input(&evaluation.values.columns);
             MerkleProverLifted::commit(
                 packed_columns.iter().collect_vec(),
                 evaluation.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
@@ -446,21 +448,25 @@ mod tests {
 
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
     use crate::core::fri::FriConfig;
     use crate::core::poly::circle::CircleDomain;
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
-    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
     use crate::prover::backend::cpu::CpuCirclePoly;
-    use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Col, Column, CpuBackend};
     use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::secure_column::SecureColumnByCoords;
+    use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
 
     type FriProver<'a> = super::FriProver<'a, CpuBackend, Blake2sMerkleChannel>;
+    type SimdFriProver<'a> = super::FriProver<'a, SimdBackend, Blake2sMerkleChannel>;
 
     #[test]
     #[should_panic = "invalid degree"]
@@ -503,6 +509,17 @@ mod tests {
         SecureEvaluation::new(domain, values.into_iter().map(SecureField::from).collect())
     }
 
+    fn polynomial_evaluation_simd(
+        log_degree: u32,
+        log_blowup_factor: u32,
+    ) -> SecureEvaluation<SimdBackend, BitReversedOrder> {
+        let cpu_eval = polynomial_evaluation(log_degree, log_blowup_factor);
+        SecureEvaluation::new(
+            cpu_eval.domain,
+            cpu_eval.values.to_vec().into_iter().collect(),
+        )
+    }
+
     #[test]
     fn test_fri_commit_decommit_with_jumps() {
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
@@ -524,6 +541,46 @@ mod tests {
             let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
             let queries = Queries::from_positions(vec![1, 6, 11], 8 + LOG_BLOWUP_FACTOR);
             prover.decommit_on_queries(&queries);
+        }
+    }
+
+    #[test]
+    fn test_fri_commit_decommit_with_packed_leaves_simd() {
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let column = polynomial_evaluation_simd(6, LOG_BLOWUP_FACTOR);
+        let twiddles = SimdBackend::precompute_twiddles(column.domain.half_coset);
+
+        let prover = SimdFriProver::commit(&mut test_channel(), config, &column, &twiddles);
+        let queries = Queries::from_positions(vec![1, 6, 11], 6 + LOG_BLOWUP_FACTOR);
+        prover.decommit_on_queries(&queries);
+    }
+
+    #[test]
+    fn test_pack_leaves_input_simd_matches_generic() {
+        for len in [4, 8, 16, 32, 64, 128] {
+            let values = (0..len).map(|i| {
+                SecureField::from_m31_array(core::array::from_fn(|coord| {
+                    BaseField::from_u32_unchecked((i * SECURE_EXTENSION_DEGREE + coord) as u32)
+                }))
+            });
+            let values = SecureColumnByCoords::<SimdBackend>::from_iter(values);
+
+            let generic: [Col<CpuBackend, BaseField>; SECURE_EXTENSION_DEGREE * 4] =
+                <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::pack_leaves_input(
+                    &values.to_cpu().columns,
+                );
+            let simd: [Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE * 4] =
+                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::pack_leaves_input(
+                    &values.columns,
+                );
+
+            for col in 0..SECURE_EXTENSION_DEGREE * 4 {
+                assert_eq!(
+                    generic[col].to_cpu(),
+                    simd[col].to_cpu(),
+                    "mismatch at len={len}, col={col}"
+                );
+            }
         }
     }
 }
