@@ -11,7 +11,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::line::LineDomain;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
-use crate::prover::backend::cpu::{fold_circle_into_line_cpu};
+use crate::prover::backend::cpu::{fold_circle_into_line_cpu, fold_line_cpu};
 use crate::prover::backend::simd::fft::compute_first_twiddles;
 use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::prover::backend::simd::qm31::PackedSecureField;
@@ -23,6 +23,8 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
+const FOLD_LINE_CHUNK_SIZE: usize = 128;
+
 // TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
     fn fold_line(
@@ -31,14 +33,17 @@ impl FriOps for SimdBackend {
         twiddles: &TwiddleTree<Self>,
         fold_step: u32,
     ) -> LineEvaluation<Self> {
-        const FOLD_LINE_CHUNK_SIZE: usize = 128;
+        assert!(fold_step >= 1, "fold_step must be positive");
         let log_size = eval.len().ilog2();
-        assert!(
-            log_size >= LOG_N_LANES + 4,
-            "fold_line_4x requires at least {} elements, got {}",
-            1 << (LOG_N_LANES + 4),
-            eval.len()
-        );
+        if log_size < LOG_N_LANES + fold_step {
+            let mut folding_alpha = alpha;
+            let mut eval = fold_line_cpu(&eval.to_cpu(), folding_alpha);
+            for _ in 0..fold_step - 1 {
+                folding_alpha = folding_alpha * folding_alpha;
+                eval = fold_line_cpu(&eval, folding_alpha)
+            }
+            return LineEvaluation::new(eval.domain(), eval.values.into_iter().collect());
+        }
         let mut alphas = vec![];
         let mut folding_alpha = alpha;
         for _ in 0..fold_step {
@@ -47,143 +52,79 @@ impl FriOps for SimdBackend {
         }
 
         let domain = eval.domain();
-        // Get twiddles for all 4 layers
+        // Get twiddles for all layers.
         let all_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles);
-        let itwiddles_0 = all_twiddles[0]; // First layer twiddles
-        let itwiddles_1 = all_twiddles[1]; // Second layer twiddles
-        let itwiddles_2 = all_twiddles[2]; // Third layer twiddles
-        let itwiddles_3 = all_twiddles[3]; // Fourth layer twiddles
+        let input_packed_len = eval.values.packed_len();
 
         let output_size = 1 << (log_size - fold_step);
         let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(output_size) };
+        let input_packed_per_output = 1usize << fold_step;
 
         folded_values
             .par_chunks_mut(FOLD_LINE_CHUNK_SIZE)
             .enumerate()
             .for_each(|(chunk_idx, mut dst_chunk)| {
                 let chunk_start = chunk_idx * FOLD_LINE_CHUNK_SIZE;
+                let mut layer_values: Vec<[PackedBaseField; 4]> =
+                    Vec::with_capacity(input_packed_per_output);
+                let mut next_layer_values: Vec<[PackedBaseField; 4]> =
+                    Vec::with_capacity(input_packed_per_output);
+                let packed_chunk_len = dst_chunk.0[0].0.len();
 
-                for local_i in 0..dst_chunk.0.len() {
+                for local_i in 0..packed_chunk_len {
                     let i = chunk_start + local_i;
 
-                    // Read 16 input packed elements
-                    let input_base = i * 16;
-                    let values: [[PackedBaseField; 4]; 16] = unsafe {
-                        array::from_fn(|j| eval.values.packed_at(input_base + j).into_packed_m31s())
-                    };
-
-                    // Layer 1: 16 -> 8 elements
-                    // Twiddle indices: i*8 .. i*8+8 in itwiddles_0
-                    let layer1: [[PackedBaseField; 4]; 8] = unsafe {
-                        array::from_fn(|j| {
-                            let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
-                                *itwiddles_0.get_unchecked((i * 8 + j) * 16 + k)
-                            }));
-                            let val0 = values[2 * j];
-                            let val1 = values[2 * j + 1];
-                            let pairs: [_; 4] = array::from_fn(|c| {
-                                let (a, b) = val0[c].deinterleave(val1[c]);
-                                simd_ibutterfly(a, b, twiddle_dbl)
-                            });
-                            let v0 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
-                            let v1 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
-                            (v0 + PackedSecureField::broadcast(alphas[0]) * v1).into_packed_m31s()
-                        })
-                    };
-
-                    // Layer 2: 8 -> 4 elements
-                    // Twiddle indices: i*4 .. i*4+4 in itwiddles_1
-                    let layer2: [[PackedBaseField; 4]; 4] = unsafe {
-                        array::from_fn(|j| {
-                            let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
-                                *itwiddles_1.get_unchecked((i * 4 + j) * 16 + k)
-                            }));
-                            let val0 = layer1[2 * j];
-                            let val1 = layer1[2 * j + 1];
-                            let pairs: [_; 4] = array::from_fn(|c| {
-                                let (a, b) = val0[c].deinterleave(val1[c]);
-                                simd_ibutterfly(a, b, twiddle_dbl)
-                            });
-                            let v0 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
-                            let v1 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
-                            (v0 + PackedSecureField::broadcast(alphas[1]) * v1).into_packed_m31s()
-                        })
-                    };
-
-                    // Layer 3: 4 -> 2 elements
-                    // Twiddle indices: i*2 .. i*2+2 in itwiddles_2
-                    let layer3: [[PackedBaseField; 4]; 2] = unsafe {
-                        array::from_fn(|j| {
-                            let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
-                                *itwiddles_2.get_unchecked((i * 2 + j) * 16 + k)
-                            }));
-                            let val0 = layer2[2 * j];
-                            let val1 = layer2[2 * j + 1];
-                            let pairs: [_; 4] = array::from_fn(|c| {
-                                let (a, b) = val0[c].deinterleave(val1[c]);
-                                simd_ibutterfly(a, b, twiddle_dbl)
-                            });
-                            let v0 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
-                            let v1 =
-                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
-                            (v0 + PackedSecureField::broadcast(alphas[2]) * v1).into_packed_m31s()
-                        })
-                    };
-
-                    // Layer 4: 2 -> 1 element
-                    // Twiddle index: i in itwiddles_3
-                    let result: [PackedBaseField; 4] = unsafe {
-                        let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
-                            *itwiddles_3.get_unchecked(i * 16 + k)
-                        }));
-                        let val0 = layer3[0];
-                        let val1 = layer3[1];
-                        let pairs: [_; 4] = array::from_fn(|c| {
-                            let (a, b) = val0[c].deinterleave(val1[c]);
-                            simd_ibutterfly(a, b, twiddle_dbl)
-                        });
-                        let v0 =
-                            PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
-                        let v1 =
-                            PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
-                        (v0 + PackedSecureField::broadcast(alphas[3]) * v1).into_packed_m31s()
-                    };
-
-                    // Use non-temporal stores to bypass cache when AVX-512 is available.
-                    #[cfg(target_feature = "avx512f")]
+                    // Read the packed inputs consumed by one folded output.
+                    let input_base = i * input_packed_per_output;
+                    debug_assert!(input_base + input_packed_per_output <= input_packed_len);
+                    layer_values.clear();
                     unsafe {
-                        _mm512_stream_si512(
-                            dst_chunk.0[0].0.as_mut_ptr().add(local_i) as *mut __m512i,
-                            std::mem::transmute(result[0].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[1].0.as_mut_ptr().add(local_i) as *mut __m512i,
-                            std::mem::transmute(result[1].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[2].0.as_mut_ptr().add(local_i) as *mut __m512i,
-                            std::mem::transmute(result[2].into_simd()),
-                        );
-                        _mm512_stream_si512(
-                            dst_chunk.0[3].0.as_mut_ptr().add(local_i) as *mut __m512i,
-                            std::mem::transmute(result[3].into_simd()),
-                        );
+                        for j in 0..input_packed_per_output {
+                            layer_values
+                                .push(eval.values.packed_at(input_base + j).into_packed_m31s());
+                        }
                     }
 
-                    #[cfg(not(target_feature = "avx512f"))]
+                    for layer in 0..fold_step as usize {
+                        let next_len = layer_values.len() / 2;
+                        let twiddle_row_size = next_len;
+                        let itwiddles = all_twiddles[layer];
+                        let alpha = alphas[layer];
+                        next_layer_values.clear();
+                        unsafe {
+                            for j in 0..next_len {
+                                let twiddle_dbl = u32x16::from_array(array::from_fn(|k| {
+                                    *itwiddles.get_unchecked((i * twiddle_row_size + j) * 16 + k)
+                                }));
+                                let val0 = layer_values[2 * j];
+                                let val1 = layer_values[2 * j + 1];
+                                let pairs: [_; 4] = array::from_fn(|c| {
+                                    let (a, b) = val0[c].deinterleave(val1[c]);
+                                    simd_ibutterfly(a, b, twiddle_dbl)
+                                });
+                                let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| {
+                                    pairs[c].0
+                                }));
+                                let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| {
+                                    pairs[c].1
+                                }));
+                                next_layer_values.push(
+                                    (v0 + PackedSecureField::broadcast(alpha) * v1)
+                                        .into_packed_m31s(),
+                                );
+                            }
+                        }
+                        std::mem::swap(&mut layer_values, &mut next_layer_values);
+                    }
+                    let result = layer_values[0];
+
                     unsafe {
                         dst_chunk.set_packed(local_i, PackedSecureField::from_packed_m31s(result));
                     }
                 }
             });
 
-        // Domain doubles 4 times
-        let new_domain = domain.double().double().double().double();
+        let new_domain = domain.repeated_double(fold_step);
         LineEvaluation::new(new_domain, folded_values)
     }
 
