@@ -1,4 +1,8 @@
 use std::simd::{simd_swizzle, u32x16};
+
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
+use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
+use crate::prover::backend::simd::m31::PackedBaseField;
 // TODO(andrew): Examine usage of unsafe in SIMD FFT.
 pub struct UnsafeMut<T: ?Sized>(pub *mut T);
 impl<T: ?Sized> UnsafeMut<T> {
@@ -105,6 +109,23 @@ const LIFTING_SWIZZLES_LOG_RATIO_GREATER_2: [[usize; 16]; 8] = [
     [14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15],
 ];
 
+#[inline(always)]
+pub fn transpose_packed_leaf(
+    packed_values: [[PackedBaseField; SECURE_EXTENSION_DEGREE]; PACKED_LEAF_SIZE],
+) -> [[PackedBaseField; SECURE_EXTENSION_DEGREE]; PACKED_LEAF_SIZE] {
+    let coord_arrays = packed_values.map(|coords| coords.map(PackedBaseField::to_array));
+
+    core::array::from_fn(|offset| {
+        core::array::from_fn(|coord| {
+            PackedBaseField::from_array(core::array::from_fn(|lane| {
+                let src_packed = lane / 4;
+                let src_lane = (lane % 4) * 4 + offset;
+                coord_arrays[src_packed][coord][src_lane]
+            }))
+        })
+    })
+}
+
 #[cfg(not(any(
     all(target_arch = "aarch64", target_feature = "neon"),
     all(target_arch = "wasm32", target_feature = "simd128")
@@ -159,6 +180,65 @@ pub mod swizzle {
             let res = InterleaveOdds::concat_swizzle(lo, hi);
 
             assert_eq!(res, u32x4::from_array([1, 5, 3, 7]));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+
+    use super::transpose_packed_leaf;
+    use crate::core::fields::m31::M31;
+    use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
+    use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
+    use crate::prover::backend::simd::m31::PackedBaseField;
+    use crate::qm31;
+
+    #[test]
+    fn test_transpose_leaf() {
+        // Create input and expected output (before packing them into SIMD). The input is a column
+        // of 64 QM31s. The expected output is 4 columns of 16 QM31s each.
+        let mut input_col = vec![];
+        (0..16 * 4).for_each(|row| {
+            input_col.push(qm31!(10 * row, 10 * row + 1, 10 * row + 2, 10 * row + 3))
+        });
+        let mut expected_output: [Vec<[M31; 4]>; 4] = [const { vec![] }; 4];
+        for chunk in &input_col.iter().chunks(4) {
+            chunk
+                .into_iter()
+                .enumerate()
+                .for_each(|(i, val)| expected_output[i].push(val.to_m31_array()));
+        }
+
+        // Pack the input column and expected output columns into SIMD elements.
+        let input_col: Vec<_> = input_col.iter().map(|x| x.to_m31_array()).collect();
+        let packed_input: [[PackedBaseField; SECURE_EXTENSION_DEGREE]; PACKED_LEAF_SIZE] =
+            std::array::from_fn(|packed_row| {
+                std::array::from_fn(|coord| {
+                    PackedBaseField::from_array(std::array::from_fn(|lane| {
+                        input_col[packed_row * 16 + lane][coord]
+                    }))
+                })
+            });
+        let packed_expected_output: [[PackedBaseField; SECURE_EXTENSION_DEGREE]; PACKED_LEAF_SIZE] =
+            std::array::from_fn(|leaf| {
+                std::array::from_fn(|coord| {
+                    PackedBaseField::from_array(std::array::from_fn(|lane| {
+                        expected_output[leaf][lane][coord]
+                    }))
+                })
+            });
+
+        let actual = transpose_packed_leaf(packed_input);
+        // TODO(Leo): implement PartialEq for PackedM31 so that it doesn't conflict with stwo-cairo.
+        for offset in 0..PACKED_LEAF_SIZE {
+            for coord in 0..SECURE_EXTENSION_DEGREE {
+                assert_eq!(
+                    actual[offset][coord].to_array(),
+                    packed_expected_output[offset][coord].to_array()
+                );
+            }
         }
     }
 }
