@@ -1,6 +1,6 @@
 [package]
 name = "stwo-constraint-framework"
-version = "2.0.1"
+version = "2.1.0"
 edition.workspace = true
 license.workspace = true
 description = "Constraint framework for building AIR constraints with STWO"
@@ -16,7 +16,7 @@ rayon = { workspace = true, optional = true }
 num-traits.workspace = true
 itertools.workspace = true
 tracing.workspace = true
-stwo = { path = "../stwo", version = "2.0.1", default-features = false }
+stwo = { path = "../stwo", version = "2.1.0", default-features = false }
 rand.workspace = true
 hashbrown.workspace = true
 stwo-std-shims = { version = "1.0.0", default-features = false }
