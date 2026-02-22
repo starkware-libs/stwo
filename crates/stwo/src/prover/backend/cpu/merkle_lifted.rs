@@ -3,10 +3,12 @@ use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
 use crate::parallel_iter;
-use crate::prover::backend::CpuBackend;
-use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
+use crate::prover::backend::{Col, Column, CpuBackend};
+use crate::prover::vcs_lifted::ops::{MerkleOpsLifted, PackLeavesOps};
 
 impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
     /// Computes the leaves of the Merkle tree. This is the core logic of the lifted Merkle
@@ -82,5 +84,32 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
         parallel_iter!(0..(1 << log_size))
             .map(|i| H::hash_children((prev_layer[2 * i], prev_layer[2 * i + 1])))
             .collect()
+    }
+}
+
+impl PackLeavesOps for CpuBackend {
+    fn pack_leaves_input(
+        values: &[Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
+    ) -> [Col<Self, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
+        let len_m31 = values[0].len();
+        assert!(values.iter().all(|c| c.len() == len_m31));
+        assert!(len_m31.is_multiple_of(PACKED_LEAF_SIZE));
+        let packed_len = len_m31 / PACKED_LEAF_SIZE;
+        let cpu_columns: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+            core::array::from_fn(|coord| values[coord].to_cpu());
+        let mut packed_cpu: [Vec<BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
+            core::array::from_fn(|_| Vec::with_capacity(packed_len));
+
+        for packed_row in 0..packed_len {
+            let row_start = packed_row * PACKED_LEAF_SIZE;
+            for offset in 0..PACKED_LEAF_SIZE {
+                for coord in 0..SECURE_EXTENSION_DEGREE {
+                    packed_cpu[coord + offset * SECURE_EXTENSION_DEGREE]
+                        .push(cpu_columns[coord][row_start + offset]);
+                }
+            }
+        }
+
+        packed_cpu.map(|column| column.into_iter().collect())
     }
 }
