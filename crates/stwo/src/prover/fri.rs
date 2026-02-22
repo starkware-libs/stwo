@@ -14,14 +14,15 @@ use crate::core::fri::{
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::{draw_queries, Queries};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::prover::backend::ColumnOps;
+use crate::core::vcs_lifted::verifier::LOG_PACKED_LEAF_SIZE;
+use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
-use crate::prover::vcs_lifted::prover::MerkleProverLifted;
+use crate::prover::vcs_lifted::prover::{pack_leaves_input, MerkleProverLifted};
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
@@ -269,6 +270,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     column: &'a SecureEvaluation<B, BitReversedOrder>,
     merkle_tree: MerkleProverLifted<B, H>,
+    pack_leaves: bool,
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
@@ -280,29 +282,43 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         FriFirstLayerProver {
             column: first_layer_column,
             merkle_tree,
+            // TODO(Leo): remove hardcoding once we have circle-to-line fri step.
+            pack_leaves: false,
         }
     }
 
     fn decommit(self, queries: &Queries) -> ExtendedFriLayerProof<H> {
         assert_eq!(queries.log_domain_size, self.column.domain.log_size());
 
-        let (column_decommitment_positions, column_witness, value_map) =
+        let (decommitment_positions, column_witness, value_map) =
             compute_decommitment_positions_and_witness_evals(
                 self.column,
                 &queries.positions,
                 CIRCLE_TO_LINE_FOLD_STEP,
             );
 
-        let (_, decommitment) = self.merkle_tree.decommit(
-            &column_decommitment_positions,
-            self.column.columns.iter().collect(),
-        );
+        let decommitment_positions = if self.pack_leaves {
+            decommitment_positions
+                .iter()
+                .map(|position| position >> LOG_PACKED_LEAF_SIZE)
+                .dedup()
+                .collect_vec()
+        } else {
+            decommitment_positions
+        };
+        // We can pass an empty vector to the merkle decommit because we don't use its returned
+        // opened values.
+        // TODO(Leo): consider adding a method to merkle prover to decommit only the auth paths.
+        let (_, decommitment) = self
+            .merkle_tree
+            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
+        let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
             proof: FriLayerProof {
                 fri_witness: column_witness,
                 decommitment: decommitment.decommitment,
-                commitment: self.merkle_tree.root(),
+                commitment,
             },
             aux: FriLayerProofAux {
                 all_values: vec![value_map],
@@ -323,18 +339,29 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
     evaluation: LineEvaluation<B>,
     merkle_tree: MerkleProverLifted<B, H>,
     fold_step: u32,
+    pack_leaves: bool,
 }
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
-        let merkle_tree = MerkleProverLifted::commit(
-            evaluation.values.columns.iter().collect_vec(),
-            evaluation.values.len().ilog2(),
-        );
+        let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
+        let merkle_tree = if pack_leaves {
+            let packed_columns = pack_leaves_input::<B>(&evaluation.values.columns);
+            MerkleProverLifted::commit(
+                packed_columns.iter().collect_vec(),
+                evaluation.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
+            )
+        } else {
+            MerkleProverLifted::commit(
+                evaluation.values.columns.iter().collect_vec(),
+                evaluation.values.len().ilog2(),
+            )
+        };
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
             fold_step,
+            pack_leaves,
         }
     }
 
@@ -346,11 +373,20 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
                 self.fold_step,
             );
 
-        let (_evals, decommitment) = self.merkle_tree.decommit(
-            &decommitment_positions,
-            self.evaluation.values.columns.iter().collect_vec(),
-        );
-
+        let decommitment_positions = if self.pack_leaves {
+            decommitment_positions
+                .iter()
+                .map(|position| position >> LOG_PACKED_LEAF_SIZE)
+                .dedup()
+                .collect_vec()
+        } else {
+            decommitment_positions
+        };
+        // We can pass an empty vector to the merkle decommit because we don't use its returned
+        // opened values.
+        let (_, decommitment) = self
+            .merkle_tree
+            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
         let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
@@ -476,5 +512,18 @@ mod tests {
         let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
         let queries = Queries::from_positions(vec![0, 3], 6 + LOG_BLOWUP_FACTOR);
         prover.decommit_on_queries(&queries);
+    }
+
+    #[test]
+    fn test_fri_commit_decommit_with_packed_leaves() {
+        for line_fold_step in 2..=4 {
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, line_fold_step);
+            let column = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
+            let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+
+            let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+            let queries = Queries::from_positions(vec![1, 6, 11], 8 + LOG_BLOWUP_FACTOR);
+            prover.decommit_on_queries(&queries);
+        }
     }
 }
