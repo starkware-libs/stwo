@@ -1,4 +1,6 @@
 use std::simd::{simd_swizzle, u32x16};
+
+use crate::prover::backend::simd::m31::PackedBaseField;
 // TODO(andrew): Examine usage of unsafe in SIMD FFT.
 pub struct UnsafeMut<T: ?Sized>(pub *mut T);
 impl<T: ?Sized> UnsafeMut<T> {
@@ -105,6 +107,23 @@ const LIFTING_SWIZZLES_LOG_RATIO_GREATER_2: [[usize; 16]; 8] = [
     [14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15],
 ];
 
+#[inline(always)]
+pub fn transpose_packed_leaf(
+    packed_values: [[PackedBaseField; 4]; 4],
+) -> [[PackedBaseField; 4]; 4] {
+    let coord_arrays = packed_values.map(|coords| coords.map(PackedBaseField::to_array));
+
+    core::array::from_fn(|offset| {
+        core::array::from_fn(|coord| {
+            PackedBaseField::from_array(core::array::from_fn(|lane| {
+                let src_packed = lane / 4;
+                let src_lane = (lane % 4) * 4 + offset;
+                coord_arrays[src_packed][coord][src_lane]
+            }))
+        })
+    })
+}
+
 #[cfg(not(any(
     all(target_arch = "aarch64", target_feature = "neon"),
     all(target_arch = "wasm32", target_feature = "simd128")
@@ -160,5 +179,47 @@ pub mod swizzle {
 
             assert_eq!(res, u32x4::from_array([1, 5, 3, 7]));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+
+    use super::transpose_packed_leaf;
+    use crate::core::fields::m31::M31;
+    use crate::prover::backend::simd::m31::PackedBaseField;
+    use crate::qm31;
+
+    #[test]
+    fn test_transpose_leaf() {
+        let mut input_col = vec![];
+        (0..16 * 4).for_each(|row| {
+            input_col.push(qm31!(10 * row, 10 * row + 1, 10 * row + 2, 10 * row + 3))
+        });
+        let mut expected_output: [Vec<[M31; 4]>; 4] = [const { vec![] }; 4];
+        for chunk in &input_col.iter().chunks(4) {
+            chunk
+                .into_iter()
+                .enumerate()
+                .for_each(|(i, val)| expected_output[i].push(val.to_m31_array()));
+        }
+
+        let input_col: Vec<_> = input_col.iter().map(|x| x.to_m31_array()).collect();
+        let packed_input: [[PackedBaseField; 4]; 4] = std::array::from_fn(|packed_row| {
+            std::array::from_fn(|coord| {
+                PackedBaseField::from_array(std::array::from_fn(|lane| {
+                    input_col[packed_row * 16 + lane][coord]
+                }))
+            })
+        });
+        let packed_expected_output: [[PackedBaseField; 4]; 4] = std::array::from_fn(|leaf| {
+            std::array::from_fn(|coord| {
+                PackedBaseField::from_array(std::array::from_fn(|lane| {
+                    expected_output[leaf][lane][coord]
+                }))
+            })
+        });
+        assert_eq!(transpose_packed_leaf(packed_input), packed_expected_output);
     }
 }
