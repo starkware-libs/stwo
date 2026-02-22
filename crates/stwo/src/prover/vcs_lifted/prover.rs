@@ -4,12 +4,14 @@ use tracing::{span, Level};
 
 use super::ops::MerkleOpsLifted;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{
     ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux,
+    PACKED_LEAF_SIZE,
 };
 use crate::core::ColumnVec;
-use crate::prover::backend::{Col, Column};
+use crate::prover::backend::{Col, Column, ColumnOps};
 
 /// Represents the prover side of a Merkle commitment scheme.
 #[derive(Debug)]
@@ -143,6 +145,31 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     pub fn root(&self) -> H::Hash {
         self.layers.first().unwrap().at(0)
     }
+}
+
+pub(crate) fn pack_leaves_input<B: ColumnOps<BaseField>>(
+    values: &[Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
+) -> [Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
+    let len = values[0].len();
+    debug_assert!(values.iter().all(|c| c.len() == len));
+    assert!(len.is_multiple_of(PACKED_LEAF_SIZE));
+    let packed_len = len / PACKED_LEAF_SIZE;
+    let cpu_columns: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+        core::array::from_fn(|coord| values[coord].to_cpu());
+    let mut packed_cpu: [Vec<BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
+        core::array::from_fn(|_| Vec::with_capacity(packed_len));
+
+    for packed_row in 0..packed_len {
+        let row_start = packed_row * PACKED_LEAF_SIZE;
+        for offset in 0..PACKED_LEAF_SIZE {
+            for coord in 0..SECURE_EXTENSION_DEGREE {
+                packed_cpu[coord + offset * PACKED_LEAF_SIZE]
+                    .push(cpu_columns[coord][row_start + offset]);
+            }
+        }
+    }
+
+    packed_cpu.map(|column| column.into_iter().collect())
 }
 
 #[cfg(test)]
