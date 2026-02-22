@@ -3,9 +3,11 @@ use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
 use crate::parallel_iter;
-use crate::prover::backend::CpuBackend;
+use crate::prover::backend::{Col, CpuBackend};
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
 impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
@@ -82,5 +84,11 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
         parallel_iter!(0..(1 << log_size))
             .map(|i| H::hash_children((prev_layer[2 * i], prev_layer[2 * i + 1])))
             .collect()
+    }
+
+    fn pack_leaves_input(
+        values: &[Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
+    ) -> [Col<Self, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
+        crate::prover::vcs_lifted::prover::pack_leaves_input::<CpuBackend>(values)
     }
 }

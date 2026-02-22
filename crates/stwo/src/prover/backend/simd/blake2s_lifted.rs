@@ -4,6 +4,7 @@ use std::simd::u32x16;
 
 use bytemuck::cast_slice;
 use itertools::Itertools;
+use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -11,15 +12,19 @@ use super::m31::LOG_N_LANES;
 use super::utils::to_lifted_simd;
 use super::SimdBackend;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT};
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::utils::uninit_vec;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasherGeneric;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
     compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states, INITIAL_STATE,
 };
-use crate::prover::backend::simd::m31::{reduce_to_m31_simd, N_LANES};
+use crate::prover::backend::simd::column::BaseColumn;
+use crate::prover::backend::simd::m31::{reduce_to_m31_simd, PackedBaseField, N_LANES};
+use crate::prover::backend::simd::utils::transpose_packed_leaf;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
@@ -259,6 +264,70 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         });
         res
     }
+
+    fn pack_leaves_input(values: &[Col<Self, BaseField>; 4]) -> [Col<Self, BaseField>; 16] {
+        pack_leaves_input_simd(values)
+    }
+}
+
+pub fn pack_leaves_input_simd(
+    values: &[Col<SimdBackend, BaseField>; 4],
+) -> [Col<SimdBackend, BaseField>; 16] {
+    let input_len = values[0].len();
+    assert!(values.iter().all(|c| c.len() == input_len));
+    assert!(input_len.is_multiple_of(PACKED_LEAF_SIZE));
+    let output_len = input_len / PACKED_LEAF_SIZE;
+    let output_packed_len = output_len.div_ceil(N_LANES);
+
+    let mut packed_simd: [Vec<PackedBaseField>; 16] =
+        unsafe { core::array::from_fn(|_| uninit_vec(output_packed_len)) };
+
+    let output_packed_len_floor = output_len / N_LANES;
+
+    // TODO(Leo): parallelize.
+    for row in 0..output_packed_len_floor {
+        let packed_start_idx = row * PACKED_LEAF_SIZE;
+        let packed_values = core::array::from_fn(|j| {
+            core::array::from_fn(|i| values[i].data[packed_start_idx + j])
+        });
+        let packed_row = transpose_packed_leaf(packed_values);
+        for (offset, packed_leaf_column) in packed_row.into_iter().enumerate() {
+            for coord in 0..SECURE_EXTENSION_DEGREE {
+                packed_simd[coord + offset * SECURE_EXTENSION_DEGREE][row] =
+                    packed_leaf_column[coord];
+            }
+        }
+    }
+
+    // Transpose the tail. If `tail_rows > 0` then necessarily we haven't entered the previous loop.
+    let tail_rows = output_len % N_LANES;
+    if tail_rows > 0 {
+        // The last `N_LANES - tail_rows` rows are zeros. Note that this padding is effectively
+        // ignored by the Merkle prover because we return an array of `BaseColumns` with length =
+        // `output_len`.
+        let mut tail_columns: [[BaseField; N_LANES]; 16] =
+            core::array::from_fn(|_| [BaseField::zero(); N_LANES]);
+        for row in 0..tail_rows {
+            // The index in the input vector corresponding to `row`.
+            let source_row_start = (output_packed_len_floor * N_LANES + row) * PACKED_LEAF_SIZE;
+            for offset in 0..PACKED_LEAF_SIZE {
+                let coords: [BaseField; 4] =
+                    core::array::from_fn(|i| values[i].at(source_row_start + offset));
+                for coord in 0..SECURE_EXTENSION_DEGREE {
+                    tail_columns[coord + offset * SECURE_EXTENSION_DEGREE][row] = coords[coord];
+                }
+            }
+        }
+        for column_idx in 0..16 {
+            *packed_simd[column_idx].last_mut().unwrap() =
+                PackedBaseField::from_array(tail_columns[column_idx]);
+        }
+    }
+
+    packed_simd.map(|data| BaseColumn {
+        data,
+        length: output_len,
+    })
 }
 
 /// Given a vector of columns sorted by size (in ascending order) and an index `last_chunk_index`
