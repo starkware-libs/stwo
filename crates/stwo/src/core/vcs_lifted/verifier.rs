@@ -8,6 +8,13 @@ use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::ColumnVec;
 
+/// The log number of consecutive QM31s packed into a single Merkle leaf.
+///
+/// When FRI layers are skipped, adjacent evaluation points are grouped into chunks of
+/// `2^LOG_PACKED_LEAF_SIZE` and hashed together, reducing the number of Merkle tree leaves.
+pub const LOG_PACKED_LEAF_SIZE: u32 = 2;
+pub const PACKED_LEAF_SIZE: usize = 1 << LOG_PACKED_LEAF_SIZE;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Default)]
 pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
