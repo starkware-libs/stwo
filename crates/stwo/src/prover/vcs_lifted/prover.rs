@@ -4,12 +4,14 @@ use tracing::{span, Level};
 
 use super::ops::MerkleOpsLifted;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{
     ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux,
+    PACKED_LEAF_SIZE,
 };
 use crate::core::ColumnVec;
-use crate::prover::backend::{Col, Column};
+use crate::prover::backend::{Col, Column, ColumnOps};
 
 /// Represents the prover side of a Merkle commitment scheme.
 #[derive(Debug)]
@@ -143,6 +145,35 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     pub fn root(&self) -> H::Hash {
         self.layers.first().unwrap().at(0)
     }
+}
+
+/// Given a column of QM31s (represented as 4 columns of M31s), reshapes it into 4 columns of QM31s
+/// (represented as 16 columns of M31s). Denoting the input column as [v₀, v₁, v₂, v₃, ...] where
+/// vᵢ ∈ QM31, the output is [[v₀, v₄, v₈, ...], [v₁, v₅, v₉, ...], [v₂, v₆, v₁₀, ...], [v₃, v₇,
+/// v₁₁, ...]].
+pub fn pack_leaves_input<B: ColumnOps<BaseField>>(
+    values: &[Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
+) -> [Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
+    let len_m31 = values[0].len();
+    assert!(values.iter().all(|c| c.len() == len_m31));
+    assert!(len_m31.is_multiple_of(PACKED_LEAF_SIZE));
+    let packed_len = len_m31 / PACKED_LEAF_SIZE;
+    let cpu_columns: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+        core::array::from_fn(|coord| values[coord].to_cpu());
+    let mut packed_cpu: [Vec<BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
+        core::array::from_fn(|_| Vec::with_capacity(packed_len));
+
+    for packed_row in 0..packed_len {
+        let row_start = packed_row * PACKED_LEAF_SIZE;
+        for offset in 0..PACKED_LEAF_SIZE {
+            for coord in 0..SECURE_EXTENSION_DEGREE {
+                packed_cpu[coord + offset * SECURE_EXTENSION_DEGREE]
+                    .push(cpu_columns[coord][row_start + offset]);
+            }
+        }
+    }
+
+    packed_cpu.map(|column| column.into_iter().collect())
 }
 
 #[cfg(test)]

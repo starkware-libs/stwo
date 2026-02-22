@@ -22,7 +22,7 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{
     MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
-    MerkleVerifierLifted,
+    MerkleVerifierLifted, LOG_PACKED_LEAF_SIZE,
 };
 
 /// FRI proof config
@@ -120,6 +120,8 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             column_commitment_domain,
             proof: proof.first_layer,
             folding_alpha: channel.draw_secure_felt(),
+            // TODO(Leo): enable packing once we have configurable folding step for the first layer.
+            pack_leaves: false,
         };
 
         let mut inner_layers = Vec::new();
@@ -156,6 +158,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
                 layer_index,
                 proof,
                 fold_step,
+                pack_leaves: layer_domain.log_size() >= LOG_PACKED_LEAF_SIZE && fold_step > 1,
             });
             layer_bound = layer_bound
                 .fold(fold_step)
@@ -418,6 +421,7 @@ struct FriFirstLayerVerifier<H: MerkleHasherLifted> {
     column_commitment_domain: CircleDomain,
     folding_alpha: SecureField,
     proof: FriLayerProof<H>,
+    pack_leaves: bool,
 }
 
 impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
@@ -456,19 +460,16 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 FriVerificationError::FirstLayerEvaluationsInvalid
             })?;
 
-        // A QM31 column is committed as 4 M31 columns.
-        let mut decommitmented_values: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
-            core::array::from_fn(|_| Vec::new());
-        sparse_evaluation
-            .subset_evals
-            .iter()
-            .flatten()
-            .for_each(|x| {
-                let arr = x.to_m31_array();
-                for (i, val) in arr.into_iter().enumerate() {
-                    decommitmented_values[i].push(val);
-                }
-            });
+        let leaf_log_size = if self.pack_leaves {
+            LOG_PACKED_LEAF_SIZE
+        } else {
+            0
+        };
+        let (shifted_decommitment_positions, decommitted_values) = build_merkle_verification_inputs(
+            &decommitment_positions,
+            sparse_evaluation.subset_evals.iter().flatten().copied(),
+            leaf_log_size,
+        );
 
         // Check all proof evals have been consumed.
         if fri_witness.next().is_some() {
@@ -477,14 +478,17 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
 
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
-            vec![self.column_commitment_domain.log_size(); SECURE_EXTENSION_DEGREE],
+            vec![
+                self.column_commitment_domain.log_size() - leaf_log_size;
+                SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
+            ],
             None,
         );
 
         merkle_verifier
             .verify(
-                &decommitment_positions,
-                decommitmented_values.to_vec(),
+                &shifted_decommitment_positions,
+                decommitted_values,
                 self.proof.decommitment.clone(),
             )
             .map_err(|error| FriVerificationError::FirstLayerCommitmentInvalid { error })?;
@@ -499,6 +503,7 @@ struct FriInnerLayerVerifier<H: MerkleHasherLifted> {
     layer_index: usize,
     proof: FriLayerProof<H>,
     fold_step: u32,
+    pack_leaves: bool,
 }
 
 impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
@@ -544,30 +549,31 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
             });
         }
 
-        // A QM31 column is committed as 4 M31 columns.
-        let mut decommitmented_values: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
-            core::array::from_fn(|_| Vec::new());
-        sparse_evaluation
-            .subset_evals
-            .iter()
-            .flatten()
-            .for_each(|x| {
-                let arr = x.to_m31_array();
-                for (i, val) in arr.into_iter().enumerate() {
-                    decommitmented_values[i].push(val);
-                }
-            });
+        let leaf_log_size = if self.pack_leaves {
+            LOG_PACKED_LEAF_SIZE
+        } else {
+            0
+        };
+
+        let (shifted_decommitment_positions, decommitted_values) = build_merkle_verification_inputs(
+            &decommitment_positions,
+            sparse_evaluation.subset_evals.iter().flatten().copied(),
+            leaf_log_size,
+        );
 
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
-            vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
+            vec![
+                self.domain.log_size() - leaf_log_size;
+                SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
+            ],
             None,
         );
 
         merkle_verifier
             .verify(
-                &decommitment_positions,
-                decommitmented_values.to_vec(),
+                &shifted_decommitment_positions,
+                decommitted_values,
                 self.proof.decommitment.clone(),
             )
             .map_err(|e| FriVerificationError::InnerLayerCommitmentInvalid {
@@ -624,6 +630,36 @@ fn compute_decommitment_positions_and_rebuild_evals(
         SparseEvaluation::new(subset_evals, subset_domain_index_initials, fold_step);
 
     Ok((decommitment_positions, sparse_evaluation))
+}
+
+/// Given a vector of decommitment positions and an iterator of values (both of the same length),
+/// returns a possibly modified vector of positions and a vector of rows which are ready to be
+/// passed to the `verify` method of the Merkle verifier. We divide the position indices by
+/// 2^leaf_log_size and deduplicate them, and we reshape the values into rows of length
+/// 2^leaf_log_size.
+fn build_merkle_verification_inputs(
+    decommitment_positions: &[usize],
+    mut flattened_decommitment_values: impl Iterator<Item = SecureField>,
+    leaf_log_size: u32,
+) -> (Vec<usize>, Vec<Vec<BaseField>>) {
+    let leaf_size = 1 << leaf_log_size;
+    let merkle_positions = decommitment_positions
+        .iter()
+        .map(|pos| pos >> leaf_log_size)
+        .dedup()
+        .collect_vec();
+    let mut merkle_values =
+        vec![Vec::with_capacity(decommitment_positions.len()); SECURE_EXTENSION_DEGREE * leaf_size];
+    for _ in &merkle_positions {
+        for offset in 0..leaf_size {
+            let coords = flattened_decommitment_values.next().unwrap().to_m31_array();
+            for (coord_index, value) in coords.into_iter().enumerate() {
+                merkle_values[coord_index + offset * SECURE_EXTENSION_DEGREE].push(value);
+            }
+        }
+    }
+
+    (merkle_positions, merkle_values)
 }
 
 #[derive(Debug)]
@@ -1138,6 +1174,30 @@ mod tests {
                     res.err()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn valid_proof_with_jumps_and_packed_leaves_passes_verification() {
+        const LOG_DEGREE: u32 = 8;
+        for fold_step in 1..4 {
+            let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+            let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+            let queries = Queries::from_positions(vec![5], column.domain.log_size());
+            let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), fold_step);
+            let decommitment_value = query_polynomial(&column, &queries);
+            let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+            let proof = prover.decommit_on_queries(&queries).proof;
+            let bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+            let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+
+            let res = verifier.decommit_on_queries(&queries, decommitment_value);
+            assert!(
+                res.is_ok(),
+                "For fold_step {}, got: {:?}.",
+                fold_step,
+                res.err()
+            );
         }
     }
 }
