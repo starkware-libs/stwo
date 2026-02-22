@@ -1,4 +1,6 @@
-use hashbrown::HashMap;
+use std::collections::BTreeMap;
+
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use num_traits::Zero;
 use tracing::instrument;
@@ -6,15 +8,15 @@ use tracing::instrument;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, QM31};
+use crate::core::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::{
-    ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
-    FriProofAux, CIRCLE_TO_LINE_FOLD_STEP,
+    decommitment_range, ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof,
+    FriLayerProofAux, FriProof, FriProofAux, CIRCLE_TO_LINE_FOLD_STEP,
 };
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::{draw_queries, Queries};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::prover::backend::ColumnOps;
+use crate::prover::backend::{Col, Column, ColumnOps};
 use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -22,6 +24,9 @@ use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
+
+const PACKED_FRI_LEAF_LOG_SIZE: u32 = 2;
+const PACKED_FRI_LEAF_SIZE: usize = 1 << PACKED_FRI_LEAF_LOG_SIZE;
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
@@ -103,7 +108,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     ) -> Self {
         assert!(column.domain.is_canonic(), "not canonic");
 
-        let first_layer = Self::commit_first_layer(channel, column);
+        let first_layer = Self::commit_first_layer(channel, column, config.pack_leaves);
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, column, twiddles);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
@@ -120,8 +125,9 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     fn commit_first_layer(
         channel: &mut MC::C,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
+        pack_leaves: bool,
     ) -> FriFirstLayerProver<'a, B, MC::H> {
-        let layer = FriFirstLayerProver::new(column);
+        let layer = FriFirstLayerProver::new(column, pack_leaves);
         MC::mix_root(channel, layer.merkle_tree.root());
         layer
     }
@@ -152,7 +158,11 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         }
         // While we can, skip `config.line_fold_step` layers.
         while layer_evaluation.len().ilog(2) > last_layer_log_domain_size + config.line_fold_step {
-            let layer = FriInnerLayerProver::new(layer_evaluation, config.line_fold_step);
+            let layer = FriInnerLayerProver::new(
+                layer_evaluation,
+                config.line_fold_step,
+                config.pack_leaves,
+            );
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
             layer_evaluation = B::fold_line(
@@ -166,7 +176,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 
         // Do one last fold (of size 0 < k <= config.line_fold_step) to reach the correct size.
         let last_fold_step = layer_evaluation.len().ilog2() - last_layer_log_domain_size;
-        let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
+        let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step, config.pack_leaves);
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
         layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles, last_fold_step);
@@ -269,40 +279,66 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     column: &'a SecureEvaluation<B, BitReversedOrder>,
     merkle_tree: MerkleProverLifted<B, H>,
+    pack_leaves: bool,
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
-    fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>) -> Self {
-        let coordinate_columns = first_layer_column.columns.iter().collect();
-        let merkle_tree =
-            MerkleProverLifted::commit(coordinate_columns, first_layer_column.domain.log_size());
+    fn new(
+        first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>,
+        pack_leaves: bool,
+    ) -> Self {
+        let pack_leaves =
+            pack_leaves && first_layer_column.domain.log_size() >= PACKED_FRI_LEAF_LOG_SIZE;
+        let merkle_tree = if pack_leaves {
+            let packed_columns = pack_secure_column_by_coords::<B>(&first_layer_column.values);
+            MerkleProverLifted::commit(
+                packed_columns.iter().collect_vec(),
+                first_layer_column.domain.log_size() - PACKED_FRI_LEAF_LOG_SIZE,
+            )
+        } else {
+            let coordinate_columns = first_layer_column.columns.iter().collect();
+            MerkleProverLifted::commit(coordinate_columns, first_layer_column.domain.log_size())
+        };
 
         FriFirstLayerProver {
             column: first_layer_column,
             merkle_tree,
+            pack_leaves,
         }
     }
 
     fn decommit(self, queries: &Queries) -> ExtendedFriLayerProof<H> {
         assert_eq!(queries.log_domain_size, self.column.domain.log_size());
 
-        let (column_decommitment_positions, column_witness, value_map) =
+        let (decommitment_positions, column_witness, value_map) =
             compute_decommitment_positions_and_witness_evals(
                 self.column,
                 &queries.positions,
                 CIRCLE_TO_LINE_FOLD_STEP,
+                self.pack_leaves,
             );
 
-        let (_, decommitment) = self.merkle_tree.decommit(
-            &column_decommitment_positions,
-            self.column.columns.iter().collect(),
-        );
+        let decommitment_positions = if self.pack_leaves {
+            decommitment_positions
+                .iter()
+                .map(|position| position >> PACKED_FRI_LEAF_LOG_SIZE)
+                .dedup()
+                .collect_vec()
+        } else {
+            decommitment_positions
+        };
+        // We can pass an empty vector to the merkle decommit because we don't use its returned
+        // opened values.
+        let (_, decommitment) = self
+            .merkle_tree
+            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
+        let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
             proof: FriLayerProof {
                 fri_witness: column_witness,
                 decommitment: decommitment.decommitment,
-                commitment: self.merkle_tree.root(),
+                commitment,
             },
             aux: FriLayerProofAux {
                 all_values: vec![value_map],
@@ -323,18 +359,30 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
     evaluation: LineEvaluation<B>,
     merkle_tree: MerkleProverLifted<B, H>,
     fold_step: u32,
+    pack_leaves: bool,
 }
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
-    fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
-        let merkle_tree = MerkleProverLifted::commit(
-            evaluation.values.columns.iter().collect_vec(),
-            evaluation.values.len().ilog2(),
-        );
+    fn new(evaluation: LineEvaluation<B>, fold_step: u32, pack_leaves: bool) -> Self {
+        let pack_leaves =
+            pack_leaves && evaluation.values.len().ilog2() >= PACKED_FRI_LEAF_LOG_SIZE;
+        let merkle_tree = if pack_leaves {
+            let packed_columns = pack_secure_column_by_coords::<B>(&evaluation.values);
+            MerkleProverLifted::commit(
+                packed_columns.iter().collect_vec(),
+                evaluation.values.len().ilog2() - PACKED_FRI_LEAF_LOG_SIZE,
+            )
+        } else {
+            MerkleProverLifted::commit(
+                evaluation.values.columns.iter().collect_vec(),
+                evaluation.values.len().ilog2(),
+            )
+        };
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
             fold_step,
+            pack_leaves,
         }
     }
 
@@ -344,13 +392,23 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
                 &self.evaluation.values,
                 queries,
                 self.fold_step,
+                self.pack_leaves,
             );
 
-        let (_evals, decommitment) = self.merkle_tree.decommit(
-            &decommitment_positions,
-            self.evaluation.values.columns.iter().collect_vec(),
-        );
-
+        let decommitment_positions = if self.pack_leaves {
+            decommitment_positions
+                .iter()
+                .map(|position| position >> PACKED_FRI_LEAF_LOG_SIZE)
+                .dedup()
+                .collect_vec()
+        } else {
+            decommitment_positions
+        };
+        // We can pass an empty vector to the merkle decommit because we don't use its returned
+        // opened values.
+        let (_, decommitment) = self
+            .merkle_tree
+            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
         let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
@@ -375,32 +433,65 @@ fn compute_decommitment_positions_and_witness_evals(
     column: &SecureColumnByCoords<impl PolyOps>,
     query_positions: &[usize],
     fold_step: u32,
+    pack_leaves: bool,
 ) -> (Vec<usize>, Vec<QM31>, HashMap<usize, QM31>) {
-    let mut decommitment_positions = Vec::new();
-    let mut witness_evals = Vec::new();
+    let mut decommitment_ranges = Vec::new();
+    let mut witness = BTreeMap::new();
     let mut value_map = HashMap::new();
+    let queried_positions = HashSet::<usize>::from_iter(query_positions.iter().copied());
 
     // Group queries by the folding coset they reside in.
     for subset_queries in query_positions.chunk_by(|a, b| a >> fold_step == b >> fold_step) {
         let subset_start = (subset_queries[0] >> fold_step) << fold_step;
-        let subset_decommitment_positions = subset_start..subset_start + (1 << fold_step);
-        let mut subset_queries_iter = subset_queries.iter().peekable();
+        let decommitment_range = decommitment_range(subset_start, fold_step, pack_leaves);
 
-        for position in subset_decommitment_positions {
-            // Add decommitment position.
-            decommitment_positions.push(position);
-
+        // If we already visited this range, continue. This happens if and only if fold_step == 1
+        // and the previous iteration began at subset_start - 2.
+        if Some(&decommitment_range) == decommitment_ranges.last() {
+            continue;
+        }
+        for position in decommitment_range.clone() {
             let eval = column.at(position);
             value_map.insert(position, eval);
 
             // Only add evals the verifier can't calculate.
-            if subset_queries_iter.next_if_eq(&&position).is_none() {
-                witness_evals.push(eval);
+            if !queried_positions.contains(&position) {
+                witness.insert(position, eval);
+            }
+        }
+        decommitment_ranges.push(decommitment_range);
+    }
+
+    let decommitment_positions = decommitment_ranges.into_iter().flatten().collect();
+    (
+        decommitment_positions,
+        witness.into_values().collect(),
+        value_map,
+    )
+}
+
+fn pack_secure_column_by_coords<B: ColumnOps<BaseField>>(
+    values: &SecureColumnByCoords<B>,
+) -> [Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE] {
+    let len = values.len();
+    assert!(len.is_multiple_of(PACKED_FRI_LEAF_SIZE));
+    let packed_len = len / PACKED_FRI_LEAF_SIZE;
+    let cpu_columns: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+        core::array::from_fn(|coord| values.columns[coord].to_cpu());
+    let mut packed_cpu: [Vec<BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE] =
+        core::array::from_fn(|_| Vec::with_capacity(packed_len));
+
+    for packed_row in 0..packed_len {
+        let row_start = packed_row * PACKED_FRI_LEAF_SIZE;
+        for offset in 0..PACKED_FRI_LEAF_SIZE {
+            for coord in 0..SECURE_EXTENSION_DEGREE {
+                packed_cpu[coord * PACKED_FRI_LEAF_SIZE + offset]
+                    .push(cpu_columns[coord][row_start + offset]);
             }
         }
     }
 
-    (decommitment_positions, witness_evals, value_map)
+    packed_cpu.map(|column| column.into_iter().collect())
 }
 
 #[cfg(test)]
@@ -431,7 +522,7 @@ mod tests {
     fn committing_high_degree_polynomial_fails() {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1);
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1, false);
         let column = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -443,7 +534,7 @@ mod tests {
     fn committing_column_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let config = FriConfig::new(2, 2, 3, 1);
+        let config = FriConfig::new(2, 2, 3, 1, false);
         let column = SecureEvaluation::new(
             invalid_domain,
             [SecureField::one(); 1 << 4].into_iter().collect(),
@@ -469,12 +560,25 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_jumps() {
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2, false);
         let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
         let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
         let queries = Queries::from_positions(vec![0, 3], 6 + LOG_BLOWUP_FACTOR);
         prover.decommit_on_queries(&queries);
+    }
+
+    #[test]
+    fn test_fri_commit_decommit_with_packed_leaves() {
+        for line_fold_step in 1..=3 {
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, line_fold_step, true);
+            let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
+            let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+
+            let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+            let queries = Queries::from_positions(vec![1, 6, 11], 6 + LOG_BLOWUP_FACTOR);
+            prover.decommit_on_queries(&queries);
+        }
     }
 }
