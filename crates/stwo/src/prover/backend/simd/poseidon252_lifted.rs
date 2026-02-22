@@ -4,12 +4,15 @@ use rayon::prelude::*;
 use starknet_ff::FieldElement as FieldElement252;
 
 use crate::core::fields::m31::{BaseField, M31};
+use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::utils::uninit_vec;
 use crate::core::vcs::poseidon252_merkle::{construct_felt252_from_m31s, ELEMENTS_IN_BLOCK};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::poseidon252_merkle::{
     poseidon_finalize, poseidon_update, Poseidon252MerkleHasher, ELEMENTS_IN_BUFFER,
 };
+use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
+use crate::prover::backend::simd::blake2s_lifted::pack_leaves_input_simd;
 use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column, CpuBackend};
@@ -110,6 +113,12 @@ impl MerkleOpsLifted<Poseidon252MerkleHasher> for SimdBackend {
         prev_layer: &Col<Self, <Poseidon252MerkleHasher as MerkleHasherLifted>::Hash>,
     ) -> Col<Self, <Poseidon252MerkleHasher as MerkleHasherLifted>::Hash> {
         <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_next_layer(prev_layer)
+    }
+
+    fn pack_leaves_input(
+        values: &[Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
+    ) -> [Col<Self, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
+        pack_leaves_input_simd(values)
     }
 }
 
