@@ -59,7 +59,7 @@ fn min_u32x16(a: Simd<u32, N_LANES>, b: Simd<u32, N_LANES>) -> Simd<u32, N_LANES
 ///
 /// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
 // TODO: Remove `pub` visibility
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct PackedM31(Simd<u32, N_LANES>);
 
