@@ -306,6 +306,7 @@ where
     // Setup protocol.
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
+    commitment_scheme.set_store_polynomials_coefficients();
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
     let span = span!(Level::INFO, "Preprocessed Trace").entered();
@@ -538,7 +539,10 @@ mod tests {
             .unwrap_or_else(|_| "6".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig::default();
+        let mut config = PcsConfig::default();
+        config.fri_config.pack_leaves = false;
+        config.fri_config.log_blowup_factor = 2;
+        // config.
 
         // Prove.
         let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
