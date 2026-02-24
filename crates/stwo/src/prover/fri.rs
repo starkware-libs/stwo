@@ -275,14 +275,19 @@ struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLi
     column: &'a SecureEvaluation<B, BitReversedOrder>,
     merkle_tree: MerkleProverLifted<B, H>,
     pack_leaves: bool,
+    packed_columns: Option<[Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE]>,
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
     fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>, pack_leaves: bool) -> Self {
         let pack_leaves =
             pack_leaves && first_layer_column.domain.log_size() >= PACKED_FRI_LEAF_LOG_SIZE;
-        let merkle_tree = if pack_leaves {
-            let packed_columns = pack_secure_column_by_coords::<B>(&first_layer_column.values);
+        let packed_columns = if pack_leaves {
+            Some(pack_secure_column_by_coords::<B>(&first_layer_column.values))
+        } else {
+            None
+        };
+        let merkle_tree = if let Some(packed_columns) = packed_columns.as_ref() {
             MerkleProverLifted::commit(
                 packed_columns.iter().collect_vec(),
                 first_layer_column.domain.log_size() - PACKED_FRI_LEAF_LOG_SIZE,
@@ -296,6 +301,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
             column: first_layer_column,
             merkle_tree,
             pack_leaves,
+            packed_columns,
         }
     }
 
@@ -319,8 +325,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         } else {
             column_decommitment_positions.clone()
         };
-        let (_, decommitment) = if self.pack_leaves {
-            let packed_columns = pack_secure_column_by_coords::<B>(&self.column.values);
+        let (_, decommitment) = if let Some(packed_columns) = self.packed_columns.as_ref() {
             self.merkle_tree
                 .decommit(&merkle_positions, packed_columns.iter().collect())
         } else {
@@ -354,13 +359,18 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
     merkle_tree: MerkleProverLifted<B, H>,
     fold_step: u32,
     pack_leaves: bool,
+    packed_columns: Option<[Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE]>,
 }
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32, pack_leaves: bool) -> Self {
         let pack_leaves = pack_leaves && evaluation.values.len().ilog2() >= PACKED_FRI_LEAF_LOG_SIZE;
-        let merkle_tree = if pack_leaves {
-            let packed_columns = pack_secure_column_by_coords::<B>(&evaluation.values);
+        let packed_columns = if pack_leaves {
+            Some(pack_secure_column_by_coords::<B>(&evaluation.values))
+        } else {
+            None
+        };
+        let merkle_tree = if let Some(packed_columns) = packed_columns.as_ref() {
             MerkleProverLifted::commit(
                 packed_columns.iter().collect_vec(),
                 evaluation.values.len().ilog2() - PACKED_FRI_LEAF_LOG_SIZE,
@@ -376,6 +386,7 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
             merkle_tree,
             fold_step,
             pack_leaves,
+            packed_columns,
         }
     }
 
@@ -398,8 +409,7 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
             decommitment_positions.clone()
         };
 
-        let (_evals, decommitment) = if self.pack_leaves {
-            let packed_columns = pack_secure_column_by_coords::<B>(&self.evaluation.values);
+        let (_evals, decommitment) = if let Some(packed_columns) = self.packed_columns.as_ref() {
             self.merkle_tree
                 .decommit(&merkle_positions, packed_columns.iter().collect_vec())
         } else {
@@ -480,18 +490,22 @@ fn pack_secure_column_by_coords<B: ColumnOps<BaseField>>(
     let len = values.len();
     assert!(len % PACKED_FRI_LEAF_SIZE == 0);
     let packed_len = len / PACKED_FRI_LEAF_SIZE;
-    let mut packed_columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE] =
-        core::array::from_fn(|_| Col::<B, BaseField>::zeros(packed_len));
+    let cpu_columns: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+        core::array::from_fn(|coord| values.columns[coord].to_cpu());
+    let mut packed_cpu: [Vec<BaseField>; SECURE_EXTENSION_DEGREE * PACKED_FRI_LEAF_SIZE] =
+        core::array::from_fn(|_| Vec::with_capacity(packed_len));
+
     for packed_row in 0..packed_len {
         let row_start = packed_row * PACKED_FRI_LEAF_SIZE;
         for offset in 0..PACKED_FRI_LEAF_SIZE {
             for coord in 0..SECURE_EXTENSION_DEGREE {
-                let value = values.columns[coord].at(row_start + offset);
-                packed_columns[coord * PACKED_FRI_LEAF_SIZE + offset].set(packed_row, value);
+                packed_cpu[coord * PACKED_FRI_LEAF_SIZE + offset]
+                    .push(cpu_columns[coord][row_start + offset]);
             }
         }
     }
-    packed_columns
+
+    packed_cpu.map(|column| column.into_iter().collect())
 }
 
 #[cfg(test)]
