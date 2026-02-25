@@ -3,7 +3,6 @@ use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 use crate::prover::fri::FriOps;
@@ -109,10 +108,7 @@ pub fn fold_circle_into_line_cpu(
         .enumerate()
         .for_each(|(i, [f_p, f_neg_p])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(
-                i << CIRCLE_TO_LINE_FOLD_STEP,
-                domain.log_size(),
-            ));
+            let p = domain.at(bit_reverse_index(i << 1, domain.log_size()));
 
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
