@@ -8,7 +8,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fri::{
     ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
-    FriProofAux, CIRCLE_TO_LINE_FOLD_STEP,
+    FriProofAux,
 };
 use crate::core::poly::line::LinePoly;
 use crate::core::queries::{draw_queries, Queries};
@@ -102,7 +102,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     ) -> Self {
         assert!(column.domain.is_canonic(), "not canonic");
 
-        let first_layer = Self::commit_first_layer(channel, column);
+        let first_layer = Self::commit_first_layer(channel, &config, column);
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, column, twiddles);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
@@ -118,9 +118,12 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     /// Commits to the first FRI layer.
     fn commit_first_layer(
         channel: &mut MC::C,
+        config: &FriConfig,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
     ) -> FriFirstLayerProver<'a, B, MC::H> {
-        let layer = FriFirstLayerProver::new(column);
+        // The circle-to-line fold is always equal to the config.fold_step.
+        // TODO(Leo): consider support for smaller steps.
+        let layer = FriFirstLayerProver::new(column, config.fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         layer
     }
@@ -138,28 +141,39 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         let folding_alpha = channel.draw_secure_felt();
 
         let mut layer_evaluation = B::fold_circle_into_line(column, folding_alpha, twiddles);
+        let mut line_log_size = layer_evaluation.domain().log_size();
+
+        // Apply any additional line folds requested for the first stage.
+        if config.fold_step > 1 {
+            let extra_line_folds = config.fold_step - 1;
+            let alpha_sq = folding_alpha * folding_alpha;
+            layer_evaluation =
+                B::fold_line(&layer_evaluation, alpha_sq, twiddles, extra_line_folds);
+            line_log_size -= extra_line_folds;
+        }
 
         let last_layer_log_domain_size = config.last_layer_domain_size().ilog2();
+        assert!(
+            line_log_size >= last_layer_log_domain_size,
+            "The circle-to-line fold results in a smaller line domain than the last layer."
+        );
         // If we're already at the last layer, there are no inner layers to compute.
-        if layer_evaluation.domain().log_size() == last_layer_log_domain_size {
+        if line_log_size == last_layer_log_domain_size {
             return (layers, layer_evaluation);
         }
-        // While we can, skip `config.line_fold_step` layers.
-        while layer_evaluation.len().ilog(2) > last_layer_log_domain_size + config.line_fold_step {
-            let layer = FriInnerLayerProver::new(layer_evaluation, config.line_fold_step);
+        // While we can, skip `config.fold_step` layers.
+        while line_log_size > last_layer_log_domain_size + config.fold_step {
+            let layer = FriInnerLayerProver::new(layer_evaluation, config.fold_step);
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
-            layer_evaluation = B::fold_line(
-                &layer.evaluation,
-                folding_alpha,
-                twiddles,
-                config.line_fold_step,
-            );
+            layer_evaluation =
+                B::fold_line(&layer.evaluation, folding_alpha, twiddles, config.fold_step);
             layers.push(layer);
+            line_log_size -= config.fold_step;
         }
 
-        // Do one last fold (of size 0 < k <= config.line_fold_step) to reach the correct size.
-        let last_fold_step = layer_evaluation.len().ilog2() - last_layer_log_domain_size;
+        // Do one last fold (of size 0 < k <= config.fold_step) to reach the correct size.
+        let last_fold_step = line_log_size - last_layer_log_domain_size;
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
@@ -219,25 +233,22 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     /// Panics if the queries were sampled on the wrong domain size.
     pub fn decommit_on_queries(self, queries: &Queries) -> ExtendedFriProof<MC::H> {
         let Self {
-            config: _,
+            config,
             first_layer,
             inner_layers,
             last_layer_poly,
         } = self;
 
-        let first_layer_proof = first_layer.decommit(queries);
+        let first_layer_proof = first_layer.decommit(queries, config.fold_step);
 
         let inner_layer_proofs = inner_layers
             .into_iter()
-            .scan(
-                queries.fold(CIRCLE_TO_LINE_FOLD_STEP),
-                |layer_queries, layer| {
-                    let fold_step = layer.fold_step;
-                    let layer_proof = layer.decommit(layer_queries);
-                    *layer_queries = layer_queries.fold(fold_step);
-                    Some(layer_proof)
-                },
-            )
+            .scan(queries.fold(config.fold_step), |layer_queries, layer| {
+                let fold_step = layer.fold_step;
+                let layer_proof = layer.decommit(layer_queries);
+                *layer_queries = layer_queries.fold(fold_step);
+                Some(layer_proof)
+            })
             .collect_vec();
 
         let (inner_proofs, inner_layers_aux): (Vec<_>, Vec<_>) = inner_layer_proofs
@@ -267,27 +278,39 @@ struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLi
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
-    fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>) -> Self {
-        let coordinate_columns = first_layer_column.columns.iter().collect();
-        let merkle_tree =
-            MerkleProverLifted::commit(coordinate_columns, first_layer_column.domain.log_size());
+    fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>, fold_step: u32) -> Self {
+        let pack_leaves =
+            first_layer_column.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
+        // TODO(Leo): consider moving this logic to the Merkle prover.
+        let merkle_tree = if pack_leaves {
+            let packed_columns =
+                <B as PackLeavesOps>::pack_leaves_input(&first_layer_column.values.columns);
+            MerkleProverLifted::commit(
+                packed_columns.iter().collect_vec(),
+                first_layer_column.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
+            )
+        } else {
+            MerkleProverLifted::commit(
+                first_layer_column.values.columns.iter().collect_vec(),
+                first_layer_column.values.len().ilog2(),
+            )
+        };
 
         FriFirstLayerProver {
             column: first_layer_column,
             merkle_tree,
-            // TODO(Leo): remove hardcoding once we have circle-to-line fri step.
-            pack_leaves: false,
+            pack_leaves,
         }
     }
 
-    fn decommit(self, queries: &Queries) -> ExtendedFriLayerProof<H> {
+    fn decommit(self, queries: &Queries, fold_step: u32) -> ExtendedFriLayerProof<H> {
         assert_eq!(queries.log_domain_size, self.column.domain.log_size());
 
         let (decommitment_positions, column_witness, value_map) =
             compute_decommitment_positions_and_witness_evals(
                 self.column,
                 &queries.positions,
-                CIRCLE_TO_LINE_FOLD_STEP,
+                fold_step,
             );
 
         let decommitment_positions = if self.pack_leaves {
@@ -338,7 +361,7 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
         let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
-        // TODO(Leo): move this logic to the Merkle prover.
+        // TODO(Leo): consider moving this logic to the Merkle prover.
         let merkle_tree = if pack_leaves {
             let packed_columns =
                 <B as PackLeavesOps>::pack_leaves_input(&evaluation.values.columns);
@@ -515,8 +538,8 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_packed_leaves() {
-        for line_fold_step in 2..=4 {
-            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, line_fold_step);
+        for fold_step in 2..=4 {
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step);
             let column = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
             let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -528,8 +551,8 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_packed_leaves_simd() {
-        for line_fold_step in 2..=4 {
-            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, line_fold_step);
+        for fold_step in 2..=4 {
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step);
             let cpu_eval = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
             let column = SecureEvaluation::new(
                 cpu_eval.domain,

@@ -311,7 +311,7 @@ mod tests {
         for log_n_instances in 4..=8 {
             let mut config = PcsConfig::default();
             // Test different steps.
-            config.fri_config.line_fold_step = if (4..6).contains(&log_n_instances) {
+            config.fri_config.fold_step = if (4..6).contains(&log_n_instances) {
                 2
             } else {
                 3
