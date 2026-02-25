@@ -9,7 +9,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fri::{
     ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
-    FriProofAux, CIRCLE_TO_LINE_FOLD_STEP,
+    FriProofAux,
 };
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::{draw_queries, Queries};
@@ -135,23 +135,31 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         column: &SecureEvaluation<B, BitReversedOrder>,
         twiddles: &TwiddleTree<B>,
     ) -> (Vec<FriInnerLayerProver<B, MC::H>>, LineEvaluation<B>) {
-        let first_inner_layer_log_size = column.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
-        let first_inner_layer_domain =
-            LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
-
-        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
+        // First fold: circle -> line.
+        let mut line_log_size = column.domain.log_size() - 1;
+        let mut layer_evaluation =
+            LineEvaluation::new_zero(LineDomain::new(Coset::half_odds(line_log_size)));
         let mut layers = Vec::new();
         let folding_alpha = channel.draw_secure_felt();
 
         B::fold_circle_into_line(&mut layer_evaluation, column, folding_alpha, twiddles);
 
+        // Apply any additional line folds requested for the first stage.
+        if config.circle_fold_step > 1 {
+            let extra_line_folds = config.circle_fold_step - 1;
+            let alpha_sq = folding_alpha * folding_alpha;
+            layer_evaluation =
+                B::fold_line(&layer_evaluation, alpha_sq, twiddles, extra_line_folds);
+            line_log_size -= extra_line_folds;
+        }
+
         let last_layer_log_domain_size = config.last_layer_domain_size().ilog2();
         // If we're already at the last layer, there are no inner layers to compute.
-        if first_inner_layer_log_size == last_layer_log_domain_size {
+        if line_log_size == last_layer_log_domain_size {
             return (layers, layer_evaluation);
         }
         // While we can, skip `config.line_fold_step` layers.
-        while layer_evaluation.len().ilog(2) > last_layer_log_domain_size + config.line_fold_step {
+        while line_log_size > last_layer_log_domain_size + config.line_fold_step {
             let layer = FriInnerLayerProver::new(layer_evaluation, config.line_fold_step);
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
@@ -162,10 +170,11 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
                 config.line_fold_step,
             );
             layers.push(layer);
+            line_log_size -= config.line_fold_step;
         }
 
         // Do one last fold (of size 0 < k <= config.line_fold_step) to reach the correct size.
-        let last_fold_step = layer_evaluation.len().ilog2() - last_layer_log_domain_size;
+        let last_fold_step = line_log_size - last_layer_log_domain_size;
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
@@ -225,18 +234,18 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     /// Panics if the queries were sampled on the wrong domain size.
     pub fn decommit_on_queries(self, queries: &Queries) -> ExtendedFriProof<MC::H> {
         let Self {
-            config: _,
+            config,
             first_layer,
             inner_layers,
             last_layer_poly,
         } = self;
 
-        let first_layer_proof = first_layer.decommit(queries);
+        let first_layer_proof = first_layer.decommit(queries, config.circle_fold_step);
 
         let inner_layer_proofs = inner_layers
             .into_iter()
             .scan(
-                queries.fold(CIRCLE_TO_LINE_FOLD_STEP),
+                queries.fold(config.circle_fold_step),
                 |layer_queries, layer| {
                     let fold_step = layer.fold_step;
                     let layer_proof = layer.decommit(layer_queries);
@@ -283,14 +292,14 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         }
     }
 
-    fn decommit(self, queries: &Queries) -> ExtendedFriLayerProof<H> {
+    fn decommit(self, queries: &Queries, fold_step: u32) -> ExtendedFriLayerProof<H> {
         assert_eq!(queries.log_domain_size, self.column.domain.log_size());
 
         let (column_decommitment_positions, column_witness, value_map) =
             compute_decommitment_positions_and_witness_evals(
                 self.column,
                 &queries.positions,
-                CIRCLE_TO_LINE_FOLD_STEP,
+                fold_step,
             );
 
         let (_, decommitment) = self.merkle_tree.decommit(
@@ -431,7 +440,7 @@ mod tests {
     fn committing_high_degree_polynomial_fails() {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1);
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1, 1);
         let column = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -443,7 +452,7 @@ mod tests {
     fn committing_column_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let config = FriConfig::new(2, 2, 3, 1);
+        let config = FriConfig::new(2, 2, 3, 1, 1);
         let column = SecureEvaluation::new(
             invalid_domain,
             [SecureField::one(); 1 << 4].into_iter().collect(),
@@ -469,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_jumps() {
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 1, 2);
         let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 

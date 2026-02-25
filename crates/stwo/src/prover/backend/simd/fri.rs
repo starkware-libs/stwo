@@ -148,7 +148,6 @@ impl FriOps for SimdBackend {
         }
 
         let domain = src.domain;
-        let alpha_sq = alpha * alpha;
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
         for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
@@ -169,13 +168,7 @@ impl FriOps for SimdBackend {
                 let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
                 val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            unsafe {
-                dst.values.set_packed(
-                    vec_index,
-                    dst.values.packed_at(vec_index) * PackedSecureField::broadcast(alpha_sq)
-                        + value,
-                )
-            };
+            unsafe { dst.values.set_packed(vec_index, value) };
         }
     }
 

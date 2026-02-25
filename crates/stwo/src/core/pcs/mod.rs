@@ -54,6 +54,7 @@ impl PcsConfig {
             log_blowup_factor,
             n_queries,
             log_last_layer_degree_bound,
+            circle_fold_step,
             line_fold_step,
         } = fri_config;
 
@@ -64,7 +65,12 @@ impl PcsConfig {
                 *n_queries as u32,
                 *log_last_layer_degree_bound,
             ),
-            SecureField::from_u32_unchecked(*line_fold_step, lifting_log_size.unwrap_or(0), 0, 0),
+            SecureField::from_u32_unchecked(
+                *circle_fold_step,
+                *line_fold_step,
+                lifting_log_size.unwrap_or(0),
+                0,
+            ),
         ]);
     }
 }
@@ -73,7 +79,7 @@ impl Default for PcsConfig {
     fn default() -> Self {
         Self {
             pow_bits: 10,
-            fri_config: FriConfig::new(0, 1, 3, 1),
+            fri_config: FriConfig::new(0, 1, 3, 1, 1),
             lifting_log_size: None,
         }
     }
@@ -85,7 +91,7 @@ mod tests {
     fn test_security_bits() {
         let config = super::PcsConfig {
             pow_bits: 42,
-            fri_config: super::FriConfig::new(10, 10, 70, 1),
+            fri_config: super::FriConfig::new(10, 10, 70, 1, 1),
             lifting_log_size: None,
         };
         assert!(config.security_bits() == 10 * 70 + 42);

@@ -254,6 +254,7 @@ mod tests {
             } else {
                 3
             };
+            config.fri_config.circle_fold_step = 2;
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
                 CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
