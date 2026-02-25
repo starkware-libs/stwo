@@ -54,7 +54,7 @@ impl PcsConfig {
             log_blowup_factor,
             n_queries,
             log_last_layer_degree_bound,
-            line_fold_step,
+            fold_step,
         } = fri_config;
 
         channel.mix_felts(&[
@@ -64,7 +64,7 @@ impl PcsConfig {
                 *n_queries as u32,
                 *log_last_layer_degree_bound,
             ),
-            SecureField::from_u32_unchecked(*line_fold_step, lifting_log_size.unwrap_or(0), 0, 0),
+            SecureField::from_u32_unchecked(*fold_step, lifting_log_size.unwrap_or(0), 0, 0),
         ]);
     }
 }
