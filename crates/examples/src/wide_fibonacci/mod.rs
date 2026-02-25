@@ -187,7 +187,8 @@ mod tests {
     #[test_log::test]
     fn test_wide_fib_prove_with_blake() {
         for log_n_instances in 4..=8 {
-            let config = PcsConfig::default();
+            let mut config = PcsConfig::default();
+            config.fri_config.line_fold_step = 3;
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
                 CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
@@ -309,6 +310,7 @@ mod tests {
         const N_COLS_SHORT_COMPONENT: usize = 5;
 
         let config = PcsConfig::default();
+
         // Precompute twiddles.
         let twiddles = CpuBackend::precompute_twiddles(
             CanonicCoset::new(LOG_SIZE_LONG + config.fri_config.log_blowup_factor)
