@@ -13,6 +13,7 @@ use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::Column;
+use stwo::prover::mempool::BaseColumnPool;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
@@ -60,6 +61,19 @@ impl LogupTraceGenerator {
         LogupColGenerator {
             gen: self,
             numerator: unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(1 << log_size) },
+        }
+    }
+
+    /// Allocate a new lookup column using pre-allocated buffers from the memory pool.
+    pub fn new_col_from_pool(
+        &mut self,
+        pool: &BaseColumnPool<SimdBackend>,
+    ) -> LogupColGenerator<'_> {
+        let log_size = self.log_size;
+        let columns = std::array::from_fn(|_| pool.take_or_alloc(log_size));
+        LogupColGenerator {
+            gen: self,
+            numerator: SecureColumnByCoords::<SimdBackend> { columns },
         }
     }
 
@@ -146,6 +160,36 @@ impl LogupTraceGenerator {
             })
             .collect_vec();
         (trace, claimed_sum)
+    }
+}
+
+/// A [`LogupTraceGenerator`] that automatically allocates new columns from a
+/// [`BaseColumnPool`].
+pub struct PooledLogupTraceGenerator<'a> {
+    inner: LogupTraceGenerator,
+    pub pool: &'a BaseColumnPool<SimdBackend>,
+}
+impl<'a> PooledLogupTraceGenerator<'a> {
+    pub fn new(log_size: u32, pool: &'a BaseColumnPool<SimdBackend>) -> Self {
+        Self {
+            inner: unsafe { LogupTraceGenerator::uninitialized(log_size) },
+            pool,
+        }
+    }
+
+    /// Allocate a new lookup column from the memory pool.
+    pub fn new_col(&mut self) -> LogupColGenerator<'_> {
+        self.inner.new_col_from_pool(self.pool)
+    }
+
+    /// Finalize the trace. Returns the trace and the total sum of the last column.
+    pub fn finalize_last(
+        self,
+    ) -> (
+        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+    ) {
+        self.inner.finalize_last()
     }
 }
 

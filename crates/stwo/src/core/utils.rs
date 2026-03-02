@@ -1,5 +1,5 @@
 use core::iter::Peekable;
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 
 use std_shims::Vec;
 
@@ -9,7 +9,7 @@ use super::fields::Field;
 /// Useful when a struct can optionally receive an external `&mut T` but also needs a fallback owned
 /// instance.
 pub enum MaybeOwned<'a, T> {
-    Borrowed(&'a mut T),
+    Borrowed(&'a T),
     Owned(T),
 }
 
@@ -20,15 +20,6 @@ impl<T> Deref for MaybeOwned<'_, T> {
         match self {
             MaybeOwned::Borrowed(r) => r,
             MaybeOwned::Owned(ref v) => v,
-        }
-    }
-}
-
-impl<T> DerefMut for MaybeOwned<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        match self {
-            MaybeOwned::Borrowed(r) => r,
-            MaybeOwned::Owned(ref mut v) => v,
         }
     }
 }

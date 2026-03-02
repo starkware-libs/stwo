@@ -26,7 +26,7 @@ use preprocessed_columns::PreProcessedColumnId;
 pub use prover::{
     assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
-    SimdDomainEvaluator,
+    PooledLogupTraceGenerator, SimdDomainEvaluator,
 };
 use std_shims::Vec;
 use stwo::core::fields::m31::BaseField;
