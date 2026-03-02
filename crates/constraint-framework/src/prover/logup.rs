@@ -59,7 +59,7 @@ impl LogupTraceGenerator {
         let log_size = self.log_size;
         LogupColGenerator {
             gen: self,
-            numerator: SecureColumnByCoords::<SimdBackend>::zeros(1 << log_size),
+            numerator: unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(1 << log_size) },
         }
     }
 
