@@ -60,7 +60,6 @@ WORKSPACE_ROOT="${SCRIPT_DIR}/.."
 # NOTE: crates/std-shims is intentionally versioned separately (not part of the
 # workspace version), so it is excluded from the publish list.
 CRATES_TO_PUBLISH=(
-  stwo-types
   stwo
   stwo-constraint-framework
   stwo-air-utils-derive

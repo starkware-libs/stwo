@@ -700,10 +700,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "std-shims"
-version = "1.0.0"
-
-[[package]]
 name = "stwo"
 version = "2.0.0"
 dependencies = [
@@ -724,7 +720,6 @@ dependencies = [
  "starknet-crypto",
  "starknet-ff",
  "stwo-std-shims",
- "stwo-types",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -748,17 +743,6 @@ name = "stwo-std-shims"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c21e2c707fb8926e6c4355a87494c29e8e46640ff4796aa8fbb74952327dfdc"
-
-[[package]]
-name = "stwo-types"
-version = "2.0.0"
-dependencies = [
- "bytemuck",
- "num-traits",
- "rand",
- "serde",
- "std-shims",
-]
 
 [[package]]
 name = "subtle"

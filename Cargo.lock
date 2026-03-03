@@ -935,7 +935,6 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
- "libc",
  "rand_chacha",
  "rand_core",
 ]
@@ -955,9 +954,6 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "rawpointer"
@@ -1247,7 +1243,6 @@ dependencies = [
  "starknet-crypto",
  "starknet-ff",
  "stwo-std-shims",
- "stwo-types",
  "test-log",
  "thiserror",
  "tracing",
@@ -1314,18 +1309,6 @@ name = "stwo-std-shims"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c21e2c707fb8926e6c4355a87494c29e8e46640ff4796aa8fbb74952327dfdc"
-
-[[package]]
-name = "stwo-types"
-version = "2.0.1"
-dependencies = [
- "bytemuck",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "std-shims",
-]
 
 [[package]]
 name = "subtle"
