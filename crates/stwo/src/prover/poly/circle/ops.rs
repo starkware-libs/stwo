@@ -97,7 +97,7 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
         store_polynomials_coefficients: bool,
-        pool: &mut BaseColumnPool<Self>,
+        pool: &BaseColumnPool<Self>,
     ) -> Vec<Poly<Self>>
     where
         Self: crate::prover::backend::Backend,

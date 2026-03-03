@@ -36,7 +36,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         twiddles,
         false,
         None,
-        &mut BaseColumnPool::new(),
+        &BaseColumnPool::new(),
     );
 }
 

@@ -81,7 +81,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.twiddles,
             self.store_polynomials_coefficients,
             self.config.lifting_log_size,
-            &mut self.base_column_pool,
+            &self.base_column_pool,
         );
         self.trees.push(tree);
     }
@@ -348,7 +348,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
         lifting_log_size: Option<u32>,
-        base_column_pool: &mut BaseColumnPool<B>,
+        base_column_pool: &BaseColumnPool<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
         let polynomials = B::evaluate_polynomials(
