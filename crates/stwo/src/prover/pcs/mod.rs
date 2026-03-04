@@ -55,7 +55,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     pub fn with_memory_pool(
         config: PcsConfig,
         twiddles: &'a TwiddleTree<B>,
-        base_column_pool: &'a mut BaseColumnPool<B>,
+        base_column_pool: &'a BaseColumnPool<B>,
     ) -> Self {
         CommitmentSchemeProver {
             trees: TreeVec::default(),
