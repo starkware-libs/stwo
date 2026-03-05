@@ -100,29 +100,6 @@ cargo bench --features prover                  # All benchmarks
 cd ensure-verifier-no_std && cargo build -r    # Must compile
 ```
 
-## CI Gates (All Required)
-
-| Job | What it checks |
-|-----|---------------|
-| `format` | rustfmt via `scripts/rust_fmt.sh --check` |
-| `clippy` | Clippy with `-D warnings` on all crates individually |
-| `run-tests` | `cargo test --features="tracing, prover"` (nightly) |
-| `run-tests-parallel` | `cargo test --features="parallel, prover"` |
-| `run-tests-no-prover` | `cargo test --no-default-features --package stwo` (stable) |
-| `run-tests-prover-no-parallel` | `cargo test --features prover --package stwo` (stable) |
-| `run-framework-tests` | `cargo test --no-default-features --package stwo-constraint-framework` (stable) |
-| `run-slow-tests` | `cargo test --release --features="slow-tests, prover"` |
-| `run-avx-tests` | Tests with AVX2 and AVX512 on dedicated runner |
-| `run-neon-tests` | Tests on macOS ARM with NEON |
-| `run-wasm32-wasip1-tests` | WASM target tests |
-| `run-wasm32-unknown-tests` | WASM unknown target via wasm-pack |
-| `run-avx512-bench` | Benchmark regression detection (fail-on-alert) |
-| `ensure-no-std-core` | Verifier compiles without std |
-| `machete` | Unused dependency detection |
-
-**CRITICAL**: The `all-tests` gate requires ALL of the above to pass. Never
-disable or bypass any gate.
-
 ## Mathematical Context
 
 **CRITICAL**: Before modifying any soundness-critical component, load the

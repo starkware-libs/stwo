@@ -51,8 +51,7 @@ Escalate to human IMMEDIATELY when:
 2. A soundness-critical component has zero test coverage for the modified path
 3. A proposed change cannot be grounded in a paper definition
 4. Any `unsafe` block is found in a soundness-critical path without documented justification
-5. A security parameter (FRI queries, grinding bits, blowup factor) is proposed for change
-6. Confidence in mathematical correctness of any change drops below 90%
+5. Confidence in mathematical correctness of any change drops below 90%
 
 ### Escalation Format
 
