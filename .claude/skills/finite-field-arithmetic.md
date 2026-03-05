@@ -1,19 +1,13 @@
 ---
 name: finite-field-arithmetic
 description: >
-  M31/CM31/QM31 field arithmetic for STWO. Load before modifying any field
-  operation, reduction logic, SIMD field implementation, extension field
-  embedding, or batch inverse. Required when reviewing code in
-  core/fields/, prover/backend/simd/m31.rs, cm31.rs, qm31.rs.
+  M31/CM31/QM31 field arithmetic for STWO. Covers reduction logic, SIMD field
+  implementations, extension field embedding, and batch inverse. Use when
+  modifying code in core/fields/, prover/backend/simd/m31.rs, cm31.rs, qm31.rs,
+  or reviewing any field operation changes.
 ---
 
 # Finite Field Arithmetic
-
-## Purpose
-
-STWO operates over a tower of extension fields built on the Mersenne prime
-p = 2^31 - 1. Correct field arithmetic is the foundation of every
-cryptographic operation in the system. A bug here breaks everything.
 
 ## Field Tower
 
@@ -150,7 +144,7 @@ or when storing values known to be < P by construction).
 
 ## Batch Inverse
 
-**File**: `crates/stwo/src/core/fields/mod.rs:44-100`
+**File**: `crates/stwo/src/core/fields/mod.rs` — `batch_inverse_classic()`, `batch_inverse_in_place()`
 
 Montgomery's trick for batch inversion:
 1. Compute cumulative products

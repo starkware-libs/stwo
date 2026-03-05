@@ -1,27 +1,20 @@
 ---
 name: fri-protocol
 description: >
-  Circle FRI protocol specifics for STWO. Load before modifying FRI
-  prover or verifier code, changing FRI parameters, or reviewing
-  folding operations. Covers: commitment phase, query phase, folding,
-  security parameter derivation, and multi-step folding.
+  Circle FRI protocol specifics for STWO: commitment phase, query phase,
+  folding operations, security parameter derivation, and multi-step folding.
+  Use when modifying FRI prover or verifier code, changing FRI parameters,
+  or reviewing folding operations.
 ---
 
 # FRI Protocol (Circle Variant)
-
-## Purpose
-
-FRI (Fast Reed-Solomon Interactive Oracle Proof of Proximity) is the core
-low-degree test in STWO. It proves that committed polynomials are close to
-the code space. The Circle variant operates over circle group domains
-rather than multiplicative subgroups.
 
 ## Protocol Structure
 
 ### Configuration
 
 ```rust
-// crates/stwo/src/core/fri.rs:31-36
+// crates/stwo/src/core/fri.rs — FriConfig
 pub struct FriConfig {
     pub log_blowup_factor: u32,         // Rate = 1/2^B
     pub log_last_layer_degree_bound: u32, // Degree of final polynomial
@@ -61,7 +54,7 @@ pub struct FriConfig {
 
 ### Verification (Query Phase)
 
-**Implementation**: `crates/stwo/src/core/fri.rs:97+` — `FriVerifier`
+**Implementation**: `crates/stwo/src/core/fri.rs` — `FriVerifier` struct + impl
 
 1. **Sample queries**: Draw `n_queries` random positions from the first layer domain
 2. **Decommit first layer**: Verify Merkle openings, fold circle evaluations to line
@@ -103,11 +96,8 @@ FRI queries produce a "sparse evaluation" — values at query positions and
 their conjugate/symmetric positions needed for folding.
 
 ```rust
-// crates/stwo/src/core/fri.rs
-pub struct SparseEvaluation {
-    // Subset of evaluations at specific query positions
-    // grouped for efficient folding
-}
+// crates/stwo/src/core/fri.rs — SparseEvaluation
+// Subset of evaluations at specific query positions, grouped for folding
 ```
 
 ## Error Types
@@ -154,12 +144,6 @@ INVARIANT-FRI-4: Folding operations must use the correct twiddle factors
 
 INVARIANT-FRI-5: The domain chain must be correct: each folded domain
 is derived from the previous by the squaring map.
-
-## Known Issues and TODOs
-
-- `core/fri.rs:29` — "TODO(andrew): Support different step sizes."
-- `core/fri.rs:85-87` — "TODO(andrew): Consider flexibility for per-log-size commitments."
-- Prover FRI references "lemma #12 from the CircleStark paper" (`prover/fri.rs:69`)
 
 ## Forbidden Actions
 

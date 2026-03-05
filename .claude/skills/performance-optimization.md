@@ -1,18 +1,13 @@
 ---
 name: performance-optimization
 description: >
-  STWO-specific performance patterns. Load when: benchmarking, optimizing
-  hot paths, working on SIMD backends, analyzing regressions, modifying
-  memory allocation patterns, or reviewing parallel proving code.
+  STWO-specific performance patterns: SIMD backends, FFT hot paths, memory
+  pooling, benchmarking, parallel proving, and regression detection. Use when
+  benchmarking, optimizing hot paths, working on SIMD backends, analyzing
+  regressions, or reviewing parallel proving code.
 ---
 
 # Performance Optimization
-
-## Purpose
-
-In a production ZK prover, performance IS correctness. A prover that is
-too slow cannot secure the chain. Treat performance regressions with the
-same seriousness as functional bugs.
 
 ## Architecture Overview
 
@@ -49,7 +44,7 @@ On platforms with < 512-bit SIMD, this is emulated with multiple operations.
 - Avoids repeated large allocation + deallocation during polynomial evaluation
 
 **Uninitialized Allocation**:
-- `uninit_vec()` (`core/utils.rs:211`) skips zero-initialization
+- `uninit_vec()` in `core/utils.rs` skips zero-initialization
 - All callers MUST write before read — this is enforced by code review, not the type system
 - Used in FFT buffers, quotient computation, trace generation
 

@@ -1,105 +1,50 @@
 ---
 name: zk-stark-foundations
 description: >
-  Core ZK-STARK theory required before working on any STWO component.
-  Load this skill when: working on any proof system code, reviewing
-  constraint logic, modifying FRI parameters, or auditing soundness.
-  This provides the theoretical vocabulary for all other STWO skills.
+  STWO-specific STARK architecture and protocol flow. Provides implementation
+  locations, security parameter configuration, proof flow mapping, and
+  invariants. Use when working on proof system code, reviewing constraint
+  logic, modifying FRI parameters, or auditing soundness.
 ---
 
 # ZK-STARK Foundations for STWO
 
-## Purpose
+## STWO Protocol Architecture
 
-Provides the theoretical foundation for STARKs (Scalable Transparent Arguments
-of Knowledge) as implemented in STWO. Every agent working on STWO must
-understand these concepts before modifying proof-system code.
+### AIR Constraints
 
-## Core Concepts
-
-### STARK Overview
-
-A STARK is an interactive oracle proof (IOP) made non-interactive via
-Fiat-Shamir. It proves that a prover knows a witness satisfying an
-Algebraic Intermediate Representation (AIR) — a set of polynomial
-constraints over a trace.
-
-Key properties:
-- **Transparency**: No trusted setup. Security is information-theoretic.
-- **Scalability**: Prover is quasi-linear, verifier is polylogarithmic.
-- **Post-quantum**: No reliance on discrete log or factoring assumptions.
-
-### Algebraic Intermediate Representation (AIR)
-
-An AIR defines constraints as polynomial identities over a trace:
+Constraint polynomial identities over the trace (Section 5, Eq. 1):
 
 ```
 P_i(s_i, p_1, ..., p_w, p_1 o T, ..., p_w o T) = 0   over H
 ```
 
-Where:
-- `p_1, ..., p_w` are trace polynomials (the witness)
-- `T` is the trace step operator (group translation)
-- `s_i` are selector polynomials (activation subdomains)
-- `H` is the trace domain (evaluation domain of the trace)
-- `P_i` are constraint polynomials of bounded degree
-
-**Source**: Circle STARK paper Section 5, Eq. 1
-
 **Implementation**: `crates/constraint-framework/src/lib.rs` — `EvalAtRow` trait
 
-### FRI (Fast Reed-Solomon IOP of Proximity)
+### FRI Low-Degree Test
 
-FRI is the core proximity test in STARKs. It proves that a committed
-function is close to a low-degree polynomial.
+Circle FRI variant operating over circle group domains (Section 6):
+- **Verifier**: `crates/stwo/src/core/fri.rs` — `FriVerifier`
+- **Prover**: `crates/stwo/src/prover/fri.rs` — `FriProver`
 
-Protocol structure:
-1. **Commit phase**: Prover sends Merkle commitments to polynomial evaluations
-   at each folding round. Verifier sends random folding challenges.
-2. **Query phase**: Verifier samples random positions and checks the
-   folding chain is consistent.
+### Polynomial Commitment Scheme
 
-**Soundness**: The probability of a cheating prover succeeding decreases
-exponentially with the number of queries.
+FRI-based PCS with Merkle-committed evaluations and DEEP quotient openings:
+- **Verifier**: `crates/stwo/src/core/pcs/`
+- **Prover**: `crates/stwo/src/prover/pcs/`
 
-**Source**: Circle STARK paper Section 6
+### DEEP-ALI (Algebraic Linking)
 
-**Implementation**: `crates/stwo/src/core/fri.rs` (verifier), `crates/stwo/src/prover/fri.rs` (prover)
-
-### Polynomial Commitment Scheme (PCS)
-
-STWO uses FRI as the basis for its polynomial commitment scheme:
-
-1. Prover evaluates polynomials on a domain D (larger than trace domain H
-   by a blowup factor).
-2. Evaluations are committed via Merkle trees.
-3. Openings at challenged points are proved via DEEP quotients + FRI.
-
-**Source**: `crates/stwo/src/core/pcs/mod.rs` lines 1-8 (module doc comment)
-
-**Implementation**: `crates/stwo/src/core/pcs/` (verifier), `crates/stwo/src/prover/pcs/` (prover)
-
-### DEEP-ALI (Algebraic Linking Identity)
-
-After the prover commits to trace and composition polynomials:
-
-1. Verifier challenges with a random Out-Of-Domain Sampling (OODS) point.
-2. Prover evaluates polynomials at the OODS point.
-3. DEEP quotients `(p(x) - p(z)) / (x - z)` are constructed.
-4. FRI proves these quotients are low-degree.
-
-This links the committed evaluations to the algebraic constraint identity.
-
-**Source**: Circle STARK paper Section 5 (DEEP Algebraic Linking)
-
-**Implementation**: `crates/stwo/src/core/pcs/quotients.rs`, `crates/stwo/src/core/verifier.rs`
+OODS point sampling + DEEP quotient `(p(x) - p(z)) / (x - z)` + FRI.
+Links committed evaluations to constraint identity (Section 5).
+- **Quotients**: `crates/stwo/src/core/pcs/quotients.rs`
+- **Verifier**: `crates/stwo/src/core/verifier.rs` — `verify()`
 
 ### Proof of Work (Grinding)
 
-Before FRI queries, the prover must find a nonce satisfying a hash
-difficulty target. This adds `pow_bits` of security cheaply.
-
-**Implementation**: `crates/stwo/src/core/proof_of_work.rs`, `crates/stwo/src/prover/backend/*/grind.rs`
+Pre-query PoW nonce adding `pow_bits` of security.
+- `crates/stwo/src/core/proof_of_work.rs` (verifier)
+- `crates/stwo/src/prover/backend/*/grind.rs` (prover)
 
 ## Security Parameters
 
@@ -129,8 +74,8 @@ Production must use appropriate parameters. See DIVERGENCE-007.
 ```
 
 **Implementation entry points**:
-- Prover: `crates/stwo/src/prover/mod.rs:29` — `prove()`
-- Verifier: `crates/stwo/src/core/verifier.rs:19` — `verify()`
+- Prover: `crates/stwo/src/prover/mod.rs` — `prove()`
+- Verifier: `crates/stwo/src/core/verifier.rs` — `verify()`
 
 ## Security Invariants
 

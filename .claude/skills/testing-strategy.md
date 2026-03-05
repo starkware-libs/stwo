@@ -1,19 +1,13 @@
 ---
 name: testing-strategy
 description: >
-  Test taxonomy and coverage strategy for STWO. Load when: adding tests,
-  reviewing test coverage, debugging test failures, or assessing whether
-  a change has adequate test coverage. Covers unit tests, integration
-  patterns, property-based testing opportunities, and coverage gaps.
+  Test taxonomy, coverage strategy, and test patterns for STWO. Covers unit
+  test locations, coverage gaps, property testing opportunities, CI matrix,
+  and patterns for field, prove-verify, and constraint tests. Use when adding
+  tests, reviewing coverage, debugging failures, or assessing test adequacy.
 ---
 
 # Testing Strategy
-
-## Purpose
-
-In a ZK prover, a passing test suite is a claim about cryptographic
-correctness. Adding a test is as significant as adding a feature.
-Removing or weakening a test is a security regression.
 
 ## Test Taxonomy
 
@@ -21,22 +15,22 @@ Removing or weakening a test is a security regression.
 
 All tests are inline `#[cfg(test)]` modules — no separate `tests/` directories.
 
-**Well-tested domains**:
+**Well-tested domains** (run `cargo test --features prover -- --list` to get current counts):
 
-| Domain | File(s) | Test Count | Coverage |
-|--------|---------|------------|----------|
-| FRI verifier | `core/fri.rs` | 13 | Excellent — includes rejection tests |
-| Field arithmetic | `core/fields/m31.rs`, `cm31.rs`, `qm31.rs` | 6 | Basic ops + inverse |
-| Batch inverse | `core/fields/mod.rs` | 3 | Including edge cases |
-| Circle group | `core/circle.rs` | 4 | Generator, coset, random point |
-| Vanishing polys | `core/constraints.rs` | 7 | Coset/point vanishing + degree |
-| Blake2s channel | `core/channel/blake2s.rs` | 7 | Draw/mix operations |
-| Merkle trees | `core/vcs/blake2_merkle.rs` | 7 | Including decommit failures |
-| SIMD M31 | `prover/backend/simd/m31.rs` | 8 | Arithmetic + SIMD load/store |
-| SIMD FFT | `prover/backend/simd/fft/` | 10 | Butterfly through full FFT |
-| SIMD circle | `prover/backend/simd/circle.rs` | 12 | Eval, interpolate, extend |
-| GKR/lookups | `prover/lookups/` | 17 | Sumcheck, GKR, grand product |
-| PCS | `core/pcs/mod.rs` | 1 | Security bits only |
+| Domain | File(s) | Coverage |
+|--------|---------|----------|
+| FRI verifier | `core/fri.rs` | Excellent — includes rejection tests |
+| Field arithmetic | `core/fields/m31.rs`, `cm31.rs`, `qm31.rs` | Basic ops + inverse |
+| Batch inverse | `core/fields/mod.rs` | Including edge cases |
+| Circle group | `core/circle.rs` | Generator, coset, random point |
+| Vanishing polys | `core/constraints.rs` | Coset/point vanishing + degree |
+| Blake2s channel | `core/channel/blake2s.rs` | Draw/mix operations |
+| Merkle trees | `core/vcs/blake2_merkle.rs` | Including decommit failures |
+| SIMD M31 | `prover/backend/simd/m31.rs` | Arithmetic + SIMD load/store |
+| SIMD FFT | `prover/backend/simd/fft/` | Butterfly through full FFT |
+| SIMD circle | `prover/backend/simd/circle.rs` | Eval, interpolate, extend |
+| GKR/lookups | `prover/lookups/` | Sumcheck, GKR, grand product |
+| PCS | `core/pcs/mod.rs` | Security bits only — **sparse** |
 
 ### E2E Tests (via Examples)
 

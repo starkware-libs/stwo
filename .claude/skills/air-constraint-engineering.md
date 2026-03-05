@@ -1,20 +1,14 @@
 ---
 name: air-constraint-engineering
 description: >
-  How to define, audit, and modify AIR constraints in STWO. Load before
-  working on: constraint definitions, the constraint framework, logup
-  interactions, EvalAtRow implementations, or any component's constraints.
-  Covers Flat AIR specifics, constraint degree bounds, and soundness.
+  Defines how to audit and modify AIR constraints in STWO. Covers Flat AIR
+  model, constraint degree bounds, EvalAtRow trait, LogUp interactions,
+  constraint debugging, and soundness criteria. Use when working on constraint
+  definitions, the constraint framework, logup interactions, or any
+  component's constraints.
 ---
 
 # AIR Constraint Engineering
-
-## Purpose
-
-AIR (Algebraic Intermediate Representation) constraints are the specification
-language of STWO. A constraint system that is incomplete (under-constrained)
-or incorrect produces a proof system that accepts invalid witnesses —
-a catastrophic soundness failure.
 
 ## Flat AIR Model
 
@@ -35,7 +29,7 @@ A Flat AIR consists of:
 | 1 | ORIGINAL_TRACE_IDX | Witness columns (prover-generated) |
 | 2 | INTERACTION_TRACE_IDX | LogUp interaction columns |
 
-**Implementation**: `crates/constraint-framework/src/lib.rs:38-40`
+**Implementation**: `crates/constraint-framework/src/lib.rs` — `PREPROCESSED_TRACE_IDX`, `ORIGINAL_TRACE_IDX`, `INTERACTION_TRACE_IDX`
 
 ### Constraint Degree
 
@@ -50,7 +44,7 @@ The AIR degree d = max_i deg(P_i) determines:
 
 ## The EvalAtRow Trait
 
-**File**: `crates/constraint-framework/src/lib.rs:50+`
+**File**: `crates/constraint-framework/src/lib.rs` — `EvalAtRow` trait
 
 This is the core abstraction for constraint evaluation. A component
 implements `FrameworkEval::evaluate()` which calls methods on an

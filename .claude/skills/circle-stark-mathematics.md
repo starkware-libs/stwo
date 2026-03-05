@@ -1,20 +1,14 @@
 ---
 name: circle-stark-mathematics
 description: >
-  Circle-group-specific theory for STWO. Load before modifying any code
-  involving: circle points, cosets, domains, circle FFT, circle polynomials,
-  twin cosets, vanishing polynomials, or the M31 circle group structure.
-  Required for understanding the non-standard mathematical foundation
-  that distinguishes STWO from traditional STARKs.
+  Circle-group-specific mathematics for STWO: circle points, cosets, domains,
+  circle FFT, circle polynomials, twin cosets, vanishing polynomials, and the
+  M31 circle group structure. Use when modifying any code involving these
+  concepts, which form the non-standard foundation distinguishing STWO from
+  traditional multiplicative-subgroup STARKs.
 ---
 
 # Circle STARK Mathematics
-
-## Purpose
-
-STWO implements Circle STARKs — a variant of STARKs operating over the
-circle group C(F_p) rather than multiplicative subgroups. This skill
-covers the non-standard mathematical elements unique to this construction.
 
 ## The Circle Group
 
@@ -35,9 +29,7 @@ For p = 2^31 - 1 (Mersenne prime), the group has:
 **Source**: Circle STARK paper Section 3, line 343
 
 **Implementation**:
-- `crates/stwo/src/core/circle.rs:12-16` — `CirclePoint<F>` struct
-- `crates/stwo/src/core/circle.rs:122-132` — `Add` impl (group law)
-- `crates/stwo/src/core/circle.rs:134-142` — `Neg` impl (conjugate = inverse)
+- `crates/stwo/src/core/circle.rs` — `CirclePoint<F>` struct, `Add` impl (group law), `Neg` impl (conjugate = inverse)
 
 ### Generator
 
@@ -45,16 +37,16 @@ For p = 2^31 - 1 (Mersenne prime), the group has:
 M31_CIRCLE_GEN = (2, 1268011823)    order = 2^31
 ```
 
-**Implementation**: `crates/stwo/src/core/circle.rs:202-208`
+**Implementation**: `crates/stwo/src/core/circle.rs` — `M31_CIRCLE_GEN` constant
 
 ### Key Maps
 
 | Map | Formula | Code |
 |-----|---------|------|
 | Squaring (pi) | pi(x,y) = (2x^2 - 1, 2xy) | `CirclePoint::double()` via `Add` self+self |
-| x-doubling | double_x(x) = 2x^2 - 1 | `CirclePoint::double_x()` at circle.rs:40 |
-| Conjugate (J) | J(x,y) = (x, -y) | `CirclePoint::conjugate()` at circle.rs:92 |
-| Antipode | ant(x,y) = (-x, -y) | `CirclePoint::antipode()` at circle.rs:99 |
+| x-doubling | double_x(x) = 2x^2 - 1 | `CirclePoint::double_x()` |
+| Conjugate (J) | J(x,y) = (x, -y) | `CirclePoint::conjugate()` |
+| Antipode | ant(x,y) = (-x, -y) | `CirclePoint::antipode()` |
 
 **Critical property**: pi and J commute: pi(J(P)) = J(pi(P)).
 
@@ -87,7 +79,7 @@ Properties:
 
 ### Coset Type
 
-**Implementation**: `crates/stwo/src/core/circle.rs:222+` — `CirclePointIndex`, `Coset`
+**Implementation**: `crates/stwo/src/core/circle.rs` — `CirclePointIndex`, `Coset` structs
 
 ## Circle FFT
 
@@ -122,7 +114,7 @@ The circle FFT is a divide-and-conquer algorithm:
 **Source**: Circle STARK paper Section 4, Theorem 1
 
 **Implementation**:
-- Butterfly: `crates/stwo/src/core/fft.rs:5-21` — `butterfly()`, `ibutterfly()`
+- Butterfly: `crates/stwo/src/core/fft.rs` — `butterfly()`, `ibutterfly()`
 - CPU FFT: `crates/stwo/src/prover/backend/cpu/circle.rs`
 - SIMD FFT: `crates/stwo/src/prover/backend/simd/fft/rfft.rs`, `ifft.rs`
 - Circle ops: `crates/stwo/src/prover/backend/simd/circle.rs`
@@ -150,7 +142,7 @@ Where v_k is the k-fold iterated x-doubling applied to the rotated point.
 
 **Source**: Circle STARK paper, lines 754-781
 
-**Implementation**: `crates/stwo/src/core/constraints.rs:12-35` — `coset_vanishing()`
+**Implementation**: `crates/stwo/src/core/constraints.rs` — `coset_vanishing()`
 
 The formal derivative is:
 ```
@@ -159,7 +151,7 @@ v'_coset(p) = 4^{k-1} * prod_{i=1}^{k-1} v_i(x_p)
 
 **Source**: Circle STARK paper, Remark 15
 
-**Implementation**: `crates/stwo/src/core/constraints.rs:38-55` — `coset_vanishing_derivative()`
+**Implementation**: `crates/stwo/src/core/constraints.rs` — `coset_vanishing_derivative()`
 
 ## Secure Field Circle Group
 
@@ -172,7 +164,7 @@ SECURE_FIELD_CIRCLE_ORDER = P4 - 1   (where P4 = (2^31-1)^4)
 The OODS point is sampled from C(QM31) \ C(M31) using the rational
 parametrization: t -> ((1-t^2)/(1+t^2), 2t/(1+t^2)).
 
-**Implementation**: `crates/stwo/src/core/circle.rs:163-181` — `get_random_point()`
+**Implementation**: `crates/stwo/src/core/circle.rs` — `get_random_point()`
 
 ## Security Invariants
 

@@ -79,12 +79,14 @@ For any new or modified `unsafe` block:
 
 ### Current Crypto Dependencies
 
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| blake2 | 0.10.6 | Blake2s hash (verifier-compatible) |
-| blake3 | 1.5.0 | Blake3 hash (optional) |
-| starknet-crypto | 0.6.2 | Poseidon252 hash |
-| starknet-ff | 0.3.7 | Felt252 field for Poseidon |
+Check `Cargo.toml` for current versions. Key crates:
+
+| Crate | Purpose |
+|-------|---------|
+| blake2 | Blake2s hash (verifier-compatible) |
+| blake3 | Blake3 hash (optional) |
+| starknet-crypto | Poseidon252 hash |
+| starknet-ff | Felt252 field for Poseidon |
 
 ## 6. API Misuse Prevention
 

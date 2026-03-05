@@ -10,7 +10,6 @@ description: >
 # Paper-Implementation Divergence Log
 
 Last analyzed: 2026-03-05
-Analyzed by: Context engineering agent (initial bootstrap)
 
 ## How to Use This Log
 
@@ -47,7 +46,7 @@ Notes: Verify that even-degree constraint systems correctly handle lambda != 0.
 Paper: STWO Whitepaper "Circle FRI.tex" — Protocol describes folding as:
 Round 1 = J-split (y-twiddle), Rounds 2..r = pi-split (x-twiddle).
 
-Code: `crates/stwo/src/core/fri.rs:215-216` — First layer performs circle-to-line
+Code: `crates/stwo/src/core/fri.rs` — First layer performs circle-to-line
 fold (`fold_circle`), then inner layers perform line folds. The constant
 `CIRCLE_TO_LINE_FOLD_STEP` is used for the first fold. Inner layer queries are
 derived by folding the original queries.
@@ -66,7 +65,7 @@ The secure field QM31 is used for random challenges and composition polynomial.
 Code: Throughout `crates/stwo/src/core/pcs/` — QM31 polynomials are decomposed
 into 4 base field coordinate polynomials for commitment and FRI. The composition
 polynomial is split into 2 * SECURE_EXTENSION_DEGREE = 8 coordinate polynomials
-(`crates/stwo/src/core/verifier.rs:77,90`).
+(see `verify()` in `crates/stwo/src/core/verifier.rs`).
 
 Type: Intentional deviation (efficiency)
 Risk: NEUTRAL (mathematically equivalent; reduces FRI to base field operations)
@@ -79,9 +78,9 @@ Notes: This is standard practice. The `from_partial_evals` method in
 Paper: STWO Whitepaper — Composition polynomial q is decomposed via
 Lemma 7 (Decomposition Lemma) into d-1 components on disjoint twin-cosets.
 
-Code: `crates/stwo/src/core/verifier.rs:17` — `COMPOSITION_LOG_SPLIT: u32 = 1`
+Code: `crates/stwo/src/core/verifier.rs` — `COMPOSITION_LOG_SPLIT: u32 = 1`
 is hardcoded. The split produces `2 * SECURE_EXTENSION_DEGREE` columns.
-A TODO at line 15-16 notes this should be configurable.
+A TODO in the module notes this should be configurable.
 
 Type: Intentional deviation (simplified)
 Risk: PERFORMANCE (limits flexibility for higher-degree constraints)
@@ -123,7 +122,7 @@ Notes: The `vcs_lifted` module is a newer addition alongside the original `vcs`.
 Paper: STWO Whitepaper "Soundness.tex" — Targets 100-bit security with
 26 grinding bits.
 
-Code: `crates/stwo/src/core/pcs/mod.rs:72-80` — Default PcsConfig uses
+Code: `PcsConfig::default()` in `crates/stwo/src/core/pcs/mod.rs` — Default uses
 `pow_bits: 10`, `log_blowup_factor: 1`, `n_queries: 3`. This yields
 `security_bits() = 10 + 1*3 = 13` bits — far below production requirements.
 
@@ -137,7 +136,7 @@ Notes: The default config is clearly for testing. Production deployments
 
 Paper: STWO Whitepaper targets 26 grinding bits for 100-bit security.
 
-Code: `crates/stwo/src/prover/backend/simd/grind.rs:28` — TODO comment:
+Code: `crates/stwo/src/prover/backend/simd/grind.rs` — TODO comment:
 "support more than 32 bits." Current implementation limited to 32 PoW bits.
 
 Type: Implementation limitation
@@ -151,9 +150,9 @@ for future security parameter increases.
 Paper: Poseidon2 paper (https://eprint.iacr.org/2023/323.pdf) Section 5.
 
 Code: `crates/examples/src/poseidon/mod.rs` — Three critical TODOs:
-- Line 41: "Use poseidon's real constants" — placeholder constants in use
-- Line 125: Coefficients unverified against Section 5.3
-- Line 156: Round matrix may be applied in wrong order relative to paper
+- "Use poseidon's real constants" — placeholder constants in use
+- Coefficients unverified against Section 5.3
+- Round matrix may be applied in wrong order relative to paper
 
 Type: Bug candidate
 Risk: SOUNDNESS (for any system using this Poseidon2 implementation)
@@ -165,8 +164,8 @@ production use.
 
 ### DIVERGENCE-010: LogUp Validation Missing in Blake Example
 
-Code: `crates/examples/src/blake/round/constraints.rs:17` — TODO: "validate logup"
-Code: `crates/examples/src/blake/scheduler/mod.rs:24` — TODO: "validate logup"
+Code: `crates/examples/src/blake/round/constraints.rs` — TODO: "validate logup"
+Code: `crates/examples/src/blake/scheduler/mod.rs` — TODO: "validate logup"
 
 Type: Implementation gap
 Risk: SOUNDNESS (for Blake example only — constraints may be under-specified)

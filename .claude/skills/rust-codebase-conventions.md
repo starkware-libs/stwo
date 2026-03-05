@@ -1,19 +1,19 @@
 ---
 name: rust-codebase-conventions
 description: >
-  Repo-specific Rust patterns for STWO. Load when contributing code,
-  reviewing PRs, or understanding code style decisions. Covers: error
-  handling, feature flags, trait design, unsafe policy, no_std patterns.
+  Repo-specific Rust patterns for STWO: feature flags, error handling, type
+  patterns, unsafe policy, no_std compatibility, formatting, and clippy
+  configuration. Use when contributing code, reviewing PRs, or understanding
+  code style decisions.
 ---
 
 # Rust Codebase Conventions
 
 ## Toolchain
 
-- **Channel**: nightly-2025-07-14 (pinned in `rust-toolchain.toml`)
-- **Stable compatibility**: CI also runs on stable 1.88.0 for verifier tests
-- **Nightly features used**: `stdarch_x86_avx512`, `array_chunks`, `iter_array_chunks`,
-  `portable_simd`, `slice_ptr_get` (all behind `prover` feature)
+See `rust-toolchain.toml` for pinned nightly version. CI also runs on stable for verifier tests.
+Nightly features used (behind `prover` feature): `stdarch_x86_avx512`, `array_chunks`,
+`iter_array_chunks`, `portable_simd`, `slice_ptr_get`.
 
 ## Feature Flags
 
@@ -31,33 +31,13 @@ on-chain verifier deployment.
 
 ## Formatting
 
-Configured in `rustfmt.toml`:
-- `normalize_comments = true`
-- `group_imports = "StdExternalCrate"` (std first, then external, then local)
-- `imports_granularity = "Module"`
-- `comment_width = 100`
-- `wrap_comments = true`
-
-Run: `scripts/rust_fmt.sh` (uses nightly-2025-07-14 toolchain)
+Configured in `rustfmt.toml`. Run: `scripts/rust_fmt.sh`.
+Key: imports grouped `StdExternalCrate`, granularity `Module`, comments wrapped at 100.
 
 ## Clippy
 
-Strict clippy enforced in CI:
-- `-D warnings` (all warnings are errors)
-- `-D future-incompatible -D nonstandard-style -D rust-2018-idioms -D unused`
-- Runs per-crate individually (catches crate-specific issues)
-- `rustflags = ["-Dwarnings"]` in `.cargo/config.toml`
-
-Per-crate lint config in each `Cargo.toml`:
-```toml
-[lints.rust]
-future-incompatible = "deny"
-nonstandard-style = "deny"
-rust-2018-idioms = "deny"
-
-[lints.clippy]
-missing_const_for_fn = "warn"
-```
+Strict: `-D warnings` in CI (all warnings are errors). Runs per-crate individually.
+See `.cargo/config.toml` for `rustflags` and per-crate `Cargo.toml` `[lints]` sections.
 
 ## Error Handling
 

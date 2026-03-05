@@ -1,9 +1,10 @@
 ---
 name: debugging-zkp
 description: >
-  How to debug failing proofs and constraint violations in STWO. Load when:
-  a prove() call fails, a verify() call rejects a valid proof, constraints
-  don't hold on a trace, or logup sums don't balance.
+  Debugging failing proofs and constraint violations in STWO. Covers failure
+  mode diagnosis by symptom, FRI error triage, channel desync detection, and
+  paper cross-references. Use when prove() fails, verify() rejects a valid
+  proof, constraints don't hold on a trace, or logup sums don't balance.
 ---
 
 # Debugging ZK Proofs in STWO
@@ -61,7 +62,7 @@ Common causes:
 **Symptom**: Composition polynomial OODS eval doesn't match.
 
 **Diagnosis**:
-- Check `extract_composition_oods_eval` in `core/proof.rs:27-57`
+- Check `extract_composition_oods_eval` in `core/proof.rs`
 - Verify the composition polynomial split (COMPOSITION_LOG_SPLIT)
 - Verify OODS point sampling uses correct channel state
 
