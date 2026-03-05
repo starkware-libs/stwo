@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772716500432,
+  "lastUpdate": 1772720580181,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -156169,6 +156169,336 @@ window.BENCHMARK_DATA = {
             "name": "cpu polynomial commitment 2^20",
             "value": 934108819,
             "range": "± 3547894",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "45264458+AbdelStark@users.noreply.github.com",
+            "name": "A₿del ∞/21M",
+            "username": "AbdelStark"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "01e9f4b08b2efdf860fa566c1398c9691c481371",
+          "message": "AGENTIC STWO DAY ZERO - Add agentic context layer for augmented engineering using agentic programming (#1350)\n\n* Add agentic context layer for AI-assisted development\n\nBootstrap the complete agentic context engineering layer for STWO,\nproviding structured guidance for AI agents working on this safety-critical\nZK proving system.\n\n## What's included\n\n### Central context (CLAUDE.md)\n- Priority contract: soundness > quality > performance\n- Workspace structure with risk-level annotations ([SOUNDNESS-CRITICAL], etc.)\n- Build/test/lint commands and CI gate inventory\n- Mathematical context linking to Circle STARK paper and STWO Whitepaper\n- Operation boundaries: forbidden / supervised / autonomous zones\n- Known coverage gaps in soundness-critical code\n\n### Agent architecture (AGENTS.md)\n- 5-role architecture: Orchestrator, Math Reviewer, Implementer,\n  Crypto Specialist, Performance Specialist\n- Escalation protocol for soundness and security concerns\n- File ownership matrix by role\n- Skill requirements per role\n\n### Skills (.claude/skills/ - 13 files)\n\nTier 1 - Mathematical foundations:\n- zk-stark-foundations.md: STARKs, FRI, AIR, DEEP-ALI theory\n- circle-stark-mathematics.md: Circle group, M31, cFFT, twin cosets\n- finite-field-arithmetic.md: M31/CM31/QM31 tower, SIMD, common bugs\n- air-constraint-engineering.md: Flat AIR, EvalAtRow, LogUp interactions\n- soundness-review-checklist.md: 9-section structured review process\n- security-review-checklist.md: 8-section security audit process\n\nTier 2 - Protocol specifics:\n- fri-protocol.md: Circle FRI commit/query, folding, security analysis\n- performance-optimization.md: SIMD targets, FFT hot paths, benchmarking\n- testing-strategy.md: Test taxonomy, coverage gaps, test patterns\n\nTier 3 - Operations:\n- rust-codebase-conventions.md: Toolchain, features, formatting, unsafe policy\n- debugging-zkp.md: Proof failure diagnosis, constraint debugging\n\n### Living documents\n- paper-implementation-divergence-log.md: 10 documented divergences between\n  Circle STARK paper / STWO Whitepaper and the codebase, including:\n  - DIVERGENCE-007: Default PcsConfig has 13-bit security (target: 100+)\n  - DIVERGENCE-009: Poseidon2 example uses placeholder constants\n\n### Compatibility\n- .codex/skills symlinks to .claude/skills for tooling compatibility\n- .claude/cache/ excluded via .gitignore\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* Improve skills: trim verbosity, fix stale refs, remove time-sensitive data\n\n- zk-stark-foundations: Remove ~56 lines of general STARK theory Claude\n  already knows, keep STWO-specific content only (-35% lines)\n- All skills: Rewrite descriptions with clear trigger terms\n- 6 skills: Replace stale line-number references with stable\n  function/type name references (8/28 refs were already wrong)\n- security-review-checklist: Remove pinned dependency versions\n- testing-strategy: Replace exact test counts with qualitative assessments\n- fri-protocol: Remove ephemeral \"Known Issues and TODOs\" section\n- rust-codebase-conventions: Reference config files instead of duplicating\n- paper-implementation-divergence-log: Remove meta-info, fix line refs\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\n\n* docs(skills): point theory refs to LLM distillations\n\n* address pr review comments\n\n---------\n\nCo-authored-by: AbdelStark <AbdelStark@users.noreply.github.com>\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-03-05T15:59:48+02:00",
+          "tree_id": "09561926518f1449dccf82c02e3e3854e3c9fc12",
+          "url": "https://github.com/starkware-libs/stwo/commit/01e9f4b08b2efdf860fa566c1398c9691c481371"
+        },
+        "date": 1772720575564,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "simd barycentric_eval_at_secure_field_point 2^20",
+            "value": 405388,
+            "range": "± 7941",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu barycentric_eval_at_secure_field_point 2^20",
+            "value": 1808731,
+            "range": "± 11890",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd barycentric_eval_at_secure_point_weights_calculation 2^20",
+            "value": 285141023,
+            "range": "± 8168455",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu barycentric_eval_at_secure_point_weights_calculation 2^20",
+            "value": 18581617785,
+            "range": "± 11172543",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd bit_rev 26bit",
+            "value": 48967540,
+            "range": "± 274064",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 141671978,
+            "range": "± 12562550",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd eval_at_secure_field_point 2^20",
+            "value": 489852,
+            "range": "± 4569",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point 2^20",
+            "value": 25314854,
+            "range": "± 36758",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd eval_at_secure_field_point_by_folding 2^20",
+            "value": 2878466,
+            "range": "± 102882",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point_by_folding 2^20",
+            "value": 407705022,
+            "range": "± 4342224",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/16",
+            "value": 117424,
+            "range": "± 2602",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/17",
+            "value": 181088,
+            "range": "± 12666",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/18",
+            "value": 366751,
+            "range": "± 70450",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/19",
+            "value": 679329,
+            "range": "± 14273",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/20",
+            "value": 1371008,
+            "range": "± 173501",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/21",
+            "value": 3309584,
+            "range": "± 86475",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/22",
+            "value": 6048325,
+            "range": "± 164140",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/23",
+            "value": 15895444,
+            "range": "± 283109",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/24",
+            "value": 32047585,
+            "range": "± 238136",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/25",
+            "value": 65140386,
+            "range": "± 230814",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/26",
+            "value": 132837519,
+            "range": "± 377453",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/27",
+            "value": 272977865,
+            "range": "± 5623396",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/28",
+            "value": 563215774,
+            "range": "± 2890248",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft_vecwise_loop 2^14",
+            "value": 12378,
+            "range": "± 42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft3_loop 2^14",
+            "value": 4341,
+            "range": "± 50",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd transpose_vecs 2^20",
+            "value": 230424,
+            "range": "± 8093",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rfft/simd rfft 24bit",
+            "value": 45453535,
+            "range": "± 649820",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 46306382,
+            "range": "± 15227",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 12446665,
+            "range": "± 15593",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 172166878,
+            "range": "± 186651",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 12914147,
+            "range": "± 13312",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 939096544,
+            "range": "± 1090950",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 15315930,
+            "range": "± 18324",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_simd",
+            "value": 7715359,
+            "range": "± 19683",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_simd",
+            "value": 4834958,
+            "range": "± 11557",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_simd",
+            "value": 4845482,
+            "range": "± 23714",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 707351,
+            "range": "± 5577",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup 2^16",
+            "value": 1782316,
+            "range": "± 17308",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup batch 4x 2^16",
+            "value": 7604382,
+            "range": "± 214868",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd generic logup lookup 2^16",
+            "value": 3360699,
+            "range": "± 16369",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd multiplicities logup lookup 2^16",
+            "value": 3057548,
+            "range": "± 13717",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd singles logup lookup 2^16",
+            "value": 2751474,
+            "range": "± 20171",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup 2^16",
+            "value": 8315662,
+            "range": "± 173868",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup batch 4x 2^16",
+            "value": 33111888,
+            "range": "± 239578",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu generic logup lookup 2^16",
+            "value": 19221242,
+            "range": "± 80207",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu multiplicities logup lookup 2^16",
+            "value": 17293371,
+            "range": "± 82779",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu singles logup lookup 2^16",
+            "value": 15175622,
+            "range": "± 133224",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/simd merkle",
+            "value": 15796957,
+            "range": "± 351012",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/cpu merkle",
+            "value": 138974229,
+            "range": "± 434180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd polynomial commitment 2^20",
+            "value": 196150125,
+            "range": "± 1859172",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu polynomial commitment 2^20",
+            "value": 937975119,
+            "range": "± 12216300",
             "unit": "ns/iter"
           }
         ]
