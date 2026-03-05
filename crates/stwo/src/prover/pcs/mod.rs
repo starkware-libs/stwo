@@ -72,17 +72,27 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         self.store_polynomials_coefficients = true;
     }
 
+    /// Evaluates the given polynomials, commits them into a Merkle tree, mixes the root into
+    /// the channel, and appends the resulting tree to the scheme.
     fn commit(&mut self, polynomials: ColumnVec<CircleCoefficients<B>>, channel: &mut MC::C) {
         let _span = span!(Level::INFO, "Commitment").entered();
         let tree = CommitmentTreeProver::new(
             polynomials,
             self.config.fri_config.log_blowup_factor,
-            channel,
             self.twiddles,
             self.store_polynomials_coefficients,
             self.config.lifting_log_size,
             &self.base_column_pool,
         );
+        MC::mix_root(channel, tree.commitment.root());
+        self.trees.push(tree);
+    }
+
+    /// Appends an externally constructed [`CommitmentTreeProver`] to the scheme and mixes its
+    /// Merkle root into the channel. Use this when the tree was built outside of
+    /// [`TreeBuilder`], e.g. for a preprocessed commitment tree.
+    pub fn commit_tree(&mut self, tree: CommitmentTreeProver<B, MC>, channel: &mut MC::C) {
+        MC::mix_root(channel, tree.commitment.root());
         self.trees.push(tree);
     }
 
@@ -344,7 +354,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     pub fn new(
         polynomials: ColumnVec<CircleCoefficients<B>>,
         log_blowup_factor: u32,
-        channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
         lifting_log_size: Option<u32>,
@@ -374,7 +383,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
                 .collect(),
             lifting_log_size,
         );
-        MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {
             polynomials,
