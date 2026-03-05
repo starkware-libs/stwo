@@ -1,15 +1,22 @@
 ---
 name: paper-implementation-divergence-log
 description: >
-  Living record of all known divergences between the Circle STARK paper /
-  STWO Whitepaper and the production codebase. Agents MUST read this before
-  modifying any theoretically-grounded component. Agents MUST update this
-  when finding new divergences. Never resolve a divergence silently.
+  Living record of all known divergences between the canonical distilled
+  theory references (`Circle_STARKs.llm.md`, `Stwo_Whitepaper.llm.md`) and
+  the production codebase. Agents MUST read this before modifying any
+  theoretically-grounded component. Agents MUST update this when finding new
+  divergences. Never resolve a divergence silently.
 ---
 
 # Paper-Implementation Divergence Log
 
 Last analyzed: 2026-03-05
+
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — notation map and source navigation
+- `.agents/papers/llm/Circle_STARKs.llm.md` — circle FFT/FRI/AIR theory anchors
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — STWO protocol/soundness/parameters
 
 ## How to Use This Log
 
@@ -23,9 +30,10 @@ Last analyzed: 2026-03-05
 
 ### DIVERGENCE-001: Dimension Gap Handling in FRI
 
-Paper: Circle STARK paper Section 6, Protocol 1 — FRI commit phase begins with
-a "decomposition step" where prover sends scalar lambda and computes
-g = f - lambda * v_n to move from L_N(F) (dim N+1) into L'_N(F) (dim N).
+Paper: `.agents/papers/llm/Circle_STARKs.llm.md` —
+`prot:IOP:proximity` + quotient decomposition anchors (`e:decomposition:q`,
+`lem:quotient:decomposition`) require an explicit dimension-gap treatment:
+`g = f - lambda * v_n` from `L_N(F)` to `L'_N(F)`.
 
 Code: `crates/stwo/src/core/fri.rs` and `crates/stwo/src/prover/fri.rs` —
 The FRI verifier has a `first_layer` / `inner_layers` / `last_layer` structure.
@@ -43,8 +51,9 @@ Notes: Verify that even-degree constraint systems correctly handle lambda != 0.
 
 ### DIVERGENCE-002: FRI Folding Order
 
-Paper: STWO Whitepaper "Circle FRI.tex" — Protocol describes folding as:
-Round 1 = J-split (y-twiddle), Rounds 2..r = pi-split (x-twiddle).
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+`prot:cFRI:multi` / `e:cFRI:multi:folding` describe first J-split then
+subsequent projection folds.
 
 Code: `crates/stwo/src/core/fri.rs` — First layer performs circle-to-line
 fold (`fold_circle`), then inner layers perform line folds. The constant
@@ -59,8 +68,9 @@ from the sequential presentation in the paper.
 
 ### DIVERGENCE-003: QM31 as 4 Base Field Polynomials
 
-Paper: Circle STARK paper Section 5 — Trace polynomials p_j are in L'_N(F_p).
-The secure field QM31 is used for random challenges and composition polynomial.
+Paper: `.agents/papers/llm/Circle_STARKs.llm.md` —
+AIR model keeps trace polynomials in `L'_N(F_p)` while composition/challenges
+use extension-field structure.
 
 Code: Throughout `crates/stwo/src/core/pcs/` — QM31 polynomials are decomposed
 into 4 base field coordinate polynomials for commitment and FRI. The composition
@@ -75,8 +85,9 @@ Notes: This is standard practice. The `from_partial_evals` method in
 
 ### DIVERGENCE-004: Composition Polynomial Split
 
-Paper: STWO Whitepaper — Composition polynomial q is decomposed via
-Lemma 7 (Decomposition Lemma) into d-1 components on disjoint twin-cosets.
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+composition and cross-domain quotient construction (`prot:STARK:IOPP`,
+`e:crossdomain:quotient`) requires split handling by degree/domain.
 
 Code: `crates/stwo/src/core/verifier.rs` — `COMPOSITION_LOG_SPLIT: u32 = 1`
 is hardcoded. The split produces `2 * SECURE_EXTENSION_DEGREE` columns.
@@ -90,8 +101,9 @@ the current split may be sufficient.
 
 ### DIVERGENCE-005: Pairwise LogUp Column Grouping
 
-Paper: STWO Whitepaper "Optimizations.tex" — Describes pairwise grouping of
-logup entries to halve the interaction trace columns.
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+logUp construction in `prot:STARK:IOPP` and related constraint equations;
+implementation applies pairwise grouping optimization.
 
 Code: `crates/constraint-framework/src/logup.rs` and
 `crates/constraint-framework/src/prover/logup.rs` — LogUp implementation
@@ -105,7 +117,8 @@ Notes: Implementation matches the optimization described in the whitepaper.
 
 ### DIVERGENCE-006: Non-Transposed Merkle Tree
 
-Paper: STWO Whitepaper describes Merkle commitments over evaluation columns.
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+cross-domain Merkle commitments (`s:cross:domain:merkle`, `alg:merkle`).
 
 Code: `crates/stwo/src/core/vcs_lifted/` — Uses a "lifted" Merkle tree
 variant where multiple polynomials of different sizes are committed in a
@@ -119,8 +132,9 @@ Notes: The `vcs_lifted` module is a newer addition alongside the original `vcs`.
 
 ### DIVERGENCE-007: Security Parameter Defaults
 
-Paper: STWO Whitepaper "Soundness.tex" — Targets 100-bit security with
-26 grinding bits.
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+parameter/soundness targets (Section "6. Parameter Rules", `s:example:params`)
+including 100-bit security regimes with ~26 grinding bits.
 
 Code: `PcsConfig::default()` in `crates/stwo/src/core/pcs/mod.rs` — Default uses
 `pow_bits: 10`, `log_blowup_factor: 1`, `n_queries: 3`. This yields
@@ -134,7 +148,8 @@ Notes: The default config is clearly for testing. Production deployments
 
 ### DIVERGENCE-008: Proof of Work Grinding Bit Limit
 
-Paper: STWO Whitepaper targets 26 grinding bits for 100-bit security.
+Paper: `.agents/papers/llm/Stwo_Whitepaper.llm.md` —
+parameter guidance in Section "6. Parameter Rules" / `s:example:params`.
 
 Code: `crates/stwo/src/prover/backend/simd/grind.rs` — TODO comment:
 "support more than 32 bits." Current implementation limited to 32 PoW bits.
@@ -175,4 +190,4 @@ Notes: Example code only, but users may copy patterns from examples.
 ## Resolved Divergences
 
 ### DIVERGENCE-005 (see above)
-Resolved: Pairwise LogUp grouping matches whitepaper Optimizations.tex.
+Resolved: Pairwise LogUp grouping matches STWO distilled protocol guidance.

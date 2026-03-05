@@ -61,7 +61,7 @@ SOUNDNESS-ESCALATION:
   File: [path]
   Change: [what is proposed]
   Invariant at risk: [which mathematical invariant]
-  Paper reference: [Circle STARK paper §X / STWO Whitepaper Y.tex §Z]
+  Paper reference: [Circle_STARKs.llm.md anchor / Stwo_Whitepaper.llm.md anchor]
   Code location: [file:line]
   Confidence: [percentage]
   Reason: [why escalation is needed]

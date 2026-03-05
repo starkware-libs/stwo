@@ -9,11 +9,18 @@ description: >
 
 # ZK-STARK Foundations for STWO
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — notation harmonization and source map
+- `.agents/papers/llm/Circle_STARKs.llm.md` — core circle STARK AIR/FRI theory
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — STWO protocol layering and parameterization
+
 ## STWO Protocol Architecture
 
 ### AIR Constraints
 
-Constraint polynomial identities over the trace (Section 5, Eq. 1):
+Constraint polynomial identities over the trace
+(`Circle_STARKs.llm.md` -> `e:overall:identity`):
 
 ```
 P_i(s_i, p_1, ..., p_w, p_1 o T, ..., p_w o T) = 0   over H
@@ -23,7 +30,8 @@ P_i(s_i, p_1, ..., p_w, p_1 o T, ..., p_w o T) = 0   over H
 
 ### FRI Low-Degree Test
 
-Circle FRI variant operating over circle group domains (Section 6):
+Circle FRI variant operating over circle group domains
+(`Circle_STARKs.llm.md` -> `prot:IOP:proximity`):
 - **Verifier**: `crates/stwo/src/core/fri.rs` — `FriVerifier`
 - **Prover**: `crates/stwo/src/prover/fri.rs` — `FriProver`
 
@@ -36,7 +44,8 @@ FRI-based PCS with Merkle-committed evaluations and DEEP quotient openings:
 ### DEEP-ALI (Algebraic Linking)
 
 OODS point sampling + DEEP quotient `(p(x) - p(z)) / (x - z)` + FRI.
-Links committed evaluations to constraint identity (Section 5).
+Links committed evaluations to constraint identity
+(`Circle_STARKs.llm.md` -> `prop:deep:quotients`, `thm:AIR:soundness`).
 - **Quotients**: `crates/stwo/src/core/pcs/quotients.rs`
 - **Verifier**: `crates/stwo/src/core/verifier.rs` — `verify()`
 

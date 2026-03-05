@@ -9,6 +9,12 @@ description: >
 
 # Finite Field Arithmetic
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — notation normalization (`p` vs `q`, field tower naming)
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — base/extension field definitions
+- `.agents/papers/llm/Circle_STARKs.llm.md` — circle-field assumptions used by FFT/FRI
+
 ## Field Tower
 
 ```
@@ -26,7 +32,8 @@ M31 (base field)
 | CM31 | (M31, M31) = a + bi | P^2 | ~2^62 |
 | QM31 | (CM31, CM31) = a + bu | P^4 | ~2^124 |
 
-**Source**: STWO Whitepaper "Preliminaries.tex"
+**Source**: `.agents/papers/llm/Stwo_Whitepaper.llm.md` — field preliminaries
+(`s:fields`, `e:complex:extension`, `e:quartic:extension`)
 
 ## M31 Implementation
 

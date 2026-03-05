@@ -32,10 +32,20 @@
 |----------|------|---------|
 | Divergence Log | `paper-implementation-divergence-log.md` | Paper vs code divergences (READ BEFORE MODIFYING THEORY CODE) |
 
+## Distilled Theory References
+
+| Document | File | Purpose |
+|----------|------|---------|
+| Distillation Index | `.agents/papers/llm/INDEX.llm.md` | Entry point and notation map for theory references |
+| Circle STARK Distillation | `.agents/papers/llm/Circle_STARKs.llm.md` | Canonical Circle STARK definitions, algorithms, and invariants |
+| STWO Distillation | `.agents/papers/llm/Stwo_Whitepaper.llm.md` | Canonical STWO protocol model, soundness assumptions, and parameters |
+
 ## Loading Protocol
 
-1. Always load `paper-implementation-divergence-log.md` before modifying any
+1. Load `.agents/papers/llm/INDEX.llm.md` to map concepts and anchors.
+2. Load the relevant distilled paper file(s) from `.agents/papers/llm/`.
+3. Always load `paper-implementation-divergence-log.md` before modifying any
    theoretically-grounded component.
-2. Load the most specific relevant Tier 1 skill for the domain you're working in.
-3. For reviews, load the appropriate checklist skill.
-4. Tier 2 and 3 skills are loaded as needed for context.
+4. Load the most specific relevant Tier 1 skill for the domain you're working in.
+5. For reviews, load the appropriate checklist skill.
+6. Tier 2 and 3 skills are loaded as needed for context.

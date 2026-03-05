@@ -9,6 +9,12 @@ description: >
 
 # FRI Protocol (Circle Variant)
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — unified symbol map and conflict notes
+- `.agents/papers/llm/Circle_STARKs.llm.md` — core circle FRI decomposition/folding soundness
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — multi-domain FRI and parameter/security framing
+
 ## Protocol Structure
 
 ### Configuration
@@ -33,7 +39,8 @@ pub struct FriConfig {
 
 ### Commit Phase
 
-**Source**: Circle STARK paper Section 6, Protocol 1
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(`prot:IOP:proximity`, `prot:IOP:proximity:batch`)
 
 1. **First layer** (circle-to-line fold):
    - Input: polynomial evaluations on a circle domain
@@ -88,7 +95,8 @@ When `line_fold_step > 1`, multiple folding rounds are batched into a single
 FRI layer commitment. The verifier must unfold `fold_step` times using
 `fold_step` many folding alphas (drawn from a single alpha via powers).
 
-**Source**: Referenced in STWO Whitepaper "Circle FRI.tex"
+**Source**: `.agents/papers/llm/Stwo_Whitepaper.llm.md`
+(`prot:cFRI:multi`, `e:cFRI:multi:folding`)
 
 ## Sparse Evaluation
 
@@ -116,7 +124,10 @@ pub enum FriVerificationError {
 
 ## Security Analysis
 
-**Source**: Circle STARK paper Theorem 4, STWO Whitepaper "Soundness.tex"
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(`thm:FRI:soundness:round:by:round`) and
+`.agents/papers/llm/Stwo_Whitepaper.llm.md`
+(`thm:cFRI:multi:soundness`, Section "6. Parameter Rules")
 
 Soundness error has three components:
 1. **Proximity gap**: Depends on rate (rho = 1/2^B), list-decoding radius

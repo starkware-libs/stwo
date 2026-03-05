@@ -10,9 +10,17 @@ description: >
 
 # AIR Constraint Engineering
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — unified notation and anchor map
+- `.agents/papers/llm/Circle_STARKs.llm.md` — AIR quotient model and degree constraints
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — Flat AIR model and logUp protocol framing
+
 ## Flat AIR Model
 
-STWO implements "Flat AIRs" as described in the STWO Whitepaper (FlatAIRs.tex).
+STWO implements Flat AIRs as captured in the STWO distillation:
+`Stwo_Whitepaper.llm.md` (`def:flat:AIR`, `def:flat:AIR:solution`,
+`e:flat:AIR:consistency`).
 
 ### Structure
 
@@ -38,7 +46,8 @@ The AIR degree d = max_i deg(P_i) determines:
 - The number of composition polynomial splits: controlled by COMPOSITION_LOG_SPLIT
 - The evaluation domain size: >= d * N * blowup_factor
 
-**Source**: Circle STARK paper Section 5, Eq. 1 — deg(P_i) <= (p+1)/N, deg_S(P_i) <= 1
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md` — AIR quotient identity and
+parameter rules (`e:overall:identity`, Section "6. Parameter Rules")
 
 **Implementation**: Degree tracking in `crates/constraint-framework/src/expr/degree.rs`
 
@@ -70,7 +79,9 @@ Key associated types:
 LogUp is the lookup argument protocol used in STWO for cross-component
 communication (e.g., range checks, memory lookups).
 
-**Source**: STWO Whitepaper "Optimizations.tex" — pairwise logup grouping
+**Source**: `.agents/papers/llm/Stwo_Whitepaper.llm.md` — IOPP logUp constraints
+(`prot:STARK:IOPP`, `e:constraint:uses`, `e:constraint:yields`,
+`e:constraint:sum:increment`)
 
 ### Protocol
 

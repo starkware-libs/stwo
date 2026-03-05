@@ -3,11 +3,17 @@ name: debugging-zkp
 description: >
   Debugging failing proofs and constraint violations in STWO. Covers failure
   mode diagnosis by symptom, FRI error triage, channel desync detection, and
-  paper cross-references. Use when prove() fails, verify() rejects a valid
+  distilled theory cross-references. Use when prove() fails, verify() rejects a valid
   proof, constraints don't hold on a trace, or logup sums don't balance.
 ---
 
 # Debugging ZK Proofs in STWO
+
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — notation/source map
+- `.agents/papers/llm/Circle_STARKs.llm.md` — FFT/FRI/AIR math anchors
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — STWO protocol and soundness anchors
 
 ## Common Failure Modes
 
@@ -118,7 +124,7 @@ Many subtle bugs come from incorrect mathematical operations:
 - Incorrect coset offset
 - Missing conjugate in circle fold
 
-Load the relevant math skill and cross-reference with the paper.
+Load the relevant math skill and cross-reference with the distilled files.
 
 ## Useful Code Locations
 
@@ -130,13 +136,13 @@ Load the relevant math skill and cross-reference with the paper.
 | Check constraint degree | `constraint-framework/src/info.rs` | `InfoEvaluator` |
 | Evaluate at point | `constraint-framework/src/point.rs` | `PointEvaluator` |
 
-## Paper References for Debugging
+## Distilled References for Debugging
 
-| Component | Paper | Section |
-|-----------|-------|---------|
-| Vanishing polynomial derivative | Circle STARK | Remark 15 |
-| FRI fold formula | Circle STARK | Section 6, Protocol 1 |
-| Composition decomposition | Circle STARK | Lemma 7 |
-| DEEP quotient | Circle STARK | Section 5 |
-| Constraint polynomial model | Circle STARK | Section 5, Eq. 1-2 |
-| Circle FFT identities | Circle STARK | Section 4 |
+| Component | Distilled File | Anchor |
+|-----------|----------------|--------|
+| Vanishing polynomial derivative | `Circle_STARKs.llm.md` | Source Anchor Map -> vanishing/quotients |
+| FRI fold formula | `Circle_STARKs.llm.md` | `prot:IOP:proximity`, `e:FRI:g:even`, `e:FRI:g:odd` |
+| Composition decomposition | `Circle_STARKs.llm.md` | `lem:quotient:decomposition`, `e:quotient:decomposition` |
+| DEEP quotient | `Circle_STARKs.llm.md` | `prop:deep:quotients` |
+| Constraint polynomial model | `Circle_STARKs.llm.md` | `e:overall:identity` |
+| Circle FFT identities | `Circle_STARKs.llm.md` | `def:FFT:basis`, `thm:FFT` |

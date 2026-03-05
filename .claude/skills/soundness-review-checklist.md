@@ -9,6 +9,12 @@ description: >
 
 # Soundness Review Checklist
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — first stop to map concepts and notation
+- `.agents/papers/llm/Circle_STARKs.llm.md` — circle-FFT/FRI/AIR math anchors
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — STWO protocol/soundness/parameter anchors
+
 ## When to Run
 
 Run this checklist for ANY change touching:
@@ -26,15 +32,15 @@ Run this checklist for ANY change touching:
 ## Pre-Review: Context Loading
 
 - [ ] Read the divergence log: `.claude/skills/paper-implementation-divergence-log.md`
-- [ ] Identify which paper section governs the modified code
+- [ ] Identify which distilled-file anchor governs the modified code
 - [ ] Load the relevant mathematical skill (circle-stark-mathematics, finite-field-arithmetic, etc.)
 
 ## 1. Mathematical Correctness
 
 - [ ] **Invariant identification**: What mathematical invariant does this code maintain?
       State it explicitly.
-- [ ] **Paper grounding**: Can the modified logic be traced to a specific definition,
-      theorem, or algorithm in the Circle STARK paper or STWO Whitepaper?
+- [ ] **Theory grounding**: Can the modified logic be traced to a specific definition,
+      theorem, or algorithm in `Circle_STARKs.llm.md` or `Stwo_Whitepaper.llm.md`?
 - [ ] **Divergence check**: Does this change introduce a new paper-implementation divergence?
       If yes, document in the divergence log before proceeding.
 
@@ -110,7 +116,7 @@ If ANY of the following are true, escalate to human review:
 
 1. The change modifies a mathematical identity and you cannot prove equivalence
 2. The change affects security parameters
-3. You find an undocumented divergence from the papers
+3. You find an undocumented divergence from the distilled references
 4. A soundness-critical component has zero test coverage for the modified path
 5. The change introduces or modifies `unsafe` code in a soundness-critical file
 6. You are not confident the change preserves all invariants listed above
@@ -121,7 +127,7 @@ SOUNDNESS-ESCALATION:
   File: [path]
   Change: [description]
   Invariant at risk: [which invariant]
-  Paper reference: [which section]
+  Paper reference: [Circle_STARKs.llm.md anchor / Stwo_Whitepaper.llm.md anchor]
   Confidence: [percentage]
   Reason for escalation: [why]
 ```

@@ -10,6 +10,12 @@ description: >
 
 # Circle STARK Mathematics
 
+## Canonical Theory Sources
+
+- `.agents/papers/llm/INDEX.llm.md` — notation and invariant map
+- `.agents/papers/llm/Circle_STARKs.llm.md` — primary source for circle group/FFT/FRI math
+- `.agents/papers/llm/Stwo_Whitepaper.llm.md` — implementation-side protocol constraints
+
 ## The Circle Group
 
 ### Definition
@@ -26,7 +32,7 @@ For p = 2^31 - 1 (Mersenne prime), the group has:
 - Identity: (1, 0)
 - Inverse (conjugate): (x, y)^{-1} = (x, -y)
 
-**Source**: Circle STARK paper Section 3, line 343
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md` (`s:circle:curve`)
 
 **Implementation**:
 - `crates/stwo/src/core/circle.rs` — `CirclePoint<F>` struct, `Add` impl (group law), `Neg` impl (conjugate = inverse)
@@ -73,7 +79,8 @@ Properties:
 - pi maps a twin coset of size 2^n to one of size 2^{n-1}
 - This gives the domain chain for the FFT: D_n -> D_{n-1} -> ... -> D_1
 
-**Source**: Circle STARK paper Section 3.1, Definition 2
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(`def:standard:twin:coset`, `lem:twincosets:images`)
 
 **Implementation**: `crates/stwo/src/core/poly/circle/domain.rs` — `CircleDomain`
 
@@ -95,7 +102,7 @@ Where v_k are the iterated x-doubling maps:
 - v_2(x) = 2x^2 - 1
 - v_3(x) = 2(2x^2-1)^2 - 1 = 8x^4 - 8x^2 + 1
 
-**Source**: Circle STARK paper Section 4, Definition 3
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md` (`def:FFT:basis`)
 
 ### Algorithm
 
@@ -111,7 +118,7 @@ The circle FFT is a divide-and-conquer algorithm:
 
 **Complexity**: N*(n/2) multiplications + N*n additions
 
-**Source**: Circle STARK paper Section 4, Theorem 1
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md` (`thm:FFT`)
 
 **Implementation**:
 - Butterfly: `crates/stwo/src/core/fft.rs` — `butterfly()`, `ibutterfly()`
@@ -129,7 +136,8 @@ The gap: L_N(F) = L'_N(F) + span(v_n).
 This "dimension gap" is unique to circle STARKs and has implications
 for FRI (see DIVERGENCE-001 in the divergence log).
 
-**Source**: Circle STARK paper, Lemma 5 and Proposition 2
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(`prop:LN:properties`, `lem:FFT:space:monomial:basis`, Section "8. Implementation-Critical Invariants")
 
 ## Vanishing Polynomials
 
@@ -140,7 +148,8 @@ v_coset(p) = v_k(x_p)
 
 Where v_k is the k-fold iterated x-doubling applied to the rotated point.
 
-**Source**: Circle STARK paper, lines 754-781
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(Section "12. Source Anchor Map" -> vanishing/quotients)
 
 **Implementation**: `crates/stwo/src/core/constraints.rs` — `coset_vanishing()`
 
@@ -149,7 +158,8 @@ The formal derivative is:
 v'_coset(p) = 4^{k-1} * prod_{i=1}^{k-1} v_i(x_p)
 ```
 
-**Source**: Circle STARK paper, Remark 15
+**Source**: `.agents/papers/llm/Circle_STARKs.llm.md`
+(Section "12. Source Anchor Map" -> vanishing/quotients)
 
 **Implementation**: `crates/stwo/src/core/constraints.rs` — `coset_vanishing_derivative()`
 
