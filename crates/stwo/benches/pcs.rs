@@ -3,7 +3,6 @@ use std::iter;
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
@@ -21,7 +20,6 @@ const N_POLYS: usize = 16;
 
 fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
     evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-    channel: &mut Blake2sChannel,
     twiddles: &TwiddleTree<B>,
 ) {
     let polys = evals
@@ -32,7 +30,6 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
     CommitmentTreeProver::<B, Blake2sMerkleChannel>::new(
         polys,
         LOG_BLOWUP_FACTOR,
-        channel,
         twiddles,
         false,
         None,
@@ -44,7 +41,6 @@ fn bench_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(c: &mut Criterion, id: 
     let small_domain = CanonicCoset::new(LOG_COSET_SIZE);
     let big_domain = CanonicCoset::new(LOG_COSET_SIZE + LOG_BLOWUP_FACTOR);
     let twiddles = B::precompute_twiddles(big_domain.half_coset());
-    let mut channel = Blake2sChannel::default();
     let mut rng = SmallRng::seed_from_u64(0);
 
     let evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> = iter::repeat_with(|| {
@@ -61,13 +57,7 @@ fn bench_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(c: &mut Criterion, id: 
         |b| {
             b.iter_batched(
                 || evals.clone(),
-                |evals| {
-                    benched_fn::<B>(
-                        black_box(evals),
-                        black_box(&mut channel),
-                        black_box(&twiddles),
-                    )
-                },
+                |evals| benched_fn::<B>(black_box(evals), black_box(&twiddles)),
                 BatchSize::LargeInput,
             );
         },
