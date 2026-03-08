@@ -21,7 +21,7 @@ use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::vcs_lifted::ops::{MerkleOpsLifted, PackLeavesOps};
+use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
@@ -270,20 +270,21 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     column: &'a SecureEvaluation<B, BitReversedOrder>,
     merkle_tree: MerkleProverLifted<B, H>,
-    pack_leaves: bool,
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
     fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>) -> Self {
         let coordinate_columns = first_layer_column.columns.iter().collect();
-        let merkle_tree =
-            MerkleProverLifted::commit(coordinate_columns, first_layer_column.domain.log_size());
+        let merkle_tree = MerkleProverLifted::commit(
+            coordinate_columns,
+            first_layer_column.domain.log_size(),
+            // TODO(Leo): remove hardcoding once we have circle-to-line fri step.
+            None,
+        );
 
         FriFirstLayerProver {
             column: first_layer_column,
             merkle_tree,
-            // TODO(Leo): remove hardcoding once we have circle-to-line fri step.
-            pack_leaves: false,
         }
     }
 
@@ -296,16 +297,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
                 &queries.positions,
                 CIRCLE_TO_LINE_FOLD_STEP,
             );
-
-        let decommitment_positions = if self.pack_leaves {
-            decommitment_positions
-                .iter()
-                .map(|position| position >> LOG_PACKED_LEAF_SIZE)
-                .dedup()
-                .collect_vec()
-        } else {
-            decommitment_positions
-        };
         // We can pass an empty vector to the merkle decommit because we don't use its returned
         // opened values.
         // TODO(Leo): consider adding a method to merkle prover to decommit only the auth paths.
@@ -339,31 +330,25 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
     evaluation: LineEvaluation<B>,
     merkle_tree: MerkleProverLifted<B, H>,
     fold_step: u32,
-    pack_leaves: bool,
 }
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
-        let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
-        // TODO(Leo): move this logic to the Merkle prover.
-        let merkle_tree = if pack_leaves {
-            let packed_columns =
-                <B as PackLeavesOps>::pack_leaves_input(&evaluation.values.columns);
-            MerkleProverLifted::commit(
-                packed_columns.iter().collect_vec(),
-                evaluation.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
-            )
-        } else {
-            MerkleProverLifted::commit(
-                evaluation.values.columns.iter().collect_vec(),
-                evaluation.values.len().ilog2(),
-            )
-        };
+        let leaf_log_size =
+            if evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1 {
+                Some(LOG_PACKED_LEAF_SIZE)
+            } else {
+                None
+            };
+        let merkle_tree = MerkleProverLifted::commit(
+            evaluation.values.columns.iter().collect_vec(),
+            evaluation.values.len().ilog2(),
+            leaf_log_size,
+        );
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
             fold_step,
-            pack_leaves,
         }
     }
 
@@ -374,16 +359,6 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
                 queries,
                 self.fold_step,
             );
-
-        let decommitment_positions = if self.pack_leaves {
-            decommitment_positions
-                .iter()
-                .map(|position| position >> LOG_PACKED_LEAF_SIZE)
-                .dedup()
-                .collect_vec()
-        } else {
-            decommitment_positions
-        };
         // We can pass an empty vector to the merkle decommit because we don't use its returned
         // opened values.
         let (_, decommitment) = self
@@ -444,6 +419,7 @@ fn compute_decommitment_positions_and_witness_evals(
 #[cfg(test)]
 mod tests {
 
+    use itertools::Itertools;
     use num_traits::One;
 
     use crate::core::circle::{CirclePointIndex, Coset};
@@ -564,14 +540,24 @@ mod tests {
             });
             let values = SecureColumnByCoords::<SimdBackend>::from_iter(values);
 
-            let generic: [Col<CpuBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
-                <CpuBackend as PackLeavesOps>::pack_leaves_input(&values.to_cpu().columns);
+            let cpu: [Col<CpuBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
+                <CpuBackend as PackLeavesOps>::pack_leaves_input(
+                    &values
+                        .to_cpu()
+                        .columns
+                        .iter()
+                        .collect_vec()
+                        .try_into()
+                        .unwrap(),
+                );
             let simd: [Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
-                <SimdBackend as PackLeavesOps>::pack_leaves_input(&values.columns);
+                <SimdBackend as PackLeavesOps>::pack_leaves_input(
+                    &values.columns.iter().collect_vec().try_into().unwrap(),
+                );
 
             for col in 0..SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE {
                 assert_eq!(
-                    generic[col].to_cpu(),
+                    cpu[col].to_cpu(),
                     simd[col].to_cpu(),
                     "mismatch at log_size={log_size}, col={col}"
                 );

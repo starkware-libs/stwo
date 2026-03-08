@@ -17,6 +17,9 @@ pub struct MerkleProverLifted<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     /// Layers of the Merkle tree, sorted by increasing length.
     /// The first layer is a column of length 1, containing the root commitment.
     pub layers: Vec<Col<B, H::Hash>>,
+    /// If `Some`, it denotes the log number of QM31s that enter into a single leaf. This assumes
+    /// that the columns being committed are 4 columns of M31s of the same length.
+    pub leaf_log_size: Option<u32>,
 }
 
 impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
@@ -30,27 +33,51 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     /// # Returns
     ///
     /// A new instance of `MerkleProverLifted` with the committed layers.
-    pub fn commit(columns: Vec<&Col<B, BaseField>>, lifting_log_size: u32) -> Self {
+    pub fn commit(
+        columns: Vec<&Col<B, BaseField>>,
+        mut lifting_log_size: u32,
+        leaf_log_size: Option<u32>,
+    ) -> Self {
         let _span = span!(Level::TRACE, "Merkle", class = "MerkleCommitment").entered();
         if columns.is_empty() {
             return Self {
                 layers: vec![B::build_leaves(&[], lifting_log_size)],
+                leaf_log_size,
             };
         }
 
-        let columns = &mut columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();
-
-        let max_log_size = columns.last().unwrap().len().ilog2();
-        assert!(lifting_log_size >= max_log_size);
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
-        layers.push(B::build_leaves(columns, lifting_log_size));
+        if let Some(leaf_log_size) = leaf_log_size {
+            // TODO(Leo): add support for higher leaf log sizes.
+            assert_eq!(
+                leaf_log_size, 2,
+                "Leaf packing is only supported for leaf_log_size = 2."
+            );
+            let columns: [&Col<B, BaseField>; 4] = columns.try_into().unwrap();
+            let packed_columns = B::pack_leaves_input(&columns);
+            let max_log_size = packed_columns[0].len().ilog2();
+            lifting_log_size -= leaf_log_size;
+            assert!(lifting_log_size >= max_log_size);
+            layers.push(B::build_leaves(
+                &packed_columns.iter().collect_vec(),
+                lifting_log_size,
+            ));
+        } else {
+            let sorted_columns = columns.into_iter().sorted_by_key(|c| c.len()).collect_vec();
+            let max_log_size = sorted_columns.last().unwrap().len().ilog2();
+            assert!(lifting_log_size >= max_log_size);
+            layers.push(B::build_leaves(&sorted_columns, lifting_log_size));
+        }
 
         (0..lifting_log_size).for_each(|_| {
             layers.push(B::build_next_layer(layers.last().unwrap()));
         });
         layers.reverse();
 
-        Self { layers }
+        Self {
+            layers,
+            leaf_log_size,
+        }
     }
 
     /// Decommits to columns on the given queries.
@@ -92,7 +119,14 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             queried_values.push(res);
         }
 
-        let mut prev_layer_queries = query_positions.to_vec();
+        let mut prev_layer_queries = if let Some(leaf_log_size) = self.leaf_log_size {
+            query_positions
+                .iter()
+                .map(|position| position >> leaf_log_size)
+                .collect_vec()
+        } else {
+            query_positions.to_vec()
+        };
         prev_layer_queries.dedup();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
@@ -166,7 +200,7 @@ mod test {
         let mixed_degree_merkle_prover =
             MerkleProver::<CpuBackend, Blake2sMerkleHasherCurrent>::commit(vec![]);
         let lifted_merkle_prover =
-            MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(vec![], 0);
+            MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(vec![], 0, None);
         assert_eq!(
             mixed_degree_merkle_prover.layers,
             lifted_merkle_prover.layers
@@ -184,6 +218,7 @@ mod test {
         let merkle_prover = MerkleProverLifted::<CpuBackend, Blake2sHasher>::commit(
             columns.iter().collect(),
             max_log_size,
+            None,
         );
         (columns, merkle_prover)
     }
@@ -267,10 +302,12 @@ mod test {
         let lifted_merkle_prover_1 = MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(
             vec![&lifted_evaluation.values, &last_column],
             LIFTED_LOG_SIZE,
+            None,
         );
         let lifted_merkle_prover_2 = MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(
             vec![&poly.evaluate(domain), &last_column],
             LIFTED_LOG_SIZE,
+            None,
         );
 
         assert_eq!(lifted_merkle_prover_1.root(), lifted_merkle_prover_2.root());
