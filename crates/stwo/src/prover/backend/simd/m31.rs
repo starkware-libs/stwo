@@ -2,7 +2,6 @@ use std::iter::Sum;
 use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::ptr;
-use std::simd::cmp::SimdOrd;
 use std::simd::{u32x16, Simd};
 
 use bytemuck::{Pod, Zeroable};
@@ -23,6 +22,38 @@ pub const N_LANES: usize = 1 << LOG_N_LANES;
 pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 
 pub type PackedBaseField = PackedM31;
+
+/// Element-wise unsigned minimum of two `u32x16` vectors.
+///
+/// Uses architecture-specific intrinsics where available to guarantee
+/// a single instruction (`vpminud`) instead of the compare+select sequence
+/// that portable SIMD's `simd_min` compiles to.
+#[inline(always)]
+fn min_u32x16(a: Simd<u32, N_LANES>, b: Simd<u32, N_LANES>) -> Simd<u32, N_LANES> {
+    cfg_if::cfg_if! {
+        if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
+            unsafe {
+                let result = std::arch::x86_64::_mm512_min_epu32(
+                    std::mem::transmute(a),
+                    std::mem::transmute(b),
+                );
+                std::mem::transmute(result)
+            }
+        } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
+            unsafe {
+                let [a0, a1]: [std::arch::x86_64::__m256i; 2] = std::mem::transmute(a);
+                let [b0, b1]: [std::arch::x86_64::__m256i; 2] = std::mem::transmute(b);
+                let r0 = std::arch::x86_64::_mm256_min_epu32(a0, b0);
+                let r1 = std::arch::x86_64::_mm256_min_epu32(a1, b1);
+                std::mem::transmute([r0, r1])
+            }
+        } else {
+            // Fallback to portable SIMD (works on aarch64/neon, wasm, etc.)
+            use std::simd::cmp::SimdOrd;
+            Simd::simd_min(a, b)
+        }
+    }
+}
 
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
 ///
@@ -51,7 +82,7 @@ impl PackedM31 {
 
     /// Reduces each element of the vector to the range `[0, P)`.
     fn reduce(self) -> PackedM31 {
-        Self(Simd::simd_min(self.0, self.0 - MODULUS))
+        Self(min_u32x16(self.0, self.0 - MODULUS))
     }
 
     /// Interleaves two vectors.
@@ -126,7 +157,7 @@ impl Add for PackedM31 {
         // Apply min(c, c-P) to each word.
         // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
         // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than [0,P-1].
-        Self(Simd::simd_min(c, c - MODULUS))
+        Self(min_u32x16(c, c - MODULUS))
     }
 }
 
@@ -230,7 +261,7 @@ impl Sub for PackedM31 {
         // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
         // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
         // [2^32-P,2^32-1].
-        Self(Simd::simd_min(c + MODULUS, c))
+        Self(min_u32x16(c + MODULUS, c))
     }
 }
 
