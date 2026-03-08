@@ -304,6 +304,7 @@ mod tests {
         let merkle = MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(
             cols.iter().collect(),
             max_log_size,
+            0,
         );
 
         // Use queries with a duplicate position.
