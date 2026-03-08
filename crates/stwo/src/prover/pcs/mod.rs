@@ -387,6 +387,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
                 .map(|poly: &Poly<B>| &poly.evals.values)
                 .collect(),
             lifting_log_size,
+            0,
         );
 
         CommitmentTreeProver {

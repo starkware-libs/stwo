@@ -265,7 +265,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
 
 impl PackLeavesOps for SimdBackend {
     fn pack_leaves_input(
-        values: &[Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE],
+        values: &[&Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE],
     ) -> [Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
         let input_len = values[0].len();
         assert!(values.iter().all(|c| c.len() == input_len));
@@ -405,11 +405,13 @@ mod tests {
             MerkleProverLifted::<CpuBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols.iter().collect(),
                 MAX_LOG_N_ROWS,
+                0,
             )
             .root(),
             MerkleProverLifted::<SimdBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
                 cols_simd.iter().collect(),
                 MAX_LOG_N_ROWS,
+                0,
             )
             .root(),
         )

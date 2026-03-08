@@ -181,11 +181,13 @@ mod tests {
             MerkleProverLifted::<CpuBackend, Poseidon252MerkleHasher>::commit(
                 cols.iter().collect(),
                 MAX_LOG_N_ROWS,
+                0,
             )
             .root(),
             MerkleProverLifted::<SimdBackend, Poseidon252MerkleHasher>::commit(
                 cols_simd.iter().collect(),
                 MAX_LOG_N_ROWS,
+                0,
             )
             .root(),
         )
