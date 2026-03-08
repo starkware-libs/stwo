@@ -251,22 +251,21 @@ unsafe fn fft3_loop(
     for index_l in 0..1 << loop_bits {
         let index = (index_h << loop_bits) + index_l;
         let offset = index << (layer + 3);
+        let twiddles0: [u32x16; 4] = array::from_fn(|i| {
+            u32x16::splat(
+                *twiddle_dbl[0].get_unchecked((index * 4 + i) & (twiddle_dbl[0].len() - 1)),
+            )
+        });
+        let twiddles1: [u32x16; 2] = array::from_fn(|i| {
+            u32x16::splat(
+                *twiddle_dbl[1].get_unchecked((index * 2 + i) & (twiddle_dbl[1].len() - 1)),
+            )
+        });
+        let twiddles2: [u32x16; 1] = array::from_fn(|i| {
+            u32x16::splat(*twiddle_dbl[2].get_unchecked((index + i) & (twiddle_dbl[2].len() - 1)))
+        });
         for l in (0..1 << layer).step_by(1 << LOG_N_LANES as usize) {
-            fft3(
-                src,
-                dst,
-                offset + l,
-                layer,
-                array::from_fn(|i| {
-                    *twiddle_dbl[0].get_unchecked((index * 4 + i) & (twiddle_dbl[0].len() - 1))
-                }),
-                array::from_fn(|i| {
-                    *twiddle_dbl[1].get_unchecked((index * 2 + i) & (twiddle_dbl[1].len() - 1))
-                }),
-                array::from_fn(|i| {
-                    *twiddle_dbl[2].get_unchecked((index + i) & (twiddle_dbl[2].len() - 1))
-                }),
-            );
+            fft3(src, dst, offset + l, layer, twiddles0, twiddles1, twiddles2);
         }
     }
 }
@@ -294,19 +293,14 @@ unsafe fn fft2_loop(
     index: usize,
 ) {
     let offset = index << (layer + 2);
+    let twiddles0: [u32x16; 2] = array::from_fn(|i| {
+        u32x16::splat(*twiddle_dbl[0].get_unchecked((index * 2 + i) & (twiddle_dbl[0].len() - 1)))
+    });
+    let twiddles1: [u32x16; 1] = array::from_fn(|i| {
+        u32x16::splat(*twiddle_dbl[1].get_unchecked((index + i) & (twiddle_dbl[1].len() - 1)))
+    });
     for l in (0..1 << layer).step_by(1 << LOG_N_LANES as usize) {
-        fft2(
-            src,
-            dst,
-            offset + l,
-            layer,
-            array::from_fn(|i| {
-                *twiddle_dbl[0].get_unchecked((index * 2 + i) & (twiddle_dbl[0].len() - 1))
-            }),
-            array::from_fn(|i| {
-                *twiddle_dbl[1].get_unchecked((index + i) & (twiddle_dbl[1].len() - 1))
-            }),
-        );
+        fft2(src, dst, offset + l, layer, twiddles0, twiddles1);
     }
 }
 
@@ -331,16 +325,11 @@ unsafe fn fft1_loop(
     index: usize,
 ) {
     let offset = index << (layer + 1);
+    let twiddles0: [u32x16; 1] = array::from_fn(|i| {
+        u32x16::splat(*twiddle_dbl[0].get_unchecked((index + i) & (twiddle_dbl[0].len() - 1)))
+    });
     for l in (0..1 << layer).step_by(1 << LOG_N_LANES as usize) {
-        fft1(
-            src,
-            dst,
-            offset + l,
-            layer,
-            array::from_fn(|i| {
-                *twiddle_dbl[0].get_unchecked((index + i) & (twiddle_dbl[0].len() - 1))
-            }),
-        );
+        fft1(src, dst, offset + l, layer, twiddles0);
     }
 }
 
@@ -440,14 +429,15 @@ pub fn get_twiddle_dbls(mut coset: Coset) -> Vec<Vec<u32>> {
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
+#[inline(always)]
 pub unsafe fn fft3(
     src: *const u32,
     dst: *mut u32,
     offset: usize,
     log_step: usize,
-    twiddles_dbl0: [u32; 4],
-    twiddles_dbl1: [u32; 2],
-    twiddles_dbl2: [u32; 1],
+    twiddles_dbl0: [u32x16; 4],
+    twiddles_dbl1: [u32x16; 2],
+    twiddles_dbl2: [u32x16; 1],
 ) {
     // Load the 8 SIMD vectors from the array.
     let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
@@ -460,22 +450,22 @@ pub unsafe fn fft3(
     let mut val7 = PackedBaseField::load(src.add(offset + (7 << log_step)));
 
     // Apply the third layer of butterflies.
-    (val0, val4) = simd_butterfly(val0, val4, u32x16::splat(twiddles_dbl2[0]));
-    (val1, val5) = simd_butterfly(val1, val5, u32x16::splat(twiddles_dbl2[0]));
-    (val2, val6) = simd_butterfly(val2, val6, u32x16::splat(twiddles_dbl2[0]));
-    (val3, val7) = simd_butterfly(val3, val7, u32x16::splat(twiddles_dbl2[0]));
+    (val0, val4) = simd_butterfly(val0, val4, twiddles_dbl2[0]);
+    (val1, val5) = simd_butterfly(val1, val5, twiddles_dbl2[0]);
+    (val2, val6) = simd_butterfly(val2, val6, twiddles_dbl2[0]);
+    (val3, val7) = simd_butterfly(val3, val7, twiddles_dbl2[0]);
 
     // Apply the second layer of butterflies.
-    (val0, val2) = simd_butterfly(val0, val2, u32x16::splat(twiddles_dbl1[0]));
-    (val1, val3) = simd_butterfly(val1, val3, u32x16::splat(twiddles_dbl1[0]));
-    (val4, val6) = simd_butterfly(val4, val6, u32x16::splat(twiddles_dbl1[1]));
-    (val5, val7) = simd_butterfly(val5, val7, u32x16::splat(twiddles_dbl1[1]));
+    (val0, val2) = simd_butterfly(val0, val2, twiddles_dbl1[0]);
+    (val1, val3) = simd_butterfly(val1, val3, twiddles_dbl1[0]);
+    (val4, val6) = simd_butterfly(val4, val6, twiddles_dbl1[1]);
+    (val5, val7) = simd_butterfly(val5, val7, twiddles_dbl1[1]);
 
     // Apply the first layer of butterflies.
-    (val0, val1) = simd_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0]));
-    (val2, val3) = simd_butterfly(val2, val3, u32x16::splat(twiddles_dbl0[1]));
-    (val4, val5) = simd_butterfly(val4, val5, u32x16::splat(twiddles_dbl0[2]));
-    (val6, val7) = simd_butterfly(val6, val7, u32x16::splat(twiddles_dbl0[3]));
+    (val0, val1) = simd_butterfly(val0, val1, twiddles_dbl0[0]);
+    (val2, val3) = simd_butterfly(val2, val3, twiddles_dbl0[1]);
+    (val4, val5) = simd_butterfly(val4, val5, twiddles_dbl0[2]);
+    (val6, val7) = simd_butterfly(val6, val7, twiddles_dbl0[3]);
 
     // Store the 8 SIMD vectors back to the array.
     val0.store(dst.add(offset + (0 << log_step)));
@@ -508,13 +498,14 @@ pub unsafe fn fft3(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
+#[inline(always)]
 pub unsafe fn fft2(
     src: *const u32,
     dst: *mut u32,
     offset: usize,
     log_step: usize,
-    twiddles_dbl0: [u32; 2],
-    twiddles_dbl1: [u32; 1],
+    twiddles_dbl0: [u32x16; 2],
+    twiddles_dbl1: [u32x16; 1],
 ) {
     // Load the 4 SIMD vectors from the array.
     let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
@@ -523,12 +514,12 @@ pub unsafe fn fft2(
     let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)));
 
     // Apply the second layer of butterflies.
-    (val0, val2) = simd_butterfly(val0, val2, u32x16::splat(twiddles_dbl1[0]));
-    (val1, val3) = simd_butterfly(val1, val3, u32x16::splat(twiddles_dbl1[0]));
+    (val0, val2) = simd_butterfly(val0, val2, twiddles_dbl1[0]);
+    (val1, val3) = simd_butterfly(val1, val3, twiddles_dbl1[0]);
 
     // Apply the first layer of butterflies.
-    (val0, val1) = simd_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0]));
-    (val2, val3) = simd_butterfly(val2, val3, u32x16::splat(twiddles_dbl0[1]));
+    (val0, val1) = simd_butterfly(val0, val1, twiddles_dbl0[0]);
+    (val2, val3) = simd_butterfly(val2, val3, twiddles_dbl0[1]);
 
     // Store the 4 SIMD vectors back to the array.
     val0.store(dst.add(offset + (0 << log_step)));
@@ -553,18 +544,19 @@ pub unsafe fn fft2(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
+#[inline(always)]
 pub unsafe fn fft1(
     src: *const u32,
     dst: *mut u32,
     offset: usize,
     log_step: usize,
-    twiddles_dbl0: [u32; 1],
+    twiddles_dbl0: [u32x16; 1],
 ) {
     // Load the 2 SIMD vectors from the array.
     let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
     let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
 
-    (val0, val1) = simd_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0]));
+    (val0, val1) = simd_butterfly(val0, val1, twiddles_dbl0[0]);
 
     // Store the 2 SIMD vectors back to the array.
     val0.store(dst.add(offset + (0 << log_step)));
@@ -628,9 +620,9 @@ mod tests {
                 transmute::<*mut PackedBaseField, *mut u32>(res.as_mut_ptr()),
                 0,
                 LOG_N_LANES as usize,
-                twiddles0_dbl,
-                twiddles1_dbl,
-                twiddles2_dbl,
+                twiddles0_dbl.map(u32x16::splat),
+                twiddles1_dbl.map(u32x16::splat),
+                twiddles2_dbl.map(u32x16::splat),
             )
         };
 
