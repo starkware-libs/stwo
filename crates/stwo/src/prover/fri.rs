@@ -20,7 +20,7 @@ use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::vcs_lifted::ops::{MerkleOpsLifted, PackLeavesOps};
+use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
@@ -281,20 +281,12 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
     fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>, fold_step: u32) -> Self {
         let pack_leaves =
             first_layer_column.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
-        // TODO(Leo): consider moving this logic to the Merkle prover.
-        let merkle_tree = if pack_leaves {
-            let packed_columns =
-                <B as PackLeavesOps>::pack_leaves_input(&first_layer_column.values.columns);
-            MerkleProverLifted::commit(
-                packed_columns.iter().collect_vec(),
-                first_layer_column.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
-            )
-        } else {
-            MerkleProverLifted::commit(
-                first_layer_column.values.columns.iter().collect_vec(),
-                first_layer_column.values.len().ilog2(),
-            )
-        };
+        let log_rows_per_leaf = if pack_leaves { LOG_PACKED_LEAF_SIZE } else { 0 };
+        let merkle_tree = MerkleProverLifted::commit(
+            first_layer_column.values.columns.iter().collect_vec(),
+            first_layer_column.values.len().ilog2() - log_rows_per_leaf,
+            log_rows_per_leaf,
+        );
 
         FriFirstLayerProver {
             column: first_layer_column,
@@ -361,20 +353,13 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>, fold_step: u32) -> Self {
         let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
-        // TODO(Leo): consider moving this logic to the Merkle prover.
-        let merkle_tree = if pack_leaves {
-            let packed_columns =
-                <B as PackLeavesOps>::pack_leaves_input(&evaluation.values.columns);
-            MerkleProverLifted::commit(
-                packed_columns.iter().collect_vec(),
-                evaluation.values.len().ilog2() - LOG_PACKED_LEAF_SIZE,
-            )
-        } else {
-            MerkleProverLifted::commit(
-                evaluation.values.columns.iter().collect_vec(),
-                evaluation.values.len().ilog2(),
-            )
-        };
+        let log_rows_per_leaf = if pack_leaves { LOG_PACKED_LEAF_SIZE } else { 0 };
+        let merkle_tree = MerkleProverLifted::commit(
+            evaluation.values.columns.iter().collect_vec(),
+            evaluation.values.len().ilog2() - log_rows_per_leaf,
+            log_rows_per_leaf,
+        );
+
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
@@ -580,10 +565,15 @@ mod tests {
             });
             let values = SecureColumnByCoords::<SimdBackend>::from_iter(values);
 
+            let cpu_values = values.to_cpu();
+            let cpu_cols: [&Col<CpuBackend, BaseField>; SECURE_EXTENSION_DEGREE] =
+                core::array::from_fn(|i| &cpu_values.columns[i]);
             let generic: [Col<CpuBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
-                <CpuBackend as PackLeavesOps>::pack_leaves_input(&values.to_cpu().columns);
+                <CpuBackend as PackLeavesOps>::pack_leaves_input(&cpu_cols);
+            let simd_cols: [&Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE] =
+                core::array::from_fn(|i| &values.columns[i]);
             let simd: [Col<SimdBackend, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
-                <SimdBackend as PackLeavesOps>::pack_leaves_input(&values.columns);
+                <SimdBackend as PackLeavesOps>::pack_leaves_input(&simd_cols);
 
             for col in 0..SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE {
                 assert_eq!(
