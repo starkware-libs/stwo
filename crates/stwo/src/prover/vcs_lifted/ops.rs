@@ -25,6 +25,6 @@ pub trait PackLeavesOps: ColumnOps<BaseField> {
     /// ...] where vᵢ ∈ QM31, the output is [[v₀, v₄, v₈, ...], [v₁, v₅, v₉, ...], [v₂, v₆, v₁₀,
     /// ...], [v₃, v₇, v₁₁, ...]].
     fn pack_leaves_input(
-        values: &[Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
+        values: &[&Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
     ) -> [Col<Self, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE];
 }
