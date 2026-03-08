@@ -89,7 +89,7 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
 
 impl PackLeavesOps for CpuBackend {
     fn pack_leaves_input(
-        values: &[Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
+        values: &[&Col<Self, BaseField>; SECURE_EXTENSION_DEGREE],
     ) -> [Col<Self, BaseField>; SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] {
         let len_m31 = values[0].len();
         assert!(values.iter().all(|c| c.len() == len_m31));
