@@ -32,6 +32,9 @@ pub struct SimdDomainEvaluator<'a> {
     pub domain_log_size: u32,
     pub eval_domain_log_size: u32,
     pub logup: LogupAtRow<Self>,
+    /// Precomputed source indices for offset=-1, one per element in the very-packed row.
+    /// Avoids recomputing `offset_bit_reversed_circle_domain_index` on every column access.
+    neg1_offset_indices: [usize; 1 << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS)],
 }
 impl<'a> SimdDomainEvaluator<'a> {
     pub fn new(
@@ -43,6 +46,10 @@ impl<'a> SimdDomainEvaluator<'a> {
         log_size: u32,
         claimed_sum: SecureField,
     ) -> Self {
+        let base = vec_row << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS);
+        let neg1_offset_indices = std::array::from_fn(|i| {
+            offset_bit_reversed_circle_domain_index(base + i, domain_log_size, eval_log_size, -1)
+        });
         Self {
             trace_eval,
             column_index_per_interaction: vec![0; trace_eval.len()],
@@ -53,6 +60,7 @@ impl<'a> SimdDomainEvaluator<'a> {
             domain_log_size,
             eval_domain_log_size: eval_log_size,
             logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
+            neg1_offset_indices,
         }
     }
 }
@@ -84,6 +92,15 @@ impl EvalAtRow for SimdDomainEvaluator<'_> {
             // Otherwise, we need to look up the value at the offset.
             // Since the domain is bit-reversed circle domain ordered, we need to look up the value
             // at the bit-reversed natural order index at an offset.
+            //
+            // For offset=-1 the 32 source indices are precomputed once per vec_row in `new()`.
+            // This avoids recomputing them for every column that uses this offset.
+            let col = &self.trace_eval[interaction][col_index];
+            if off == -1 {
+                return VeryPackedBaseField::from_array(
+                    std::array::from_fn(|i| col.at(self.neg1_offset_indices[i])),
+                );
+            }
             VeryPackedBaseField::from_array(std::array::from_fn(|i| {
                 let row_index = offset_bit_reversed_circle_domain_index(
                     (self.vec_row << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS)) + i,
@@ -91,7 +108,7 @@ impl EvalAtRow for SimdDomainEvaluator<'_> {
                     self.eval_domain_log_size,
                     off,
                 );
-                self.trace_eval[interaction][col_index].at(row_index)
+                col.at(row_index)
             }))
         })
     }
