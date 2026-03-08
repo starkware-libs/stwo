@@ -431,7 +431,7 @@ mod tests {
     fn committing_high_degree_polynomial_fails() {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1);
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1, false);
         let column = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -443,7 +443,7 @@ mod tests {
     fn committing_column_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let config = FriConfig::new(2, 2, 3, 1);
+        let config = FriConfig::new(2, 2, 3, 1, false);
         let column = SecureEvaluation::new(
             invalid_domain,
             [SecureField::one(); 1 << 4].into_iter().collect(),
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_jumps() {
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2, false);
         let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
