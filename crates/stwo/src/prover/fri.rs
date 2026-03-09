@@ -4,14 +4,13 @@ use num_traits::Zero;
 use tracing::instrument;
 
 use crate::core::channel::{Channel, MerkleChannel};
-use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fri::{
     ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
     FriProofAux, CIRCLE_TO_LINE_FOLD_STEP,
 };
-use crate::core::poly::line::{LineDomain, LinePoly};
+use crate::core::poly::line::LinePoly;
 use crate::core::queries::{draw_queries, Queries};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::LOG_PACKED_LEAF_SIZE;
@@ -58,11 +57,10 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     // TODO(andrew): Make folding factor generic.
     // TODO(andrew): Fold directly into FRI layer to prevent allocation.
     fn fold_circle_into_line(
-        dst: &mut LineEvaluation<Self>,
         src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
-    );
+    ) -> LineEvaluation<Self>;
 
     /// Decomposes a FRI-space polynomial into a polynomial inside the fft-space and the
     /// remainder term.
@@ -136,19 +134,14 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         column: &SecureEvaluation<B, BitReversedOrder>,
         twiddles: &TwiddleTree<B>,
     ) -> (Vec<FriInnerLayerProver<B, MC::H>>, LineEvaluation<B>) {
-        let first_inner_layer_log_size = column.domain.log_size() - CIRCLE_TO_LINE_FOLD_STEP;
-        let first_inner_layer_domain =
-            LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
-
-        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
         let mut layers = Vec::new();
         let folding_alpha = channel.draw_secure_felt();
 
-        B::fold_circle_into_line(&mut layer_evaluation, column, folding_alpha, twiddles);
+        let mut layer_evaluation = B::fold_circle_into_line(column, folding_alpha, twiddles);
 
         let last_layer_log_domain_size = config.last_layer_domain_size().ilog2();
         // If we're already at the last layer, there are no inner layers to compute.
-        if first_inner_layer_log_size == last_layer_log_domain_size {
+        if layer_evaluation.domain().log_size() == last_layer_log_domain_size {
             return (layers, layer_evaluation);
         }
         // While we can, skip `config.line_fold_step` layers.
