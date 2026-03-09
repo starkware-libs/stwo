@@ -1,8 +1,10 @@
 use super::CpuBackend;
+use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::CIRCLE_TO_LINE_FOLD_STEP;
+use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
@@ -30,12 +32,11 @@ impl FriOps for CpuBackend {
     }
 
     fn fold_circle_into_line(
-        dst: &mut LineEvaluation<Self>,
         src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
-    ) {
-        fold_circle_into_line_cpu(dst, src, alpha)
+    ) -> LineEvaluation<Self> {
+        fold_circle_into_line_cpu(src, alpha)
     }
 
     fn decompose(
@@ -93,14 +94,14 @@ pub fn fold_line_cpu(
 
 /// TODO: Almost duplicate code of [`crate::core::fri::fold_circle_into_line`]. Consider refactor.
 pub fn fold_circle_into_line_cpu(
-    dst: &mut LineEvaluation<CpuBackend>,
     src: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     alpha: SecureField,
-) {
-    assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
-
+) -> LineEvaluation<CpuBackend> {
     let domain = src.domain;
-    let alpha_sq = alpha * alpha;
+    let line_log_size = src.domain.log_size() - 1;
+    let dst_domain = LineDomain::new(Coset::half_odds(line_log_size));
+    let values = unsafe { SecureColumnByCoords::uninitialized(1 << line_log_size) };
+    let mut dst = LineEvaluation::new(dst_domain, values);
 
     src.values
         .into_iter()
@@ -118,8 +119,9 @@ pub fn fold_circle_into_line_cpu(
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 
-            dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime)
+            dst.values.set(i, f_prime)
         });
+    dst
 }
 
 impl CpuBackend {
