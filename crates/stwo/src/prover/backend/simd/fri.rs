@@ -122,26 +122,26 @@ impl FriOps for SimdBackend {
     }
 
     fn fold_circle_into_line(
-        dst: &mut LineEvaluation<Self>,
         src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
-    ) {
+    ) -> LineEvaluation<Self> {
         let log_size = src.len().ilog2();
         if log_size <= LOG_N_LANES {
             // Fall back to CPU implementation.
-            let mut cpu_dst = dst.to_cpu();
-            fold_circle_into_line_cpu(&mut cpu_dst, &src.to_cpu(), alpha);
-            *dst = LineEvaluation::new(
-                cpu_dst.domain(),
-                SecureColumnByCoords::from_cpu(cpu_dst.values),
+            let cpu_fold = fold_circle_into_line_cpu(&src.to_cpu(), alpha);
+            return LineEvaluation::new(
+                cpu_fold.domain(),
+                SecureColumnByCoords::from_cpu(cpu_fold.values),
             );
-            return;
         }
 
-        let domain = src.domain;
-        let alpha_sq = alpha * alpha;
-        let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
+        // Create the destination buffer.
+        let line_log_size = src.domain.log_size() - 1;
+        let dst_domain = LineDomain::new(Coset::half_odds(line_log_size));
+        let values = unsafe { SecureColumnByCoords::uninitialized(1 << line_log_size) };
+        let mut dst = LineEvaluation::new(dst_domain, values);
+        let itwiddles = domain_line_twiddles_from_tree(src.domain, &twiddles.itwiddles)[0];
 
         for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
             let value = unsafe {
@@ -161,14 +161,9 @@ impl FriOps for SimdBackend {
                 let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
                 val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            unsafe {
-                dst.values.set_packed(
-                    vec_index,
-                    dst.values.packed_at(vec_index) * PackedSecureField::broadcast(alpha_sq)
-                        + value,
-                )
-            };
+            unsafe { dst.values.set_packed(vec_index, value) };
         }
+        dst
     }
 
     fn decompose(
@@ -208,15 +203,14 @@ pub fn fold_circle_evaluation_into_line(
 
     if log_size <= LOG_N_LANES {
         // Fall back to CPU implementation.
-        let mut cpu_dst = line_evaluation.to_cpu();
         let secure_evaluation = SecureEvaluation::new(
             eval.domain,
             SecureColumnByCoords::from_base_field_col(&eval.values.to_cpu()),
         );
-        fold_circle_into_line_cpu(&mut cpu_dst, &secure_evaluation, alpha);
+        let cpu_fold = fold_circle_into_line_cpu(&secure_evaluation, alpha);
         return LineEvaluation::new(
-            cpu_dst.domain(),
-            SecureColumnByCoords::from_cpu(cpu_dst.values),
+            cpu_fold.domain(),
+            SecureColumnByCoords::from_cpu(cpu_fold.values),
         );
     }
 
@@ -346,23 +340,13 @@ mod tests {
         let alpha = qm31!(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);
-        let mut cpu_fold = LineEvaluation::new(
-            line_domain,
-            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
-        );
-        CpuBackend::fold_circle_into_line(
-            &mut cpu_fold,
+        let cpu_fold = CpuBackend::fold_circle_into_line(
             &SecureEvaluation::new(circle_domain, values.iter().copied().collect()),
             alpha,
             &CpuBackend::precompute_twiddles(line_domain.coset()),
         );
 
-        let mut simd_fold = LineEvaluation::new(
-            line_domain,
-            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
-        );
-        SimdBackend::fold_circle_into_line(
-            &mut simd_fold,
+        let simd_fold = SimdBackend::fold_circle_into_line(
             &SecureEvaluation::new(circle_domain, values.iter().copied().collect()),
             alpha,
             &SimdBackend::precompute_twiddles(line_domain.coset()),
