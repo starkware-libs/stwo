@@ -42,6 +42,14 @@ impl QuotientOps for SimdBackend {
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
 
+            // Pre-broadcast (b, c) scalar coefficients outside the parallel loop.
+            let packed_coeffs: Vec<(PackedSecureField, PackedSecureField)> = coeffs
+                .iter()
+                .map(|(_, b, c)| {
+                    (PackedSecureField::broadcast(*b), PackedSecureField::broadcast(*c))
+                })
+                .collect();
+
             #[cfg(not(feature = "parallel"))]
             let iter = partial_numerators_acc.chunks_mut(1);
 
@@ -55,7 +63,7 @@ impl QuotientOps for SimdBackend {
                          column_index: idx, ..
                      }| columns[*idx].data[chunk_idx],
                 );
-                let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
+                let row_value = accumulate_row_partial_numerators(query_values_at_row, &packed_coeffs);
                 unsafe {
                     values_dst.set_packed(0, row_value);
                 }
@@ -83,6 +91,12 @@ impl QuotientOps for SimdBackend {
             accumulations.iter().map(|x| x.sample_point).collect();
         let denominators_inverses = denominator_inverses(&sample_points, domain);
 
+        // Pre-broadcast first_linear_term_acc values outside the parallel loop.
+        let packed_first_linear_terms: Vec<PackedSecureField> = accumulations
+            .iter()
+            .map(|acc| PackedSecureField::broadcast(acc.first_linear_term_acc))
+            .collect();
+
         // Populate `quotients`.
         // TODO(Leo): make chunk size configurable.
         #[cfg(not(feature = "parallel"))]
@@ -93,7 +107,11 @@ impl QuotientOps for SimdBackend {
 
         iter.for_each(|(domain_idx, mut value_dst)| {
             let mut quotient = PackedSecureField::zero();
-            for (acc, den_inv) in accumulations.iter().zip_eq(denominators_inverses.iter()) {
+            for ((acc, den_inv), packed_flt) in accumulations
+                .iter()
+                .zip_eq(denominators_inverses.iter())
+                .zip_eq(packed_first_linear_terms.iter())
+            {
                 let mut full_numerator = PackedSecureField::zero();
 
                 let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
@@ -109,8 +127,7 @@ impl QuotientOps for SimdBackend {
                     }));
 
                 full_numerator += lifted_partial_numerator
-                    - PackedSecureField::broadcast(acc.first_linear_term_acc)
-                        * domain_points[domain_idx].y;
+                    - *packed_flt * domain_points[domain_idx].y;
                 quotient += full_numerator * den_inv[domain_idx];
             }
             unsafe {
@@ -123,12 +140,11 @@ impl QuotientOps for SimdBackend {
 
 fn accumulate_row_partial_numerators(
     queried_values_at_row: impl Iterator<Item = PackedBaseField>,
-    coeffs: &Vec<(SecureField, SecureField, SecureField)>,
+    packed_coeffs: &[(PackedSecureField, PackedSecureField)],
 ) -> PackedSecureField {
     let mut numerator = PackedSecureField::zero();
-    for (val_at_row, (_, b, c)) in zip_eq(queried_values_at_row, coeffs) {
-        let value = PackedSecureField::broadcast(*c) * val_at_row;
-        numerator += value - PackedSecureField::broadcast(*b);
+    for (val_at_row, (packed_b, packed_c)) in zip_eq(queried_values_at_row, packed_coeffs) {
+        numerator += *packed_c * val_at_row - *packed_b;
     }
     numerator
 }
