@@ -9,12 +9,10 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::poly::line::LineDomain;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
 use crate::core::utils::{bit_reverse, bit_reverse_index};
 use crate::prover::backend::{Col, Column};
 use crate::prover::fri::FriOps;
-use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::{
     CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
 };
@@ -147,8 +145,6 @@ impl PolyOps for CpuBackend {
     ) -> SecureField {
         let log_size = evals.domain.log_size();
         let mut folding_alphas = get_folding_alphas(point, log_size as usize);
-        let first_inner_layer_domain = LineDomain::new(Coset::half_odds(log_size - 1));
-        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
 
         let secure_field_values: Vec<SecureField> = evals
             .values
@@ -157,8 +153,7 @@ impl PolyOps for CpuBackend {
             .map(|f| SecureField::from(*f))
             .collect_vec();
 
-        CpuBackend::fold_circle_into_line(
-            &mut layer_evaluation,
+        let mut layer_evaluation = CpuBackend::fold_circle_into_line(
             &SecureEvaluation::new(
                 evals.domain,
                 SecureColumnByCoords::from_iter(secure_field_values),
