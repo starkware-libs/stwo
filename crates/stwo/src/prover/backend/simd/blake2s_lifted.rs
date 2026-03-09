@@ -101,7 +101,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             #[cfg(feature = "parallel")]
             let iter_states = next_layer_state_slice.par_iter_mut();
 
-            iter_states.enumerate().for_each(|(i, curr_state)| {
+            iter_states.enumerate().for_each(|(i, state)| {
                 let mut local_byte_count = byte_count + N_BYTES_IN_BLAKE_MESSAGE;
                 // Lift `prev_layer_states` and the first chunk `columns[start..start + 16]`.
                 let prev_state = std::array::from_fn(|j| {
@@ -115,7 +115,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                     to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i)
                 });
 
-                let mut state = compress_unfinalized(prev_state, msgs, local_byte_count);
+                *state = compress_unfinalized(prev_state, msgs, local_byte_count);
                 // Deal with the subsequent chunks in columns[start + 16..end]`. Note that since
                 // `start < end` and both are multiples of 16, we have `start + 16 <= end`,
                 // therefore the indexing range below doesn't panic. All columns in
@@ -126,9 +126,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                     let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] =
                         std::array::from_fn(|j| chunk_columns[j].data[i].into_simd());
                     local_byte_count += N_BYTES_IN_BLAKE_MESSAGE;
-                    state = compress_unfinalized(state, msgs, local_byte_count);
+                    *state = compress_unfinalized(*state, msgs, local_byte_count);
                 }
-                curr_state.copy_from_slice(&state);
             });
             // We hashed `((end - start) / N_FELTS_IN_BLAKE_MESSAGE) * N_BYTES_IN_BLAKE_MESSAGE = 4
             // * (end - start)` bytes.
@@ -147,7 +146,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         let iter_states = next_layer_state_slice.par_iter_mut();
 
         byte_count += ((columns.len() - last_chunk_index) * N_BYTES_FELT) as u64;
-        iter_states.enumerate().for_each(|(i, curr_state)| {
+        iter_states.enumerate().for_each(|(i, state)| {
             let prev_state = std::array::from_fn(|j| {
                 let prev_state_limb = prev_layer_states[i >> log_ratio][j];
                 to_lifted_simd(prev_state_limb, log_ratio, i)
@@ -158,8 +157,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 let log_ratio = chunk_max_log_size - log_size;
                 msgs[j] = to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i);
             }
-            let state = compress_finalize(prev_state, msgs, byte_count);
-            curr_state.copy_from_slice(&state);
+            *state = compress_finalize(prev_state, msgs, byte_count);
         });
 
         // let additional_lifting_ratio = (lifting_log_size - LOG_N_LANES) - max_log_size;
@@ -203,18 +201,17 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         #[cfg(feature = "parallel")]
         let iter_states = trasposed_states
             .par_iter_mut()
-            .zip(res.par_chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
+            .zip(res.par_chunks_exact_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
 
-        iter_states.for_each(|(state, target)| {
+        iter_states.for_each(|(state, dst)| {
             let untransposed = if IS_M31_OUTPUT {
                 let tmp = untranspose_states(*state);
                 std::array::from_fn(|i| reduce_to_m31_simd(tmp[i]))
             } else {
                 untranspose_states(*state)
             };
-            let state: [Blake2sHash; 1 << LOG_N_HASHES_PER_SIMD_STATE] =
-                unsafe { transmute(untransposed) };
-            target.copy_from_slice(&state);
+            let dst: &mut [Blake2sHash; 16] = dst.try_into().unwrap();
+            *dst = unsafe { transmute::<[u32x16; 8], [Blake2sHash; 16]>(untransposed) };
         });
 
         res
@@ -243,7 +240,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         #[cfg(feature = "parallel")]
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
-        iter.enumerate().for_each(|(i, chunk)| {
+        iter.enumerate().for_each(|(i, dst)| {
             let state = INITIAL_STATE;
             let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
             let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = array::from_fn(|j| {
@@ -254,8 +251,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             if IS_M31_OUTPUT {
                 untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));
             }
-            let state: [Blake2sHash; 16] = unsafe { transmute(untransposed) };
-            chunk.copy_from_slice(&state);
+            let dst: &mut [Blake2sHash; 16] = dst.try_into().unwrap();
+            *dst = unsafe { transmute::<[u32x16; 8], [Blake2sHash; 16]>(untransposed) };
         });
         res
     }
