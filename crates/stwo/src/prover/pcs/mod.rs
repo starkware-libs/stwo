@@ -34,7 +34,7 @@ pub mod quotient_ops;
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
     pub trees: TreeVec<MaybeOwned<'a, CommitmentTreeProver<B, MC>>>,
     pub config: PcsConfig,
-    twiddles: &'a TwiddleTree<B>,
+    pub twiddles: &'a TwiddleTree<B>,
     pub store_polynomials_coefficients: bool,
     /// Pre-allocated base field column pool for polynomial evaluation during commit.
     pub base_column_pool: MaybeOwned<'a, BaseColumnPool<B>>,

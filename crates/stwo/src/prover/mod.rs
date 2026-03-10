@@ -60,7 +60,12 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
         class = "CompositionPolynomialGeneration"
     )
     .entered();
-    let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
+
+    let composition_poly = component_provers.compute_composition_polynomial(
+        random_coeff,
+        &trace,
+        commitment_scheme.twiddles,
+    );
     span1.exit();
 
     // Commit on the Composition Polynomial by splitting its coeffs to two polynomialsof degree

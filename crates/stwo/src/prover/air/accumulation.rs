@@ -12,6 +12,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
@@ -86,7 +87,8 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 
     /// Computes f(P) as coefficients.
-    pub fn finalize(self) -> SecureCirclePoly<B> {
+    /// `twiddles` must be precomputed for the max-size canonical domain's half coset.
+    pub fn finalize(self, twiddles: &TwiddleTree<B>) -> SecureCirclePoly<B> {
         assert_eq!(
             self.random_coeff_powers.len(),
             0,
@@ -106,15 +108,12 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         if let Some(eval) = lifted_accumulation {
             // `lifted_accumulation` must be of size `log_size`, i.e. there must at least one sub
             // accumulation of size `log_size`.
-            let twiddles =
-                B::precompute_twiddles(CanonicCoset::new(log_size).circle_domain().half_coset);
-
             SecureCirclePoly(eval.columns.map(|c| {
                 CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
                     CanonicCoset::new(log_size).circle_domain(),
                     c,
                 )
-                .interpolate_with_twiddles(&twiddles)
+                .interpolate_with_twiddles(twiddles)
             }))
         } else {
             SecureCirclePoly(std::array::from_fn(|_| {
@@ -168,6 +167,7 @@ mod tests {
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::M31;
     use crate::prover::backend::cpu::CpuCircleEvaluation;
+    use crate::prover::poly::circle::PolyOps;
     use crate::qm31;
 
     #[test]
@@ -229,7 +229,12 @@ mod tests {
             }
             eval_chunk_offset += n_cols;
         }
-        let accumulator_poly = accumulator.finalize();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(LOG_SIZE_BOUND - 1)
+                .circle_domain()
+                .half_coset,
+        );
+        let accumulator_poly = accumulator.finalize(&twiddles);
 
         // Pick an arbitrary sample point.
         let point = CirclePoint::<SecureField>::get_point(98989892);
