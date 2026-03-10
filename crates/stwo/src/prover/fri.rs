@@ -102,7 +102,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     ) -> Self {
         assert!(column.domain.is_canonic(), "not canonic");
 
-        let first_layer = Self::commit_first_layer(channel, column);
+        let first_layer = Self::commit_first_layer(channel, &config, column);
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, column, twiddles);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
@@ -118,9 +118,10 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     /// Commits to the first FRI layer.
     fn commit_first_layer(
         channel: &mut MC::C,
+        config: &FriConfig,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
     ) -> FriFirstLayerProver<'a, B, MC::H> {
-        let layer = FriFirstLayerProver::new(column);
+        let layer = FriFirstLayerProver::new(column, config.fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         layer
     }
@@ -270,13 +271,18 @@ struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLi
 }
 
 impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerProver<'a, B, H> {
-    fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>) -> Self {
+    fn new(first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>, fold_step: u32) -> Self {
         let coordinate_columns = first_layer_column.columns.iter().collect();
+        let leaf_log_size =
+            if first_layer_column.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1 {
+                Some(LOG_PACKED_LEAF_SIZE)
+            } else {
+                None
+            };
         let merkle_tree = MerkleProverLifted::commit(
             coordinate_columns,
             first_layer_column.domain.log_size(),
-            // TODO(Leo): remove hardcoding once we have circle-to-line fri step.
-            None,
+            leaf_log_size,
         );
 
         FriFirstLayerProver {

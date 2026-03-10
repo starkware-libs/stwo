@@ -120,8 +120,8 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             column_commitment_domain,
             proof: proof.first_layer,
             folding_alpha: channel.draw_secure_felt(),
-            // TODO(Leo): enable packing once we have configurable folding step for the first layer.
-            pack_leaves: false,
+            fold_step: config.fold_step,
+            pack_leaves: column_commitment_domain.log_size() >= LOG_PACKED_LEAF_SIZE && config.fold_step > 1,
         };
 
         let mut inner_layers = Vec::new();
@@ -237,7 +237,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         first_layer_query_evals: Vec<SecureField>,
     ) -> Result<SparseEvaluation, FriVerificationError> {
         self.first_layer
-            .verify(queries, first_layer_query_evals, self.config.fold_step)
+            .verify(queries, first_layer_query_evals)
     }
 
     /// Verifies all inner layer decommitments.
@@ -420,6 +420,7 @@ struct FriFirstLayerVerifier<H: MerkleHasherLifted> {
     column_commitment_domain: CircleDomain,
     folding_alpha: SecureField,
     proof: FriLayerProof<H>,
+    fold_step: u32,
     pack_leaves: bool,
 }
 
@@ -442,7 +443,6 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
         &self,
         queries: &Queries,
         column_query_evals: Vec<SecureField>,
-        fold_step: u32,
     ) -> Result<SparseEvaluation, FriVerificationError> {
         let column_log_size = self.column_commitment_domain.log_size();
         assert_eq!(queries.log_domain_size, column_log_size);
@@ -454,7 +454,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 queries,
                 &column_query_evals,
                 &mut fri_witness,
-                fold_step,
+                self.fold_step,
             )
             .map_err(|InsufficientWitnessError| {
                 FriVerificationError::FirstLayerEvaluationsInvalid
