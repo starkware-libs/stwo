@@ -240,7 +240,7 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
         bit_reverse(&mut denom_inv);
 
         // Accumulator.
-        let [mut acc] = accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        let [mut acc] = accumulator.columns([(eval_domain, self.n_constraints())]);
         acc.random_coeff_powers.reverse();
         let acc_col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(acc.col) };
 
