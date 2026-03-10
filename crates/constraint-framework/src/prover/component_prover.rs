@@ -87,8 +87,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         bit_reverse(&mut denom_inv);
 
         // Note that `accum` is a mutable reference to a column in `evaluation_accumulator`.
-        let [mut accum] =
-            evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        let [mut accum] = evaluation_accumulator.columns([(eval_domain, self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
         let _span = span!(
@@ -219,8 +218,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
         bit_reverse(&mut denom_inv);
 
         // Accumulator.
-        let [mut accum] =
-            evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        let [mut accum] = evaluation_accumulator.columns([(eval_domain, self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
         let _span = span!(

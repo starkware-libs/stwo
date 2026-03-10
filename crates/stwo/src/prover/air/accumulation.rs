@@ -9,7 +9,7 @@ use tracing::{span, Level};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -22,10 +22,10 @@ use crate::prover::secure_column::SecureColumnByCoords;
 pub struct DomainEvaluationAccumulator<B: Backend> {
     random_coeff_powers: Vec<SecureField>,
     /// Accumulated evaluations for each log_size.
+    /// Each entry holds an optional (domain, column) pair for evaluations at that log_size.
     /// Each `sub_accumulation` holds the sum over all columns i of that log_size, of
-    /// `evaluation_i * alpha^(N - 1 - i)`
-    /// where `N` is the total number of evaluations.
-    sub_accumulations: Vec<Option<SecureColumnByCoords<B>>>,
+    /// `evaluation_i * alpha^(N - 1 - i)` on the corresponding domain.
+    sub_accumulations: Vec<Option<(CircleDomain, SecureColumnByCoords<B>)>>,
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
@@ -40,27 +40,42 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         }
     }
 
-    /// Gets accumulators for some sizes.
-    /// `n_cols_per_size` is an array of pairs (log_size, n_cols).
+    /// Gets accumulators for some domains.
+    /// `n_cols_per_domain` is an array of pairs (domain, n_cols).
     /// For each entry, a [ColumnAccumulator] is returned, expecting to accumulate `n_cols`
-    /// evaluations of size `log_size`.
-    /// The array size, `N`, is the number of different sizes.
+    /// evaluations on `domain`.
+    /// The array size, `N`, is the number of different domains.
     pub fn columns<const N: usize>(
         &mut self,
-        n_cols_per_size: [(u32, usize); N],
+        n_cols_per_domain: [(CircleDomain, usize); N],
     ) -> [ColumnAccumulator<'_, B>; N] {
-        self.sub_accumulations
-            .get_disjoint_mut(n_cols_per_size.map(|(log_size, _)| log_size as usize))
-            .unwrap_or_else(|e| panic!("invalid log_sizes: {e}"))
+        let log_sizes = n_cols_per_domain.map(|(domain, _)| domain.log_size() as usize);
+        let slots = self
+            .sub_accumulations
+            .get_disjoint_mut(log_sizes)
+            .unwrap_or_else(|e| panic!("invalid log_sizes: {e}"));
+
+        slots
             .into_iter()
-            .zip(n_cols_per_size)
-            .map(|(col, (log_size, n_cols))| {
+            .zip(n_cols_per_domain)
+            .map(|(slot, (domain, n_cols))| {
                 let random_coeffs = self
                     .random_coeff_powers
                     .split_off(self.random_coeff_powers.len() - n_cols);
+                if let Some((existing_domain, _)) = slot.as_ref() {
+                    assert_eq!(
+                        *existing_domain,
+                        domain,
+                        "Domain mismatch for log_size {}: existing domain differs from requested",
+                        domain.log_size()
+                    );
+                }
+                let (_, col) = slot.get_or_insert_with(|| {
+                    (domain, SecureColumnByCoords::zeros(1 << domain.log_size()))
+                });
                 ColumnAccumulator {
                     random_coeff_powers: random_coeffs,
-                    col: col.get_or_insert_with(|| SecureColumnByCoords::zeros(1 << log_size)),
+                    col,
                 }
             })
             .collect_vec()
@@ -102,7 +117,19 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         )
         .entered();
 
-        let sub_accumulations = self.sub_accumulations.into_iter().flatten().collect_vec();
+        let sub_accumulations = self
+            .sub_accumulations
+            .into_iter()
+            .filter_map(|entry| {
+                entry.map(|(domain, col)| {
+                    assert!(
+                        domain.is_canonic(),
+                        "non-canonical domain are not supported"
+                    );
+                    col
+                })
+            })
+            .collect_vec();
         let lifted_accumulation = B::lift_and_accumulate(sub_accumulations);
 
         if let Some(eval) = lifted_accumulation {
@@ -196,7 +223,7 @@ mod tests {
             LOG_SIZE_BOUND - 1,
             evaluations.len(),
         );
-        let n_cols_per_size: [(u32, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
+        let n_cols_per_domain: [(CircleDomain, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
             array::from_fn(|i| {
                 let current_log_size = LOG_SIZE_MIN + i as u32;
                 let n_cols = log_sizes
@@ -204,18 +231,19 @@ mod tests {
                     .copied()
                     .filter(|&log_size| log_size == current_log_size)
                     .count();
-                (current_log_size, n_cols)
+                (CanonicCoset::new(current_log_size).circle_domain(), n_cols)
             });
 
-        let mut cols = accumulator.columns(n_cols_per_size);
+        let mut cols = accumulator.columns(n_cols_per_domain);
         let mut eval_chunk_offset = 0;
-        for (log_size, n_cols) in n_cols_per_size.iter() {
+        for (domain, n_cols) in n_cols_per_domain.iter() {
+            let log_size = domain.log_size();
             for index in 0..(1 << log_size) {
                 let mut val = SecureField::zero();
                 for (eval_index, (col_log_size, evaluation)) in
                     log_sizes.iter().zip(evaluations.iter()).enumerate()
                 {
-                    if *log_size != *col_log_size {
+                    if log_size != *col_log_size {
                         continue;
                     }
                     // The random coefficient powers chunk is in regular order.
@@ -255,5 +283,56 @@ mod tests {
         }
 
         assert_eq!(accumulator_res, res);
+    }
+
+    /// Tests that calling `columns()` twice for the same log_size accumulates correctly
+    /// (the second call must not zero out the first component's values).
+    #[test]
+    fn test_accumulate_two_components_with_the_same_size() {
+        const LOG_SIZE: u32 = 5;
+        let alpha = qm31!(2, 3, 4, 5);
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+
+        // Two components, each with 1 constraint, both at the same log_size.
+        let mut accumulator = DomainEvaluationAccumulator::<CpuBackend>::new(alpha, LOG_SIZE, 2);
+
+        // First component accumulates.
+        let [mut col1] = accumulator.columns([(domain, 1)]);
+        for i in 0..(1 << LOG_SIZE) {
+            col1.accumulate(i, col1.random_coeff_powers[0] * M31::from(i as u32 + 1));
+        }
+
+        // Second component accumulates into the same log_size.
+        let [mut col2] = accumulator.columns([(domain, 1)]);
+        for i in 0..(1 << LOG_SIZE) {
+            col2.accumulate(i, col2.random_coeff_powers[0] * M31::from(100));
+        }
+
+        let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+        let poly = accumulator.finalize(&twiddles);
+
+        // Verify at a sample point using direct computation.
+        let point = CirclePoint::<SecureField>::get_point(12345);
+        let actual = poly.eval_at_point(point);
+
+        // Direct: alpha^1 * eval1(point) + alpha^0 * eval2(point)
+        let eval1 = CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(
+            domain,
+            (0..(1 << LOG_SIZE))
+                .map(|i| M31::from(i as u32 + 1))
+                .collect(),
+        )
+        .interpolate()
+        .eval_at_point(point);
+
+        let eval2 = CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(
+            domain,
+            vec![M31::from(100); 1 << LOG_SIZE],
+        )
+        .interpolate()
+        .eval_at_point(point);
+
+        let expected = alpha * eval1 + eval2;
+        assert_eq!(actual, expected);
     }
 }
