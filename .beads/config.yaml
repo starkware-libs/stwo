@@ -1,0 +1,4 @@
+repos:
+  primary: "."
+  additional:
+    - "/home/ilya/.beads-planning"
