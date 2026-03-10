@@ -11,7 +11,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
-use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
+use crate::prover::poly::circle::{
+    CircleCoefficients, CircleEvaluation, SecureCirclePoly, SecureEvaluation,
+};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -121,11 +123,17 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .into_iter()
             .filter_map(|entry| {
                 entry.map(|(domain, col)| {
-                    assert!(
-                        domain.is_canonic(),
-                        "non-canonical domain are not supported"
-                    );
-                    col
+                    if domain.is_canonic() {
+                        col
+                    } else {
+                        // Convert from non-canonical domain to canonical via IFFT+FFT.
+                        let canonical_domain = CanonicCoset::new(domain.log_size()).circle_domain();
+                        let sub_twiddles = B::precompute_twiddles(domain.half_coset);
+                        let poly = SecureEvaluation::<B, BitReversedOrder>::new(domain, col)
+                            .interpolate_with_twiddles(&sub_twiddles);
+                        poly.evaluate_with_twiddles(canonical_domain, twiddles)
+                            .values
+                    }
                 })
             })
             .collect_vec();
@@ -282,5 +290,72 @@ mod tests {
         }
 
         assert_eq!(accumulator_res, res);
+    }
+
+    /// Tests that accumulating on a non-canonical subdomain and finalizing produces the same
+    /// result as accumulating on the canonical domain directly.
+    #[test]
+    fn test_non_canonical_domain_accumulation() {
+        let mut rng = SmallRng::seed_from_u64(42);
+        const LOG_SIZE: u32 = 6;
+        let alpha = qm31!(7, 11, 13, 17);
+        let n_constraints = 3;
+
+        // Generate a random polynomial and evaluate it on both canonical and subdomain.
+        let canonical_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let canonical_values: Vec<BaseField> = (0..(1 << LOG_SIZE))
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect();
+        let poly = CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(
+            canonical_domain,
+            canonical_values.clone(),
+        )
+        .interpolate();
+
+        // Get a non-canonical subdomain by splitting a larger domain.
+        let larger_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
+        let (subdomain, _) = larger_domain.split(1);
+        assert!(!subdomain.is_canonic());
+        assert_eq!(subdomain.log_size(), LOG_SIZE);
+
+        // Evaluate the polynomial on the subdomain.
+        let sub_twiddles = CpuBackend::precompute_twiddles(subdomain.half_coset);
+        let sub_eval = poly.evaluate_with_twiddles(subdomain, &sub_twiddles);
+
+        // Accumulate on the non-canonical subdomain.
+        let mut accum_sub =
+            DomainEvaluationAccumulator::<CpuBackend>::new(alpha, LOG_SIZE, n_constraints);
+        let [mut col_sub] = accum_sub.columns([(subdomain, n_constraints)]);
+        for i in 0..(1 << LOG_SIZE) {
+            let val = col_sub
+                .random_coeff_powers
+                .iter()
+                .fold(SecureField::zero(), |acc, &coeff| acc + coeff * sub_eval[i]);
+            col_sub.accumulate(i, val);
+        }
+        let twiddles = CpuBackend::precompute_twiddles(canonical_domain.half_coset);
+        let poly_sub = accum_sub.finalize(&twiddles);
+
+        // Accumulate on the canonical domain directly.
+        let mut accum_canon =
+            DomainEvaluationAccumulator::<CpuBackend>::new(alpha, LOG_SIZE, n_constraints);
+        let [mut col_canon] = accum_canon.columns([(canonical_domain, n_constraints)]);
+        for (i, &canonical_val) in canonical_values.iter().enumerate() {
+            let val = col_canon
+                .random_coeff_powers
+                .iter()
+                .fold(SecureField::zero(), |acc, &coeff| {
+                    acc + coeff * canonical_val
+                });
+            col_canon.accumulate(i, val);
+        }
+        let poly_canon = accum_canon.finalize(&twiddles);
+
+        // Both should produce the same polynomial.
+        let point = CirclePoint::<SecureField>::get_point(12345);
+        assert_eq!(
+            poly_sub.eval_at_point(point),
+            poly_canon.eval_at_point(point)
+        );
     }
 }
