@@ -10,14 +10,14 @@ use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Poly;
 use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::mempool::BaseColumnPool;
-use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     // TODO(alont): Use a column instead of this type.
     /// The type for precomputed twiddles.
-    type Twiddles;
+    type Twiddles: TwiddleBuffer<BitReversedOrder>;
 
     /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
     /// evaluation. Used by the [`CircleEvaluation::interpolate()`] function.

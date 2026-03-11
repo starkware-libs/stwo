@@ -13,7 +13,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
-use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
@@ -183,7 +183,15 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
                     let committed_domain =
                         CanonicCoset::new(log_size + log_expansion).circle_domain();
                     let subdomain = committed_domain.split(log_expansion).0;
-                    let tw = B::precompute_twiddles(subdomain.half_coset);
+                    let tw = TwiddleTree {
+                        root_coset: subdomain.half_coset,
+                        // Only itwiddles are needed for interpolation.
+                        twiddles: TwiddleBuffer::empty(),
+                        itwiddles: twiddles.itwiddles.extract_subdomain_twiddles(
+                            committed_domain.log_size(),
+                            subdomain.log_size(),
+                        ),
+                    };
                     (subdomain, Some(tw))
                 }
             };
