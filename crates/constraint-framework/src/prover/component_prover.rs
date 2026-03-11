@@ -41,11 +41,15 @@ fn get_trace_columns<'a, B: Backend>(
     mode: EvaluationMode,
 ) -> TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>> {
     match mode {
-        EvaluationMode::SubDomain { log_expansion: 0 } => {
+        EvaluationMode::SubDomain { .. } => {
+            // Borrow committed evaluations directly. Only the first
+            // 2^max_constraint_log_degree_bound indices are going to be used for the
+            // constraint quotient evaluation (in bit-reversed order these form the
+            // subdomain coset).
+            //
+            // Ideally we'd slice to just those indices, but the type system requires
+            // borrowing the entire evaluation.
             component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
-        }
-        EvaluationMode::SubDomain { log_expansion: _ } => {
-            unimplemented!("SubDomain with log_expansion > 0 not yet supported")
         }
         EvaluationMode::ExtendToEvalDomain => {
             let _span = span!(Level::INFO, "Constraint Extension").entered();
@@ -74,8 +78,7 @@ fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
     trace: &'a Trace<'a, B>,
     mode: EvaluationMode,
 ) -> ConstraintQuotientInputs<'a, B> {
-    let eval_domain =
-        CanonicCoset::new(component.max_constraint_log_degree_bound()).circle_domain();
+    let max_constraint_log_degree_bound = component.max_constraint_log_degree_bound();
     let trace_domain = CanonicCoset::new(component.eval.log_size());
 
     let mut component_polys = trace.polys.sub_tree(&component.trace_locations);
@@ -85,6 +88,14 @@ fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
         .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
         .collect();
 
+    let eval_domain = match mode {
+        EvaluationMode::SubDomain { log_expansion } => {
+            subdomain_eval_domain(max_constraint_log_degree_bound, log_expansion)
+        }
+        EvaluationMode::ExtendToEvalDomain => {
+            CanonicCoset::new(max_constraint_log_degree_bound).circle_domain()
+        }
+    };
     let trace = get_trace_columns(component_polys, eval_domain, mode);
 
     // Denom inverses.
@@ -246,6 +257,18 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             accum.col,
         );
     }
+}
+
+/// Computes the evaluation subdomain for a component given its constraint degree bound
+/// and the log_expansion from `EvaluationMode::SubDomain`.
+///
+/// When `log_expansion == 0`, returns the canonical domain.
+/// When `log_expansion > 0`, returns the first subdomain obtained by splitting the
+/// committed domain `log_expansion` times.
+fn subdomain_eval_domain(max_constraint_log_degree_bound: u32, log_expansion: u32) -> CircleDomain {
+    let committed_domain =
+        CanonicCoset::new(max_constraint_log_degree_bound + log_expansion).circle_domain();
+    committed_domain.split(log_expansion).0
 }
 
 fn accumulate_pointwise_cpu<E: FrameworkEval>(
