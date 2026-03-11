@@ -519,10 +519,16 @@ pub fn verify_blake<MC: MerkleChannel>(
 mod tests {
     use std::env;
 
+    use stwo::core::fri::FriConfig;
     use stwo::core::pcs::PcsConfig;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 
     use crate::blake::air::{prove_blake, verify_blake};
+
+    fn prove_and_verify_blake(log_n_instances: u32, config: PcsConfig) {
+        let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
+        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
+    }
 
     // Note: this test is slow. Only run in release.
     #[cfg_attr(not(feature = "slow-tests"), ignore)]
@@ -538,12 +544,20 @@ mod tests {
             .unwrap_or_else(|_| "6".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig::default();
+        prove_and_verify_blake(log_n_instances, PcsConfig::default());
+    }
 
-        // Prove.
-        let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
-
-        // Verify.
-        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
+    /// Tests blake prove with log_blowup_factor=2, which triggers the common subdomain
+    /// optimization (committed columns are larger than the eval domain).
+    /// This exercises constraints with non-zero offsets (logup uses [-1, 0]) on
+    /// non-canonical subdomains.
+    #[cfg_attr(not(feature = "slow-tests"), ignore)]
+    #[test_log::test]
+    fn test_simd_blake_prove_large_blowup() {
+        let config = PcsConfig {
+            fri_config: FriConfig::new(0, 2, 3, 1),
+            ..PcsConfig::default()
+        };
+        prove_and_verify_blake(6, config);
     }
 }
