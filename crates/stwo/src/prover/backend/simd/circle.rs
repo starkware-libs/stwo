@@ -20,7 +20,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse, Field, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
+use crate::core::poly::utils::{
+    domain_line_twiddles_from_tree, fold, get_folding_alphas, repack_subdomain_twiddles,
+};
 use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
@@ -481,6 +483,27 @@ impl PolyOps for SimdBackend {
             root_coset,
             twiddles: dbl_twiddles,
             itwiddles: dbl_itwiddles,
+        }
+    }
+
+    fn extract_subdomain_twiddles(
+        twiddles: &TwiddleTree<Self>,
+        subdomain_half_coset: Coset,
+        committed_half_log_size: u32,
+    ) -> TwiddleTree<Self> {
+        let subdomain_half_log_size = subdomain_half_coset.log_size();
+        TwiddleTree {
+            root_coset: subdomain_half_coset,
+            twiddles: repack_subdomain_twiddles(
+                subdomain_half_log_size,
+                committed_half_log_size,
+                &twiddles.twiddles,
+            ),
+            itwiddles: repack_subdomain_twiddles(
+                subdomain_half_log_size,
+                committed_half_log_size,
+                &twiddles.itwiddles,
+            ),
         }
     }
 

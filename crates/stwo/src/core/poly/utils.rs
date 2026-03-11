@@ -113,6 +113,65 @@ pub fn domain_line_twiddles_from_tree<T>(
         .collect()
 }
 
+/// Extracts twiddles for a subdomain from a larger twiddle buffer.
+///
+/// The subdomain is obtained by splitting the domain corresponding to
+/// `committed_half_log_size` some number of times. In bit-reversed order, the subdomain's
+/// twiddles at each FFT layer are the first portion of the corresponding committed domain's
+/// twiddle layer.
+///
+/// The returned buffer has the same layout as a canonical twiddle buffer of the subdomain's size,
+/// so it can be used with [`domain_line_twiddles_from_tree`].
+pub fn repack_subdomain_twiddles<T: Copy>(
+    subdomain_half_log_size: u32,
+    committed_half_log_size: u32,
+    twiddle_buffer: &[T],
+) -> Vec<T> {
+    let root_half_log_size = twiddle_buffer.len().ilog2();
+    assert!(
+        subdomain_half_log_size <= committed_half_log_size
+            && committed_half_log_size <= root_half_log_size,
+        "Invalid sizes: subdomain={subdomain_half_log_size}, committed={committed_half_log_size}, \
+         root={root_half_log_size}"
+    );
+
+    // First, locate the committed domain's layers within the root buffer.
+    // The committed domain's outermost layer (layer 0) starts at the offset where the root
+    // buffer's layer for coset log_size `committed_half_log_size` begins.
+    // Root buffer layout: [layer for root (size 2^{K-1}) | layer after 1 double (size 2^{K-2}) |
+    // ...] The committed layer j corresponds to root layer (K - C + j), where K =
+    // root_half_log_size, C = committed_half_log_size.
+    let skip_layers = root_half_log_size - committed_half_log_size;
+
+    // Compute offset to the first committed layer within the root buffer.
+    // Skip `skip_layers` root layers: sizes 2^{K-1}, 2^{K-2}, ..., 2^{K-skip_layers}.
+    // Total skip = 2^K - 2^{K-skip_layers}.
+    let committed_start = if skip_layers == 0 {
+        0
+    } else {
+        (1usize << root_half_log_size) - (1usize << (root_half_log_size - skip_layers))
+    };
+
+    // Output buffer: 2^{L-1} + 2^{L-2} + ... + 1 + 1 (padding) = 2^L.
+    let out_size = 1usize << subdomain_half_log_size;
+    let mut result = Vec::with_capacity(out_size);
+    let mut committed_offset = committed_start;
+    let mut committed_layer_size = 1usize << (committed_half_log_size - 1);
+    for _ in 0..subdomain_half_log_size {
+        let subdomain_layer_size =
+            committed_layer_size >> (committed_half_log_size - subdomain_half_log_size);
+        result.extend_from_slice(
+            &twiddle_buffer[committed_offset..committed_offset + subdomain_layer_size],
+        );
+        committed_offset += committed_layer_size;
+        committed_layer_size /= 2;
+    }
+    // Padding to make length a power of 2 (copy from committed buffer's padding).
+    result.push(twiddle_buffer[twiddle_buffer.len() - 1]);
+    debug_assert_eq!(result.len(), out_size);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use std_shims::vec;

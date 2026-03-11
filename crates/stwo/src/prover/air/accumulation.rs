@@ -141,7 +141,12 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
                     let committed_domain =
                         CanonicCoset::new(log_size + log_expansion).circle_domain();
                     let subdomain = committed_domain.split(log_expansion).0;
-                    let tw = B::precompute_twiddles(subdomain.half_coset);
+                    let committed_half_log_size = committed_domain.half_coset.log_size();
+                    let tw = B::extract_subdomain_twiddles(
+                        twiddles,
+                        subdomain.half_coset,
+                        committed_half_log_size,
+                    );
                     (subdomain, Some(tw))
                 }
             };

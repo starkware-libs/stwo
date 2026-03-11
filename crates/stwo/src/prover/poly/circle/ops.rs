@@ -128,6 +128,19 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;
 
+    /// Extracts a twiddle tree for a subdomain from a larger twiddle tree.
+    ///
+    /// The subdomain is obtained by splitting a committed domain. In bit-reversed order, the
+    /// subdomain's twiddles at each FFT layer are the first portion of the corresponding
+    /// committed domain's twiddle layer.
+    ///
+    /// `committed_half_log_size` is the log_size of the committed domain's half coset.
+    fn extract_subdomain_twiddles(
+        twiddles: &TwiddleTree<Self>,
+        subdomain_half_coset: Coset,
+        committed_half_log_size: u32,
+    ) -> TwiddleTree<Self>;
+
     /// Given a polynomial `p`, it outputs two polynomials `p_left`, `p_right` of half the degree,
     /// which satisfy the identity
     ///
