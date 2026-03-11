@@ -192,34 +192,36 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
-        let trace: TreeVec<
-            Vec<Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
+        // Common subdomain optimization: if all committed columns are at least as large as
+        // eval_domain, we can borrow them directly instead of extending.
+        let (actual_eval_domain, trace) = if let Some(subdomain) = try_get_common_subdomain(
+            component_polys.iter().flatten().map(|c| c.evals.domain),
+            eval_domain,
+        ) {
+            // Common subdomain path: borrow all columns as-is. The evaluator only accesses
+            // indices within the subdomain range, so larger columns are safe to borrow.
+            let trace = component_polys.map_cols(|c| Cow::Borrowed(&c.evals));
+            (subdomain, trace)
+        } else {
+            // Extension path: some columns are smaller than eval_domain.
             let _span = span!(Level::INFO, "Constraint Extension").entered();
             let twiddles = CpuBackend::precompute_twiddles(eval_domain.half_coset);
-            component_polys
+            let trace = component_polys
                 .as_cols_ref()
-                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)))
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)));
+            (eval_domain, trace)
         };
 
         // Denom inverses.
-        let log_expand = eval_domain.log_size() - trace_domain.log_size();
+        let log_expand = actual_eval_domain.log_size() - trace_domain.log_size();
         let mut denom_inv = (0..1 << log_expand)
-            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+            .map(|i| coset_vanishing(trace_domain.coset(), actual_eval_domain.at(i)).inverse())
             .collect_vec();
         bit_reverse(&mut denom_inv);
 
         // Accumulator.
-        let [mut accum] = evaluation_accumulator.columns([(eval_domain, self.n_constraints())]);
+        let [mut accum] =
+            evaluation_accumulator.columns([(actual_eval_domain, self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
         let _span = span!(
@@ -233,7 +235,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
         *accum.col = accumulate_pointwise_cpu(
             self,
             trace_cols,
-            eval_domain.log_size(),
+            actual_eval_domain.log_size(),
             trace_domain.log_size(),
             denom_inv,
             &accum.random_coeff_powers,
