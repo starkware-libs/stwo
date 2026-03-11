@@ -27,7 +27,7 @@ use crate::core::vcs_lifted::verifier::{
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FriConfig {
     pub log_blowup_factor: u32,
     pub log_last_layer_degree_bound: u32,
