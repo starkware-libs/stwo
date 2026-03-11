@@ -7,7 +7,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::ColumnVec;
-use crate::prover::air::accumulation::DomainEvaluationAccumulator;
+use crate::prover::air::accumulation::{DomainEvaluationAccumulator, EvaluationMode};
 use crate::prover::backend::{Backend, Col};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -100,12 +100,20 @@ impl<B: Backend> ComponentProvers<'_, B> {
         random_coeff: SecureField,
         trace: &Trace<'_, B>,
         twiddles: &TwiddleTree<B>,
+        log_blowup_factor: u32,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
+        let components: Vec<&dyn Component> = self
+            .components
+            .iter()
+            .map(|c| *c as &dyn Component)
+            .collect();
+        let evaluation_mode = EvaluationMode::infer(&components, log_blowup_factor);
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
             self.components().composition_log_degree_bound(),
             total_constraints,
+            evaluation_mode,
         );
         for component in &self.components {
             component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)

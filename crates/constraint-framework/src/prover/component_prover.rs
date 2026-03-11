@@ -8,17 +8,17 @@ use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::TreeVec;
-use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
 use stwo::core::utils::bit_reverse;
 use stwo::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::CpuBackend;
-use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::backend::{Backend, CpuBackend};
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
-use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
+use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, EvaluationMode, Poly, Trace};
 use tracing::{span, Level};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};
@@ -51,33 +51,11 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
-        let trace: TreeVec<
-            Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
-            let _span = span!(Level::INFO, "Constraint Extension").entered();
-            let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
-            #[cfg(not(feature = "parallel"))]
-            {
-                component_polys.as_cols_ref().map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
-            #[cfg(feature = "parallel")]
-            {
-                component_polys.as_cols_ref().par_map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
-        };
+        let trace = get_constraint_quotients_inputs(
+            eval_domain,
+            component_polys,
+            evaluation_accumulator.evaluation_mode(),
+        );
 
         // Denom inverses.
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
@@ -192,24 +170,11 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
-        let trace: TreeVec<
-            Vec<Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
-            let _span = span!(Level::INFO, "Constraint Extension").entered();
-            let twiddles = CpuBackend::precompute_twiddles(eval_domain.half_coset);
-            component_polys
-                .as_cols_ref()
-                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)))
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
-        };
+        let trace = get_constraint_quotients_inputs(
+            eval_domain,
+            component_polys,
+            evaluation_accumulator.evaluation_mode(),
+        );
 
         // Denom inverses.
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
@@ -240,6 +205,39 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             &accum.random_coeff_powers,
             accum.col,
         );
+    }
+}
+
+/// Prepares trace evaluations for constraint quotient computation. Either borrows committed
+/// evaluations directly (subdomain mode) or extends them to the evaluation domain.
+fn get_constraint_quotients_inputs<'a, B: Backend>(
+    eval_domain: CircleDomain,
+    component_polys: TreeVec<Vec<&'a &Poly<B>>>,
+    mode: EvaluationMode,
+) -> TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>> {
+    match mode {
+        EvaluationMode::SubDomain { log_expansion: 0 } => {
+            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+        }
+        EvaluationMode::SubDomain { log_expansion: _ } => {
+            unimplemented!("SubDomain with log_expansion > 0 not yet supported")
+        }
+        EvaluationMode::ExtendToEvalDomain => {
+            let _span = span!(Level::INFO, "Constraint Extension").entered();
+            let twiddles = B::precompute_twiddles(eval_domain.half_coset);
+            #[cfg(not(feature = "parallel"))]
+            {
+                component_polys.as_cols_ref().map_cols(|col| {
+                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                })
+            }
+            #[cfg(feature = "parallel")]
+            {
+                component_polys.as_cols_ref().par_map_cols(|col| {
+                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                })
+            }
+        }
     }
 }
 
