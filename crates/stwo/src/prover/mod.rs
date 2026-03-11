@@ -10,8 +10,8 @@ use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
 
 mod air;
-pub use air::component_prover::{ComponentProver, ComponentProvers, Trace};
-pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator};
+pub use air::component_prover::{ComponentProver, ComponentProvers, Poly, Trace};
+pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator, EvaluationMode};
 mod pcs;
 pub use pcs::quotient_ops::QuotientOps;
 pub use pcs::{CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder};
@@ -65,6 +65,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
         random_coeff,
         &trace,
         commitment_scheme.twiddles,
+        commitment_scheme.config.fri_config.log_blowup_factor,
     );
     span1.exit();
 
