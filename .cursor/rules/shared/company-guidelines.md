@@ -1,0 +1,1 @@
+/home/ilya/.claude/plugins/cache/starkware-tools/ai-assisted-coding/1.0.0/rules/company-guidelines.md
