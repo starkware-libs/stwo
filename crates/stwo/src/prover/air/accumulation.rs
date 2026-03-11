@@ -16,6 +16,18 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
+/// Controls how constraint evaluations are accumulated and finalized.
+#[derive(Debug, Clone, Copy)]
+pub enum EvaluationMode {
+    /// The constraints are evaluated using the evaluations from the commitment phase.
+    /// Sub-accumulations live on (possibly non-canonical) subdomains obtained by
+    /// splitting commitment domains `log_expansion` times.
+    SubDomain { log_expansion: u32 },
+    /// All the columns are low degree extended to the evaluation domain and the constraints are
+    /// evaluated on the evaluation domain.
+    ExtendToEvalDomain,
+}
+
 // TODO(ShaharS), rename terminology to constraints instead of columns.
 /// Accumulates evaluations of u_i(P), each at an evaluation domain of the size of that polynomial.
 /// Computes the coefficients of f(P).
@@ -26,17 +38,25 @@ pub struct DomainEvaluationAccumulator<B: Backend> {
     /// `evaluation_i * alpha^(N - 1 - i)`
     /// where `N` is the total number of evaluations.
     sub_accumulations: Vec<Option<SecureColumnByCoords<B>>>,
+    #[allow(dead_code)]
+    evaluation_mode: EvaluationMode,
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Creates a new accumulator.
     /// `random_coeff` should be a secure random field element, drawn from the channel.
     /// `max_log_size` is the maximum log_size of the accumulated evaluations.
-    pub fn new(random_coeff: SecureField, max_log_size: u32, total_columns: usize) -> Self {
+    pub fn new(
+        random_coeff: SecureField,
+        max_log_size: u32,
+        total_columns: usize,
+        evaluation_mode: EvaluationMode,
+    ) -> Self {
         let max_log_size = max_log_size as usize;
         Self {
             random_coeff_powers: B::generate_secure_powers(random_coeff, total_columns),
             sub_accumulations: (0..(max_log_size + 1)).map(|_| None).collect(),
+            evaluation_mode,
         }
     }
 
@@ -79,6 +99,11 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn skip_coeffs(&mut self, n_coeffs: usize) {
         self.random_coeff_powers
             .truncate(self.random_coeff_powers.len() - n_coeffs);
+    }
+
+    /// Returns the evaluation mode.
+    pub const fn evaluation_mode(&self) -> EvaluationMode {
+        self.evaluation_mode
     }
 
     /// Returns the log size of the resulting polynomial.
@@ -195,6 +220,7 @@ mod tests {
             alpha,
             LOG_SIZE_BOUND - 1,
             evaluations.len(),
+            EvaluationMode::SubDomain { log_expansion: 0 },
         );
         let n_cols_per_size: [(u32, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
             array::from_fn(|i| {

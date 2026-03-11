@@ -7,7 +7,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::ColumnVec;
-use crate::prover::air::accumulation::DomainEvaluationAccumulator;
+use crate::prover::air::accumulation::{DomainEvaluationAccumulator, EvaluationMode};
 use crate::prover::backend::{Backend, Col};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -100,16 +100,39 @@ impl<B: Backend> ComponentProvers<'_, B> {
         random_coeff: SecureField,
         trace: &Trace<'_, B>,
         twiddles: &TwiddleTree<B>,
+        log_blowup_factor: u32,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
+        let evaluation_mode = self.evaluation_mode(log_blowup_factor);
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
             self.components().composition_log_degree_bound(),
             total_constraints,
+            evaluation_mode,
         );
         for component in &self.components {
             component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
         }
         accumulator.finalize(twiddles)
+    }
+
+    /// Determines the evaluation mode based on whether all components can use subdomain
+    /// evaluation (blowup == constraint degree) or need full extension.
+    fn evaluation_mode(&self, log_blowup_factor: u32) -> EvaluationMode {
+        let all_match = self.components.iter().all(|c| {
+            let trace_log_size = c
+                .trace_log_degree_bounds()
+                .iter()
+                .flatten()
+                .copied()
+                .max()
+                .unwrap_or(0);
+            c.max_constraint_log_degree_bound() == trace_log_size + log_blowup_factor
+        });
+        if all_match {
+            EvaluationMode::SubDomain { log_expansion: 0 }
+        } else {
+            EvaluationMode::ExtendToEvalDomain
+        }
     }
 }

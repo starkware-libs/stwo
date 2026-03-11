@@ -18,7 +18,7 @@ use stwo::prover::backend::CpuBackend;
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
-use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
+use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, EvaluationMode, Trace};
 use tracing::{span, Level};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};
@@ -51,32 +51,30 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
+        // Extend trace columns to the evaluation domain if needed.
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
-            let _span = span!(Level::INFO, "Constraint Extension").entered();
-            let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
-            #[cfg(not(feature = "parallel"))]
-            {
-                component_polys.as_cols_ref().map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
+        > = match evaluation_accumulator.evaluation_mode() {
+            EvaluationMode::SubDomain { log_expansion: 0 } => {
+                component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
             }
-            #[cfg(feature = "parallel")]
-            {
-                component_polys.as_cols_ref().par_map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
+            EvaluationMode::ExtendToEvalDomain => {
+                let _span = span!(Level::INFO, "Constraint Extension").entered();
+                let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
+                #[cfg(not(feature = "parallel"))]
+                {
+                    component_polys.as_cols_ref().map_cols(|col| {
+                        Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                    })
+                }
+                #[cfg(feature = "parallel")]
+                {
+                    component_polys.as_cols_ref().par_map_cols(|col| {
+                        Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                    })
+                }
             }
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+            _ => unimplemented!("SubDomain with log_expansion > 0 not yet supported"),
         };
 
         // Denom inverses.
@@ -192,23 +190,21 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
+        // Extend trace columns to the evaluation domain if needed.
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
-            let _span = span!(Level::INFO, "Constraint Extension").entered();
-            let twiddles = CpuBackend::precompute_twiddles(eval_domain.half_coset);
-            component_polys
-                .as_cols_ref()
-                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)))
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+        > = match evaluation_accumulator.evaluation_mode() {
+            EvaluationMode::SubDomain { log_expansion: 0 } => {
+                component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+            }
+            EvaluationMode::ExtendToEvalDomain => {
+                let _span = span!(Level::INFO, "Constraint Extension").entered();
+                let twiddles = CpuBackend::precompute_twiddles(eval_domain.half_coset);
+                component_polys.as_cols_ref().map_cols(|col| {
+                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                })
+            }
+            _ => unimplemented!("SubDomain with log_expansion > 0 not yet supported"),
         };
 
         // Denom inverses.
