@@ -8,9 +8,9 @@ use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::TreeVec;
-use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
 use stwo::core::utils::bit_reverse;
-use stwo::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
+use stwo::prover::backend::simd::column::{BaseColumn, VeryPackedSecureColumnByCoords};
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
 use stwo::prover::backend::simd::SimdBackend;
@@ -51,43 +51,55 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        // Extend trace if necessary.
-        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain. (For larger blowup factors).
-        let need_to_extend = component_polys
-            .iter()
-            .flatten()
-            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
-        let trace: TreeVec<
-            Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-        > = if need_to_extend {
+        // Common subdomain optimization: if all committed columns are at least as large as
+        // eval_domain, we can slice a common subdomain instead of extending.
+        let (actual_eval_domain, trace) = if let Some(subdomain) = try_get_common_subdomain(
+            component_polys.iter().flatten().map(|c| c.evals.domain),
+            eval_domain,
+        ) {
+            // Common subdomain path: borrow or slice each column to the subdomain size.
+            let _span = (subdomain != eval_domain)
+                .then(|| span!(Level::INFO, "Common subdomain slicing").entered());
+            let trace = component_polys.map_cols(|c| {
+                let committed_log_size = c.evals.domain.log_size();
+                if committed_log_size == subdomain.log_size() {
+                    Cow::Borrowed(&c.evals)
+                } else {
+                    let n_packed = 1 << (subdomain.log_size() - LOG_N_LANES);
+                    let sliced_data = c.evals.values.data[..n_packed].to_vec();
+                    let sliced_col = BaseColumn {
+                        data: sliced_data,
+                        length: 1 << subdomain.log_size(),
+                    };
+                    Cow::Owned(CircleEvaluation::new(subdomain, sliced_col))
+                }
+            });
+            (subdomain, trace)
+        } else {
+            // Extension path: some columns are smaller than eval_domain.
             let _span = span!(Level::INFO, "Constraint Extension").entered();
             let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
             #[cfg(not(feature = "parallel"))]
-            {
-                component_polys.as_cols_ref().map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
+            let trace = component_polys
+                .as_cols_ref()
+                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)));
             #[cfg(feature = "parallel")]
-            {
-                component_polys.as_cols_ref().par_map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
-        } else {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+            let trace = component_polys.as_cols_ref().par_map_cols(|col| {
+                Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+            });
+            (eval_domain, trace)
         };
 
         // Denom inverses.
-        let log_expand = eval_domain.log_size() - trace_domain.log_size();
+        let log_expand = actual_eval_domain.log_size() - trace_domain.log_size();
         let mut denom_inv = (0..1 << log_expand)
-            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+            .map(|i| coset_vanishing(trace_domain.coset(), actual_eval_domain.at(i)).inverse())
             .collect_vec();
         bit_reverse(&mut denom_inv);
 
         // Note that `accum` is a mutable reference to a column in `evaluation_accumulator`.
-        let [mut accum] = evaluation_accumulator.columns([(eval_domain, self.n_constraints())]);
+        let [mut accum] =
+            evaluation_accumulator.columns([(actual_eval_domain, self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
         let _span = span!(
@@ -104,7 +116,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             *accum.col = SecureColumnByCoords::from_cpu(accumulate_pointwise_cpu(
                 self,
                 trace_cols,
-                eval_domain.log_size(),
+                actual_eval_domain.log_size(),
                 trace_domain.log_size(),
                 denom_inv,
                 &accum.random_coeff_powers,
@@ -115,7 +127,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
 
         let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col) };
 
-        let range = 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS));
+        let range =
+            0..(1 << (actual_eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS));
 
         #[cfg(not(feature = "parallel"))]
         let iter = range.step_by(CHUNK_SIZE).zip(col.chunks_mut(CHUNK_SIZE));
@@ -142,7 +155,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     vec_row,
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
-                    eval_domain.log_size(),
+                    actual_eval_domain.log_size(),
                     self_eval.log_size(),
                     self_claimed_sum,
                 );
@@ -239,6 +252,51 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             accum.col,
         );
     }
+}
+
+/// Checks if all committed columns can be evaluated on a common subdomain of the given
+/// `eval_log_size`, avoiding the need for trace extension.
+///
+/// Returns `Some(subdomain)` if all columns have `committed_log_size >= eval_log_size` and all
+/// columns that need slicing share the same committed domain (so they split to the same
+/// subdomain). When all columns exactly match `eval_log_size`, returns `Some(eval_domain)`.
+/// Returns `None` if any column requires extension.
+fn try_get_common_subdomain(
+    committed_domains: impl Iterator<Item = CircleDomain>,
+    eval_domain: CircleDomain,
+) -> Option<CircleDomain> {
+    let eval_log_size = eval_domain.log_size();
+    let mut common_subdomain: Option<CircleDomain> = None;
+
+    for committed_domain in committed_domains {
+        let committed_log_size = committed_domain.log_size();
+
+        if committed_log_size < eval_log_size {
+            // Column is smaller than eval domain — must extend, can't use D_sub.
+            return None;
+        }
+
+        if committed_log_size == eval_log_size {
+            // Column already matches eval size — no slicing needed.
+            continue;
+        }
+
+        // Column is larger — compute its subdomain.
+        let log_parts = committed_log_size - eval_log_size;
+        let (subdomain, _) = committed_domain.split(log_parts);
+
+        match common_subdomain {
+            None => common_subdomain = Some(subdomain),
+            Some(existing) if existing == subdomain => {}
+            Some(_) => {
+                // Different columns split to different subdomains — can't use D_sub.
+                return None;
+            }
+        }
+    }
+
+    // If no column was larger, all matched eval_log_size — use eval_domain directly.
+    Some(common_subdomain.unwrap_or(eval_domain))
 }
 
 fn accumulate_pointwise_cpu<E: FrameworkEval>(
