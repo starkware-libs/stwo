@@ -117,9 +117,18 @@ impl<B: Backend> ComponentProvers<'_, B> {
     }
 
     /// Determines whether the committed trace columns can be used directly for constraint
-    /// evaluation (blowup == constraint degree) or must be extended to the evaluation domain.
+    /// evaluation or must be extended to the evaluation domain.
+    ///
+    /// The committed trace columns can be used directly for constraint evaluation if all components
+    /// share the same expansion ratio (log_blowup - log_constraint_degree).
+    ///
+    /// Returns `SubDomain { log_expansion }` when all components have
+    /// `max_constraint_log_degree_bound() <= trace_log_size + log_blowup_factor` and
+    /// the expansion ratio is consistent across all components.
+    /// Otherwise returns `ExtendToEvalDomain`.
     fn evaluation_mode(&self, log_blowup_factor: u32) -> EvaluationMode {
-        let all_match = self.components.iter().all(|c| {
+        let mut common_log_expansion: Option<u32> = None;
+        for c in &self.components {
             let trace_log_size = c
                 .trace_log_degree_bounds()
                 .iter()
@@ -127,12 +136,23 @@ impl<B: Backend> ComponentProvers<'_, B> {
                 .copied()
                 .max()
                 .unwrap_or(0);
-            c.max_constraint_log_degree_bound() == trace_log_size + log_blowup_factor
-        });
-        if all_match {
-            EvaluationMode::SubDomain { log_expansion: 0 }
-        } else {
-            EvaluationMode::ExtendToEvalDomain
+            let constraint_log_degree = c
+                .max_constraint_log_degree_bound()
+                .saturating_sub(trace_log_size);
+            if constraint_log_degree > log_blowup_factor {
+                return EvaluationMode::ExtendToEvalDomain;
+            }
+            let log_expansion = log_blowup_factor - constraint_log_degree;
+            match common_log_expansion {
+                None => common_log_expansion = Some(log_expansion),
+                Some(prev) if prev != log_expansion => {
+                    return EvaluationMode::ExtendToEvalDomain;
+                }
+                _ => {}
+            }
+        }
+        EvaluationMode::SubDomain {
+            log_expansion: common_log_expansion.unwrap_or(0),
         }
     }
 }

@@ -131,14 +131,25 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         let lifted_accumulation = B::lift_and_accumulate(sub_accumulations);
 
         if let Some(eval) = lifted_accumulation {
-            // `lifted_accumulation` must be of size `log_size`, i.e. there must at least one sub
-            // accumulation of size `log_size`.
+            // Determine the domain and twiddles based on evaluation mode.
+            let (domain, owned_twiddles) = match self.evaluation_mode {
+                EvaluationMode::SubDomain { log_expansion: 0 }
+                | EvaluationMode::ExtendToEvalDomain => {
+                    (CanonicCoset::new(log_size).circle_domain(), None)
+                }
+                EvaluationMode::SubDomain { log_expansion } => {
+                    let committed_domain =
+                        CanonicCoset::new(log_size + log_expansion).circle_domain();
+                    let subdomain = committed_domain.split(log_expansion).0;
+                    let tw = B::precompute_twiddles(subdomain.half_coset);
+                    (subdomain, Some(tw))
+                }
+            };
+            let twiddles_ref = owned_twiddles.as_ref().unwrap_or(twiddles);
+
             SecureCirclePoly(eval.columns.map(|c| {
-                CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                    CanonicCoset::new(log_size).circle_domain(),
-                    c,
-                )
-                .interpolate_with_twiddles(twiddles)
+                CircleEvaluation::<B, BaseField, BitReversedOrder>::new(domain, c)
+                    .interpolate_with_twiddles(twiddles_ref)
             }))
         } else {
             SecureCirclePoly(std::array::from_fn(|_| {
