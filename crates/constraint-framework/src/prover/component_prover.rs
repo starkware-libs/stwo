@@ -26,6 +26,82 @@ use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
 
 const CHUNK_SIZE: usize = 1;
 
+/// Common inputs for constraint quotient evaluation, shared between the SIMD and CPU backends.
+struct ConstraintQuotientInputs<'a, B: Backend> {
+    eval_domain: CircleDomain,
+    trace_domain: CanonicCoset,
+    trace: TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>>,
+    denom_inv: Vec<BaseField>,
+}
+
+/// Prepares trace evaluations: borrows directly (subdomain) or extends to eval domain.
+fn get_trace_columns<'a, B: Backend>(
+    component_polys: TreeVec<Vec<&'a &Poly<B>>>,
+    eval_domain: CircleDomain,
+    mode: EvaluationMode,
+) -> TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>> {
+    match mode {
+        EvaluationMode::SubDomain { log_expansion: 0 } => {
+            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
+        }
+        EvaluationMode::SubDomain { log_expansion: _ } => {
+            unimplemented!("SubDomain with log_expansion > 0 not yet supported")
+        }
+        EvaluationMode::ExtendToEvalDomain => {
+            let _span = span!(Level::INFO, "Constraint Extension").entered();
+            let twiddles = B::precompute_twiddles(eval_domain.half_coset);
+            #[cfg(not(feature = "parallel"))]
+            {
+                component_polys.as_cols_ref().map_cols(|col| {
+                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                })
+            }
+            #[cfg(feature = "parallel")]
+            {
+                component_polys.as_cols_ref().par_map_cols(|col| {
+                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
+                })
+            }
+        }
+    }
+}
+
+/// Constructs the inputs needed for constraint quotient evaluation from a component and trace.
+/// Computes the eval/trace domains, prepares trace columns (borrowing or extending as needed),
+/// and precomputes denominator inverses.
+fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
+    component: &FrameworkComponent<E>,
+    trace: &'a Trace<'a, B>,
+    mode: EvaluationMode,
+) -> ConstraintQuotientInputs<'a, B> {
+    let eval_domain =
+        CanonicCoset::new(component.max_constraint_log_degree_bound()).circle_domain();
+    let trace_domain = CanonicCoset::new(component.eval.log_size());
+
+    let mut component_polys = trace.polys.sub_tree(&component.trace_locations);
+    component_polys[PREPROCESSED_TRACE_IDX] = component
+        .preprocessed_column_indices
+        .iter()
+        .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
+        .collect();
+
+    let trace = get_trace_columns(component_polys, eval_domain, mode);
+
+    // Denom inverses.
+    let log_expand = eval_domain.log_size() - trace_domain.log_size();
+    let mut denom_inv = (0..1 << log_expand)
+        .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+        .collect_vec();
+    bit_reverse(&mut denom_inv);
+
+    ConstraintQuotientInputs {
+        eval_domain,
+        trace_domain,
+        trace,
+        denom_inv,
+    }
+}
+
 impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponent<E> {
     fn evaluate_constraint_quotients_on_domain(
         &self,
@@ -41,30 +117,13 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             return;
         }
 
-        let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
-        let trace_domain = CanonicCoset::new(self.eval.log_size());
-
-        let mut component_polys = trace.polys.sub_tree(&self.trace_locations);
-        component_polys[PREPROCESSED_TRACE_IDX] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-
-        let trace = get_constraint_quotients_inputs(
+        let ConstraintQuotientInputs {
             eval_domain,
-            component_polys,
-            evaluation_accumulator.evaluation_mode(),
-        );
+            trace_domain,
+            trace,
+            denom_inv,
+        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
 
-        // Denom inverses.
-        let log_expand = eval_domain.log_size() - trace_domain.log_size();
-        let mut denom_inv = (0..1 << log_expand)
-            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
-            .collect_vec();
-        bit_reverse(&mut denom_inv);
-
-        // Note that `accum` is a mutable reference to a column in `evaluation_accumulator`.
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
@@ -144,46 +203,27 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
 }
 
 impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent<E> {
-    /// Almost all this implementation is equal to the one above for `SimdBackend`.
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &Trace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
-        let n_constraints = self.n_constraints();
-        if n_constraints == 0 {
+        if self.n_constraints() == 0 {
             return;
         }
 
         if self.is_disabled() {
-            evaluation_accumulator.skip_coeffs(n_constraints);
+            evaluation_accumulator.skip_coeffs(self.n_constraints());
             return;
         }
 
-        let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
-        let trace_domain = CanonicCoset::new(self.eval.log_size());
-
-        let mut component_polys = trace.polys.sub_tree(&self.trace_locations);
-        component_polys[PREPROCESSED_TRACE_IDX] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-
-        let trace = get_constraint_quotients_inputs(
+        let ConstraintQuotientInputs {
             eval_domain,
-            component_polys,
-            evaluation_accumulator.evaluation_mode(),
-        );
+            trace_domain,
+            trace,
+            denom_inv,
+        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
 
-        // Denom inverses.
-        let log_expand = eval_domain.log_size() - trace_domain.log_size();
-        let mut denom_inv = (0..1 << log_expand)
-            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
-            .collect_vec();
-        bit_reverse(&mut denom_inv);
-
-        // Accumulator.
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
@@ -205,39 +245,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             &accum.random_coeff_powers,
             accum.col,
         );
-    }
-}
-
-/// Prepares trace evaluations for constraint quotient computation. Either borrows committed
-/// evaluations directly (subdomain mode) or extends them to the evaluation domain.
-fn get_constraint_quotients_inputs<'a, B: Backend>(
-    eval_domain: CircleDomain,
-    component_polys: TreeVec<Vec<&'a &Poly<B>>>,
-    mode: EvaluationMode,
-) -> TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>> {
-    match mode {
-        EvaluationMode::SubDomain { log_expansion: 0 } => {
-            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
-        }
-        EvaluationMode::SubDomain { log_expansion: _ } => {
-            unimplemented!("SubDomain with log_expansion > 0 not yet supported")
-        }
-        EvaluationMode::ExtendToEvalDomain => {
-            let _span = span!(Level::INFO, "Constraint Extension").entered();
-            let twiddles = B::precompute_twiddles(eval_domain.half_coset);
-            #[cfg(not(feature = "parallel"))]
-            {
-                component_polys.as_cols_ref().map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
-            #[cfg(feature = "parallel")]
-            {
-                component_polys.as_cols_ref().par_map_cols(|col| {
-                    Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles))
-                })
-            }
-        }
     }
 }
 
