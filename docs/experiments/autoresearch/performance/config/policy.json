@@ -1,0 +1,42 @@
+{
+  "allowed_edit_paths": [
+    "crates/stwo/src/prover/backend/simd/bit_reverse.rs",
+    "crates/stwo/src/prover/backend/simd/blake2s.rs",
+    "crates/stwo/src/prover/backend/simd/blake2s_lifted.rs",
+    "crates/stwo/src/prover/backend/simd/cm31.rs",
+    "crates/stwo/src/prover/backend/simd/column.rs",
+    "crates/stwo/src/prover/backend/simd/conversion.rs",
+    "crates/stwo/src/prover/backend/simd/domain.rs",
+    "crates/stwo/src/prover/backend/simd/fft/",
+    "crates/stwo/src/prover/backend/simd/m31.rs",
+    "crates/stwo/src/prover/backend/simd/prefix_sum.rs",
+    "crates/stwo/src/prover/backend/simd/qm31.rs",
+    "crates/stwo/src/prover/backend/simd/poseidon252_lifted.rs",
+    "crates/stwo/src/prover/backend/simd/very_packed_m31.rs",
+    "crates/stwo/src/prover/mempool.rs",
+    "crates/stwo/benches/",
+    "crates/examples/benches/"
+  ],
+  "forbidden_edit_paths": [
+    "crates/stwo/src/core/",
+    "crates/stwo/src/prover/fri.rs",
+    "crates/stwo/src/prover/lookups/",
+    "crates/stwo/src/prover/backend/simd/lookups/",
+    "crates/stwo/src/prover/backend/simd/fri.rs",
+    "crates/stwo/src/prover/backend/simd/circle.rs",
+    "crates/stwo/src/prover/backend/simd/quotients.rs",
+    "crates/stwo/src/prover/backend/simd/accumulation.rs",
+    "crates/stwo/src/prover/backend/simd/grind.rs",
+    "crates/stwo/src/prover/backend/simd/poseidon252.rs",
+    "crates/stwo/src/core/pcs/",
+    "crates/stwo/src/core/channel/",
+    "crates/stwo/src/core/circle.rs",
+    "crates/stwo/src/core/constraints.rs",
+    "crates/stwo/src/core/verifier.rs",
+    "crates/constraint-framework/src/logup.rs"
+  ],
+  "blocked_diff_patterns": [
+    "\\bunsafe\\b"
+  ]
+}
+

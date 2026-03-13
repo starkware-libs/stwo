@@ -1,0 +1,13 @@
+{
+  "name": "simd-core-promotion",
+  "package": "stwo",
+  "features": "prover",
+  "criterion_benches": [
+    "field",
+    "bit_rev",
+    "prefix_sum",
+    "fft",
+    "merkle"
+  ]
+}
+
