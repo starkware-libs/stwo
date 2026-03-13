@@ -87,6 +87,129 @@ set `AUTORESEARCH_ENABLE_PROMOTION=1` before `create-run` or `loop`.
 
 For CLI-free smoke testing of the orchestration itself, set `AUTORESEARCH_AGENT=noop`.
 
+## How to run it
+
+All commands below assume you start at the repo root.
+
+### Prerequisites
+
+- Rust nightly from `rust-toolchain.toml` (`nightly-2025-07-14`)
+- `git`
+- `cargo`
+- `python3`
+- `codex` if `AUTORESEARCH_AGENT=codex`
+
+Bootstrap installs `cargo-criterion` automatically if it is missing.
+
+### 1. Local smoke test of the harness
+
+Use this when you want to validate the worktree setup, benchmark parsing, and run bookkeeping
+without asking an agent to edit code.
+
+```bash
+cp docs/experiments/autoresearch/performance/config/experiment.env.example \
+  docs/experiments/autoresearch/performance/.env
+
+printf '\nAUTORESEARCH_AGENT=noop\n' >> \
+  docs/experiments/autoresearch/performance/.env
+
+make -C docs/experiments/autoresearch/performance bootstrap
+make -C docs/experiments/autoresearch/performance create-run
+make -C docs/experiments/autoresearch/performance iteration
+```
+
+Expected result:
+
+- a dedicated worktree under `.state/worktrees/<run-tag>`
+- baseline benchmark JSON in `.state/runs/<run-tag>/`
+- a `noop` row appended to `results.tsv`
+
+### 2. Local autonomous run with Codex
+
+Use this when you want one measured experiment proposed and applied by Codex on your machine.
+
+```bash
+cp docs/experiments/autoresearch/performance/config/experiment.env.example \
+  docs/experiments/autoresearch/performance/.env
+
+make -C docs/experiments/autoresearch/performance bootstrap
+make -C docs/experiments/autoresearch/performance create-run
+make -C docs/experiments/autoresearch/performance iteration
+```
+
+To keep iterating until stopped:
+
+```bash
+make -C docs/experiments/autoresearch/performance loop
+```
+
+To cap the loop to a fixed number of iterations:
+
+```bash
+printf '\nAUTORESEARCH_AGENT_MAX_ITERATIONS=5\n' >> \
+  docs/experiments/autoresearch/performance/.env
+
+make -C docs/experiments/autoresearch/performance loop
+```
+
+To stop a long-running loop cleanly, create:
+
+```bash
+touch docs/experiments/autoresearch/performance/.state/runs/<run-tag>/STOP
+```
+
+### 3. Backend host run with stricter acceptance
+
+Use this on a quieter AVX-capable benchmark machine when you want the promotion profile enabled.
+
+Add these settings to `docs/experiments/autoresearch/performance/.env` before `create-run` or
+`loop`:
+
+```bash
+AUTORESEARCH_ENABLE_PROMOTION=1
+AUTORESEARCH_USE_AVX_WRAPPER=1
+```
+
+Then run:
+
+```bash
+make -C docs/experiments/autoresearch/performance bootstrap
+make -C docs/experiments/autoresearch/performance create-run
+make -C docs/experiments/autoresearch/performance loop
+```
+
+Notes:
+
+- `AUTORESEARCH_ENABLE_PROMOTION=1` adds the promotion benchmark profile.
+- `AUTORESEARCH_USE_AVX_WRAPPER=1` routes the test gate through `scripts/test_avx.sh`.
+- The example env already sets `AUTORESEARCH_RUSTFLAGS="-Awarnings -C target-cpu=native -C opt-level=3"`.
+
+### 4. Optional end-to-end proving benchmark
+
+This is separate from the autonomous loop. It runs the example proving benchmark mentioned in
+`RESOURCES.md`.
+
+```bash
+RUSTFLAGS="-Awarnings -C target-cpu=native -C opt-level=3" \
+cargo criterion -p stwo-examples --bench poseidon
+```
+
+### 5. Where results go
+
+Runtime artifacts are intentionally kept out of git under:
+
+- `.state/upstream/`
+- `.state/worktrees/`
+- `.state/runs/`
+
+Each run directory contains:
+
+- `results.tsv`
+- `results.jsonl`
+- baseline and candidate benchmark JSON
+- stderr and test logs
+- agent response snapshots
+
 ## Recommended execution environments
 
 - Local workstation:
