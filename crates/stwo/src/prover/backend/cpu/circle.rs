@@ -23,6 +23,10 @@ use crate::prover::secure_column::SecureColumnByCoords;
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
 
+    fn fft_thread_usage(_log_size: u32) -> usize {
+        1
+    }
+
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,

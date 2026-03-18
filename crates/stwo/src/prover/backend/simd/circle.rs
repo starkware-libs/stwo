@@ -135,6 +135,22 @@ impl PolyOps for SimdBackend {
     //  representation of the field.
     type Twiddles = Vec<u32>;
 
+    fn fft_thread_usage(log_size: u32) -> usize {
+        #[cfg(not(feature = "parallel"))]
+        {
+            let _ = log_size;
+            1
+        }
+        #[cfg(feature = "parallel")]
+        {
+            if log_size <= CACHED_FFT_LOG_SIZE {
+                return 1;
+            }
+            let log_n_vecs = log_size - LOG_N_LANES;
+            1usize << (log_n_vecs / 2)
+        }
+    }
+
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,

@@ -19,6 +19,10 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     /// The type for precomputed twiddles.
     type Twiddles: TwiddleBuffer<BitReversedOrder>;
 
+    // Return the number of threads that the FFT can use, might be higher than the number of threads
+    // available.
+    fn fft_thread_usage(log_size: u32) -> usize;
+
     /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
     /// evaluation. Used by the [`CircleEvaluation::interpolate()`] function.
     fn interpolate(
@@ -111,18 +115,44 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
             })
             .collect();
 
-        #[cfg(feature = "parallel")]
-        let iter = polynomials.into_par_iter().zip(buffers.into_par_iter());
-        #[cfg(not(feature = "parallel"))]
-        let iter = polynomials.into_iter().zip(buffers);
-
-        iter.map(|(poly_coeffs, buffer)| {
+        let evaluate = |poly_coeffs: CircleCoefficients<Self>, buffer| {
             let domain =
                 CanonicCoset::new(poly_coeffs.log_size() + log_blowup_factor).circle_domain();
             let evals = Self::evaluate_into(&poly_coeffs, domain, twiddles, buffer);
             Poly::new(store_polynomials_coefficients.then_some(poly_coeffs), evals)
-        })
-        .collect()
+        };
+
+        #[cfg(feature = "parallel")]
+        {
+            use itertools::izip;
+
+            let mut result = Vec::with_capacity(polynomials.len());
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                result.set_len(polynomials.len());
+            }
+            let num_threads = rayon::current_num_threads();
+            rayon::scope(|s| {
+                for (poly_coeffs, buffer, res) in izip!(polynomials, buffers, result.iter_mut()) {
+                    if Self::fft_thread_usage(poly_coeffs.log_size()) >= num_threads {
+                        *res = evaluate(poly_coeffs, buffer);
+                    } else {
+                        s.spawn(move |_| {
+                            *res = evaluate(poly_coeffs, buffer);
+                        });
+                    }
+                }
+            });
+            result
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            polynomials
+                .into_iter()
+                .zip(buffers)
+                .map(|(poly_coeffs, buffer)| evaluate(poly_coeffs, buffer))
+                .collect()
+        }
     }
 
     /// Precomputes twiddles for a given coset.
