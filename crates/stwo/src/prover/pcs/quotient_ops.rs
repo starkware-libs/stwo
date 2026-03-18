@@ -30,6 +30,7 @@ pub trait QuotientOps: PolyOps {
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
         twiddles: &TwiddleTree<Self>,
+        log_blowup_factor: u32,
     );
 
     /// Given a vector of `AccumulatedNumerators`, the function iterates over the points of the
@@ -78,7 +79,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     random_coeff: SecureField,
     lifting_log_size: u32,
     twiddles: &TwiddleTree<B>,
-    _log_blowup_factor: u32,
+    log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
@@ -113,7 +114,8 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
             &columns,
             &sample_batches,
             &mut accumulated_numerators_vec,
-            &twiddles,
+            twiddles,
+            log_blowup_factor,
         )
     });
 

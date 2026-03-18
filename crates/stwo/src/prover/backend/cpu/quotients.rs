@@ -25,6 +25,7 @@ impl QuotientOps for CpuBackend {
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
         _twiddles: &TwiddleTree<Self>,
+        _log_blowup_factor: u32,
     ) {
         let size = columns[0].len();
         let quotient_constants = quotient_constants(sample_batches);
