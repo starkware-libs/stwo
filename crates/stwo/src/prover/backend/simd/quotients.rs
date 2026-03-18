@@ -51,7 +51,7 @@ impl QuotientOps for SimdBackend {
         // Change the 1 constant.
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
         let (subdomain, _) = domain.split(log_blowup_factor);
-        if (subdomain.log_size() < LOG_N_LANES + 2) | (columns.len() < 20) {
+        if (subdomain.log_size() < LOG_N_LANES + 2) || (columns.len() < 20) {
             accumulate_numerators_without_fft(columns, sample_batches, accumulated_numerators_vec);
             return;
         }
