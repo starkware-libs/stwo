@@ -5,9 +5,9 @@ use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+
 #[cfg(feature = "parallel")]
 // use rayon::slice::{ParallelSlice, ParallelSliceMut};
-
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
 use super::m31::PackedBaseField;
@@ -19,17 +19,14 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::prover::backend::Column;
-use crate::prover::backend::simd::circle::to_subdomain_twiddle_tree;
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
+use crate::prover::backend::Column;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-use crate::prover::poly::circle::{
-    CircleCoefficients, CircleEvaluation, SecureEvaluation,
-};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
-use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
@@ -58,13 +55,27 @@ impl QuotientOps for SimdBackend {
             return;
         }
         let quotient_constants = quotient_constants(sample_batches);
-
+        let subdomain_twiddles = TwiddleTree {
+            root_coset: subdomain.half_coset,
+            // Only itwiddles are needed for interpolation.
+            twiddles: TwiddleBuffer::empty(),
+            itwiddles: twiddles
+                .itwiddles
+                .extract_subdomain_twiddles(domain.log_size(), subdomain.log_size()),
+        };
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            let subdomain_secure_poly =
-                accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs, twiddles);
-            let columns = array::from_fn(|i| 
-                subdomain_secure_poly[i].evaluate_with_twiddles(domain, twiddles).values
+            let subdomain_secure_poly = accumulate_numerators_on_subdomain(
+                subdomain,
+                batch,
+                columns,
+                &coeffs,
+                &subdomain_twiddles,
             );
+            let columns = array::from_fn(|i| {
+                subdomain_secure_poly[i]
+                    .evaluate_with_twiddles(domain, twiddles)
+                    .values
+            });
             let partial_numerators_acc = SecureColumnByCoords { columns };
 
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
@@ -128,13 +139,12 @@ impl QuotientOps for SimdBackend {
     }
 }
 
-
 fn accumulate_numerators_on_subdomain(
     subdomain: CircleDomain,
     sample_batch: &ColumnSampleBatch,
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     quotient_coeffs: &[(SecureField, SecureField, SecureField)],
-    twiddles: &TwiddleTree<SimdBackend>
+    twiddles: &TwiddleTree<SimdBackend>,
 ) -> [CircleCoefficients<SimdBackend>; SECURE_EXTENSION_DEGREE] {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =
@@ -158,8 +168,6 @@ fn accumulate_numerators_on_subdomain(
     });
 
     let values = values.columns;
-    let twiddles = to_subdomain_twiddle_tree(subdomain, twiddles);
-
     values.map(|c| {
         CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
             .interpolate_with_twiddles(&twiddles)
@@ -298,7 +306,12 @@ mod tests {
         const LOG_BLOWUP_FACTOR: u32 = 4;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let values = BaseColumn::from_cpu((0..1 << LOG_SIZE).map(BaseField::from).collect_vec().as_slice());
+        let values = BaseColumn::from_cpu(
+            (0..1 << LOG_SIZE)
+                .map(BaseField::from)
+                .collect_vec()
+                .as_slice(),
+        );
         let columns =
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, values);
         let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
@@ -381,7 +394,12 @@ mod tests {
         const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect_vec().as_slice());
+        let coeffs = BaseColumn::from_cpu(
+            (0..1 << LOG_DEGREE)
+                .map(BaseField::from)
+                .collect_vec()
+                .as_slice(),
+        );
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
 
@@ -421,7 +439,7 @@ mod tests {
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| column.clone()).collect();
 
-                    let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
         let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         SimdBackend::accumulate_numerators(
             &columns_simd.iter().collect_vec(),
@@ -465,7 +483,12 @@ mod tests {
         const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect_vec().as_slice());
+        let coeffs = BaseColumn::from_cpu(
+            (0..1 << LOG_DEGREE)
+                .map(BaseField::from)
+                .collect_vec()
+                .as_slice(),
+        );
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
 
@@ -505,7 +528,7 @@ mod tests {
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| column.clone()).collect();
 
-                    let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
+        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
         SimdBackend::accumulate_numerators(
             &columns_simd.iter().collect_vec(),
             &sample_batches,
@@ -523,7 +546,12 @@ mod tests {
         const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu((0..1 << LOG_DEGREE).map(BaseField::from).collect_vec().as_slice());
+        let coeffs = BaseColumn::from_cpu(
+            (0..1 << LOG_DEGREE)
+                .map(BaseField::from)
+                .collect_vec()
+                .as_slice(),
+        );
         let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let column = poly.evaluate(domain);
 
