@@ -124,26 +124,45 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
 
         #[cfg(feature = "parallel")]
         {
-            use itertools::izip;
+            // Sort indices small-to-large so small FFTs get spawned first (filling the thread
+            // pool), then large FFTs that saturate all threads run inline.
+            let mut sorted_indices: Vec<usize> = (0..polynomials.len()).collect();
+            sorted_indices.sort_by_key(|&i| polynomials[i].log_size());
 
-            let mut result = Vec::with_capacity(polynomials.len());
-            #[allow(clippy::uninit_vec)]
-            unsafe {
-                result.set_len(polynomials.len());
-            }
+            let mut polys: Vec<Option<CircleCoefficients<Self>>> =
+                polynomials.into_iter().map(Some).collect();
+            let mut bufs: Vec<Option<Col<Self, BaseField>>> =
+                buffers.into_iter().map(Some).collect();
+            let mut result: Vec<Option<Poly<Self>>> =
+                (0..polys.len()).map(|_| None).collect();
+
             let num_threads = rayon::current_num_threads();
+            // SAFETY: We use UnsafeCell to allow mutable access from spawned tasks.
+            // Each index is visited exactly once, so there are no data races.
+            // The cell lives on the stack for the entire rayon::scope.
+            let result_cell = std::cell::UnsafeCell::new(&mut result);
+            struct SendSyncCell<'a, T>(&'a std::cell::UnsafeCell<T>);
+            unsafe impl<T> Send for SendSyncCell<'_, T> {}
+            unsafe impl<T> Sync for SendSyncCell<'_, T> {}
+            let result_cell = SendSyncCell(&result_cell);
+
             rayon::scope(|s| {
-                for (poly_coeffs, buffer, res) in izip!(polynomials, buffers, result.iter_mut()) {
+                for i in sorted_indices {
+                    let poly_coeffs = polys[i].take().unwrap();
+                    let buffer = bufs[i].take().unwrap();
                     if Self::fft_thread_usage(poly_coeffs.log_size()) >= num_threads {
-                        *res = evaluate(poly_coeffs, buffer);
+                        (*unsafe { &mut *result_cell.0.get() })[i] =
+                            Some(evaluate(poly_coeffs, buffer));
                     } else {
+                        let result_cell = &result_cell;
                         s.spawn(move |_| {
-                            *res = evaluate(poly_coeffs, buffer);
+                            (*unsafe { &mut *result_cell.0.get() })[i] =
+                                Some(evaluate(poly_coeffs, buffer));
                         });
                     }
                 }
             });
-            result
+            result.into_iter().map(|r| r.unwrap()).collect()
         }
         #[cfg(not(feature = "parallel"))]
         {
