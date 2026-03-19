@@ -1,6 +1,8 @@
 use std::iter::zip;
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{span, Level};
 
 use crate::core::circle::CirclePoint;
@@ -78,7 +80,6 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     _log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-    let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         samples,
         columns
@@ -95,19 +96,37 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     //
     //   ∑_k (# of distinct sample points per log size k).
     //
-    zip(
+    // Collect groups so they can be processed in parallel.
+    let groups: Vec<_> = zip(
         columns.iter().flatten(),
         samples_with_randomness.iter().flatten(),
     )
     .sorted_by_key(|(c, _)| c.domain.log_size())
     .group_by(|(c, _)| c.domain.log_size())
     .into_iter()
-    .for_each(|(_, tuples)| {
+    .map(|(_, tuples)| {
         let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
+        (columns, samples_with_randomness)
+    })
+    .collect();
+
+    let accumulate_group = |(columns, samples_with_randomness): (Vec<_>, Vec<_>)| {
         // TODO: slice.
         let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec)
-    });
+        let mut acc = vec![];
+        B::accumulate_numerators(&columns, &sample_batches, &mut acc);
+        acc
+    };
+
+    #[cfg(not(feature = "parallel"))]
+    let accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> =
+        groups.into_iter().flat_map(accumulate_group).collect();
+
+    #[cfg(feature = "parallel")]
+    let accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = groups
+        .into_par_iter()
+        .flat_map_iter(accumulate_group)
+        .collect();
 
     // Group and accumulate the numerators per sample point: the accumulations (of different
     // lengths) get lifted and accumulated to a single vector. After this step, there is a single

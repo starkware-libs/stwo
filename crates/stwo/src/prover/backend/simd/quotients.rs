@@ -25,7 +25,7 @@ use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
 // TODO(Leo): find the best size.
-const QUOTIENTS_CHUNK_SIZE: usize = 1;
+const QUOTIENTS_CHUNK_SIZE: usize = 32;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
