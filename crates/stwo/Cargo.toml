@@ -142,3 +142,8 @@ required-features = ["prover"]
 harness = false
 name = "pcs"
 required-features = ["prover"]
+
+[[bench]]
+harness = false
+name = "fri_quotients"
+required-features = ["prover"]

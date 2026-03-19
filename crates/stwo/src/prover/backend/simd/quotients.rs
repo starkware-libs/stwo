@@ -199,7 +199,7 @@ fn accumulate_row_partial_numerators(
     numerator
 }
 
-fn accumulate_numerators_no_fft(
+pub fn accumulate_numerators_no_fft(
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     sample_batches: &[ColumnSampleBatch],
     accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<SimdBackend>>,

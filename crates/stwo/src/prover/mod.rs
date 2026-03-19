@@ -13,7 +13,7 @@ mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Poly, Trace};
 pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator, EvaluationMode};
 mod pcs;
-pub use pcs::quotient_ops::QuotientOps;
+pub use pcs::quotient_ops::{compute_fri_quotients, AccumulatedNumerators, QuotientOps};
 pub use pcs::{CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder};
 pub mod backend;
 pub mod channel;
