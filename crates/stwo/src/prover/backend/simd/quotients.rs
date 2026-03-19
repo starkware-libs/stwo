@@ -1,10 +1,9 @@
-use std::array;
 use std::iter::zip;
 
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
@@ -13,23 +12,24 @@ use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::parallel_iter;
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::backend::Column;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
 // TODO(Leo): find the best size.
-const QUOTIENTS_CHUNK_SIZE: usize = 1;
+const QUOTIENTS_CHUNK_SIZE: usize = 64;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -47,11 +47,11 @@ impl QuotientOps for SimdBackend {
         log_blowup_factor: u32,
     ) {
         let size = columns[0].values.len();
-
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
         let (subdomain, _) = domain.split(log_blowup_factor);
+        // Fallback to full domain accumulation if there are no major gains with fft.
         if (subdomain.log_size() < LOG_N_LANES + 2) || (columns.len() < 20) {
-            accumulate_numerators_no_fft(columns, sample_batches, accumulated_numerators_vec);
+            accumulate_numerators_no_fft(domain, columns, sample_batches, accumulated_numerators_vec);
             return;
         }
         let quotient_constants = quotient_constants(sample_batches);
@@ -64,18 +64,16 @@ impl QuotientOps for SimdBackend {
                 .extract_subdomain_twiddles(domain.log_size(), subdomain.log_size()),
         };
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            let subdomain_secure_poly = accumulate_numerators_on_subdomain(
-                subdomain,
-                batch,
-                columns,
-                &coeffs,
-                &subdomain_twiddles,
-            );
-            let columns = array::from_fn(|i| {
-                subdomain_secure_poly[i]
+            let subdomain_acc =
+                accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs);
+            let subdomain_secure_poly: Vec<_> = parallel_iter!(subdomain_acc.columns).map(|c| {
+                CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
+                    .interpolate_with_twiddles(&subdomain_twiddles)
+            }).collect();
+            let columns = parallel_iter!(subdomain_secure_poly).map(|poly| poly
                     .evaluate_with_twiddles(domain, twiddles)
                     .values
-            });
+            ).collect::<Vec<_>>().try_into().unwrap();
             let partial_numerators_acc = SecureColumnByCoords { columns };
 
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
@@ -149,9 +147,7 @@ fn accumulate_numerators_on_subdomain(
     sample_batch: &ColumnSampleBatch,
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     quotient_coeffs: &[(SecureField, SecureField, SecureField)],
-    twiddles: &TwiddleTree<SimdBackend>,
-) -> [CircleCoefficients<SimdBackend>; SECURE_EXTENSION_DEGREE] {
-    assert!(subdomain.log_size() >= LOG_N_LANES + 2);
+) -> SecureColumnByCoords<SimdBackend> {
     let mut values =
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
 
@@ -172,19 +168,13 @@ fn accumulate_numerators_on_subdomain(
                      column_index: idx, ..
                  }| columns[*idx].data[row_idx],
             );
-            let row_value =
-                accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
+            let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
             unsafe {
                 values_dst.set_packed(local_i, row_value);
             }
         }
     });
-
-    let values = values.columns;
-    values.map(|c| {
-        CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
-            .interpolate_with_twiddles(&twiddles)
-    })
+    values
 }
 
 fn accumulate_row_partial_numerators(
@@ -200,39 +190,14 @@ fn accumulate_row_partial_numerators(
 }
 
 pub fn accumulate_numerators_no_fft(
+    domain: CircleDomain,
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     sample_batches: &[ColumnSampleBatch],
     accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<SimdBackend>>,
 ) {
-    let size = columns[0].length;
     let quotient_constants = quotient_constants(sample_batches);
-
     for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-        let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
-
-        #[cfg(not(feature = "parallel"))]
-        let iter = partial_numerators_acc.chunks_mut(QUOTIENTS_CHUNK_SIZE);
-
-        #[cfg(feature = "parallel")]
-        let iter = partial_numerators_acc.par_chunks_mut(QUOTIENTS_CHUNK_SIZE);
-
-        iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-            let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
-            let packed_chunk_len = values_dst.0[0].0.len();
-
-            for local_i in 0..packed_chunk_len {
-                let row_idx = chunk_start + local_i;
-                let query_values_at_row = batch.cols_vals_randpows.iter().map(
-                    |NumeratorData {
-                         column_index: idx, ..
-                     }| columns[*idx].data[row_idx],
-                );
-                let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
-                unsafe {
-                    values_dst.set_packed(local_i, row_value);
-                }
-            }
-        });
+        let partial_numerators_acc = accumulate_numerators_on_subdomain(domain, batch, columns, &coeffs);
         let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
         accumulated_numerators_vec.push(AccumulatedNumerators {
             sample_point: batch.point,
