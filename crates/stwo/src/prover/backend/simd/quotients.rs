@@ -48,11 +48,10 @@ impl QuotientOps for SimdBackend {
     ) {
         let size = columns[0].values.len();
 
-        // Change the 1 constant.
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
         let (subdomain, _) = domain.split(log_blowup_factor);
         if (subdomain.log_size() < LOG_N_LANES + 2) || (columns.len() < 20) {
-            accumulate_numerators_without_fft(columns, sample_batches, accumulated_numerators_vec);
+            accumulate_numerators_no_fft(columns, sample_batches, accumulated_numerators_vec);
             return;
         }
         let quotient_constants = quotient_constants(sample_batches);
@@ -200,7 +199,7 @@ fn accumulate_row_partial_numerators(
     numerator
 }
 
-fn accumulate_numerators_without_fft(
+fn accumulate_numerators_no_fft(
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     sample_batches: &[ColumnSampleBatch],
     accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<SimdBackend>>,
@@ -291,7 +290,7 @@ mod tests {
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
     use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
+    use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::QuotientOps;
     use crate::qm31;
@@ -381,217 +380,5 @@ mod tests {
                     acc_cpu.partial_numerators_acc.columns
                 );
             });
-    }
-
-    #[test]
-    fn test_simd_and_cpu_numerators_are_consistent_v2() {
-        const LOG_DEGREE: u32 = 19;
-        const N_COLS: usize = 10;
-        const LOG_BLOWUP_FACTOR: u32 = 1;
-        const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu(
-            (0..1 << LOG_DEGREE)
-                .map(BaseField::from)
-                .collect_vec()
-                .as_slice(),
-        );
-        let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
-        let column = poly.evaluate(domain);
-
-        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
-        let points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-        ];
-        let samples = (0..N_COLS)
-            .zip(mask_structure.iter())
-            .map(|(_, i)| {
-                points
-                    .into_iter()
-                    .zip_eq([
-                        SecureField::from(rng.gen::<u32>()),
-                        SecureField::from(rng.gen::<u32>()),
-                    ])
-                    .take(*i)
-                    .map(|(point, value)| PointSample { point, value })
-                    .collect_vec()
-            })
-            .collect_vec();
-        let random_coeff = qm31!(98, 76, 54, 32);
-        let sample_batches = ColumnSampleBatch::new_vec(
-            &build_samples_with_randomness_and_periodicity(
-                &TreeVec(vec![samples]),
-                vec![vec![LOG_SIZE; N_COLS].into_iter()],
-                LOG_SIZE,
-                random_coeff,
-            )
-            .iter()
-            .flatten()
-            .collect_vec(),
-        );
-        // SIMD
-        let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];
-        let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
-            (0..N_COLS).map(|_| column.clone()).collect();
-
-        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
-        let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
-        SimdBackend::accumulate_numerators(
-            &columns_simd.iter().collect_vec(),
-            &sample_batches,
-            &mut accumulated_numerators_vec_simd,
-            &simd_twiddles,
-            LOG_BLOWUP_FACTOR,
-        );
-        // CPU
-        let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
-        let columns_cpu: Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> =
-            (0..N_COLS).map(|_| column.to_cpu().clone()).collect();
-        CpuBackend::accumulate_numerators(
-            &columns_cpu.iter().collect_vec(),
-            &sample_batches,
-            &mut accumulated_numerators_vec_cpu,
-            &cpu_twiddles,
-            LOG_BLOWUP_FACTOR,
-        );
-
-        accumulated_numerators_vec_simd
-            .iter()
-            .zip_eq(accumulated_numerators_vec_cpu)
-            .for_each(|(acc_simd, acc_cpu)| {
-                assert_eq!(
-                    acc_simd.first_linear_term_acc,
-                    acc_cpu.first_linear_term_acc
-                );
-                assert_eq!(
-                    acc_simd.partial_numerators_acc.to_cpu().columns,
-                    acc_cpu.partial_numerators_acc.columns
-                );
-            });
-    }
-
-    #[test]
-    fn test_bench_fft() {
-        const LOG_DEGREE: u32 = 21;
-        const N_COLS: usize = 84;
-        const LOG_BLOWUP_FACTOR: u32 = 1;
-        const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu(
-            (0..1 << LOG_DEGREE)
-                .map(BaseField::from)
-                .collect_vec()
-                .as_slice(),
-        );
-        let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
-        let column = poly.evaluate(domain);
-
-        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
-        let points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-        ];
-        let samples = (0..N_COLS)
-            .zip(mask_structure.iter())
-            .map(|(_, i)| {
-                points
-                    .into_iter()
-                    .zip_eq([
-                        SecureField::from(rng.gen::<u32>()),
-                        SecureField::from(rng.gen::<u32>()),
-                    ])
-                    .take(*i)
-                    .map(|(point, value)| PointSample { point, value })
-                    .collect_vec()
-            })
-            .collect_vec();
-        let random_coeff = qm31!(98, 76, 54, 32);
-        let sample_batches = ColumnSampleBatch::new_vec(
-            &build_samples_with_randomness_and_periodicity(
-                &TreeVec(vec![samples]),
-                vec![vec![LOG_SIZE; N_COLS].into_iter()],
-                LOG_SIZE,
-                random_coeff,
-            )
-            .iter()
-            .flatten()
-            .collect_vec(),
-        );
-        // SIMD
-        let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];
-        let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
-            (0..N_COLS).map(|_| column.clone()).collect();
-
-        let simd_twiddles = SimdBackend::precompute_twiddles(domain.half_coset);
-        SimdBackend::accumulate_numerators(
-            &columns_simd.iter().collect_vec(),
-            &sample_batches,
-            &mut accumulated_numerators_vec_simd,
-            &simd_twiddles,
-            LOG_BLOWUP_FACTOR,
-        );
-    }
-
-    #[test]
-    fn test_bench_no_fft() {
-        const LOG_DEGREE: u32 = 21;
-        const N_COLS: usize = 84;
-        const LOG_BLOWUP_FACTOR: u32 = 1;
-        const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let coeffs = BaseColumn::from_cpu(
-            (0..1 << LOG_DEGREE)
-                .map(BaseField::from)
-                .collect_vec()
-                .as_slice(),
-        );
-        let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
-        let column = poly.evaluate(domain);
-
-        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
-        let points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-        ];
-        let samples = (0..N_COLS)
-            .zip(mask_structure.iter())
-            .map(|(_, i)| {
-                points
-                    .into_iter()
-                    .zip_eq([
-                        SecureField::from(rng.gen::<u32>()),
-                        SecureField::from(rng.gen::<u32>()),
-                    ])
-                    .take(*i)
-                    .map(|(point, value)| PointSample { point, value })
-                    .collect_vec()
-            })
-            .collect_vec();
-        let random_coeff = qm31!(98, 76, 54, 32);
-        let sample_batches = ColumnSampleBatch::new_vec(
-            &build_samples_with_randomness_and_periodicity(
-                &TreeVec(vec![samples]),
-                vec![vec![LOG_SIZE; N_COLS].into_iter()],
-                LOG_SIZE,
-                random_coeff,
-            )
-            .iter()
-            .flatten()
-            .collect_vec(),
-        );
-        // SIMD
-        let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];
-        let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
-            (0..N_COLS).map(|_| column.clone()).collect();
-
-        super::accumulate_numerators_without_fft(
-            &columns_simd.iter().collect_vec(),
-            &sample_batches,
-            &mut accumulated_numerators_vec_simd,
-        );
     }
 }
