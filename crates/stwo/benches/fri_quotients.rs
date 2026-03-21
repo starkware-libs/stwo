@@ -16,7 +16,7 @@ use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{AccumulatedNumerators, QuotientOps};
 
-const LOG_BLOWUP_FACTOR: u32 = 1;
+const LOG_BLOWUP_FACTOR: u32 = 2;
 
 struct BenchSetup {
     columns: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -80,6 +80,7 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
     let log_size = 20;
     let n_cols = 100;
     let s = setup(log_size, n_cols);
+    let domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR).circle_domain();
     let col_refs: Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
         s.columns.iter().collect();
 
@@ -110,6 +111,7 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
                 || Vec::<AccumulatedNumerators<SimdBackend>>::new(),
                 |mut acc| {
                     accumulate_numerators_no_fft(
+                        black_box(domain),
                         black_box(&col_refs),
                         black_box(&s.sample_batches),
                         black_box(&mut acc),

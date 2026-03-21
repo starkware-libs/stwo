@@ -16,9 +16,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::parallel_iter;
 use crate::prover::backend::simd::cm31::PackedCM31;
-use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::backend::Column;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
@@ -30,6 +28,8 @@ use crate::prover::QuotientOps;
 
 // TODO(Leo): find the best size.
 const QUOTIENTS_CHUNK_SIZE: usize = 64;
+const MIN_LOG_SIZE: u32 = 18;
+const MIN_N_COLS: usize = 70;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -50,7 +50,7 @@ impl QuotientOps for SimdBackend {
         let domain = CanonicCoset::new(size.ilog2()).circle_domain();
         let (subdomain, _) = domain.split(log_blowup_factor);
         // Fallback to full domain accumulation if there are no major gains with fft.
-        if (subdomain.log_size() < LOG_N_LANES + 2) || (columns.len() < 20) {
+        if (subdomain.log_size() < MIN_LOG_SIZE) || (columns.len() < MIN_N_COLS) {
             accumulate_numerators_no_fft(domain, columns, sample_batches, accumulated_numerators_vec);
             return;
         }
@@ -66,14 +66,12 @@ impl QuotientOps for SimdBackend {
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let subdomain_acc =
                 accumulate_numerators_on_subdomain(subdomain, batch, columns, &coeffs);
-            let subdomain_secure_poly: Vec<_> = parallel_iter!(subdomain_acc.columns).map(|c| {
-                CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
-                    .interpolate_with_twiddles(&subdomain_twiddles)
-            }).collect();
-            let columns = parallel_iter!(subdomain_secure_poly).map(|poly| poly
-                    .evaluate_with_twiddles(domain, twiddles)
-                    .values
-            ).collect::<Vec<_>>().try_into().unwrap();
+            // Extend accumulations to the full domain.
+            let columns = subdomain_acc.columns.map(|c| {
+                let poly = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
+                    .interpolate_with_twiddles(&subdomain_twiddles);
+                poly.evaluate_with_twiddles(domain, twiddles).values
+                 });
             let partial_numerators_acc = SecureColumnByCoords { columns };
 
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
