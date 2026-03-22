@@ -10,11 +10,15 @@ use stwo::core::pcs::quotients::{
 };
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::QuotientOps;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{N_LANES, PackedBaseField};
 use stwo::prover::backend::simd::quotients::accumulate_numerators_no_fft;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::backend::simd::{AccumulatedNumerators, QuotientOps};
+use stwo::prover::pcs::quotient_ops::AccumulatedNumerators;
+use stwo::prover::secure_column::SecureColumnByCoords;
 
 const LOG_BLOWUP_FACTOR: u32 = 2;
 
@@ -123,10 +127,50 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
         },
     );
 }
+fn bench_compute_quotients_and_combine(c: &mut Criterion) {
+    let log_size = 20;
+    let n_sample_points = 10;
+    let lifting_log_size = log_size + LOG_BLOWUP_FACTOR;
+
+    let accumulations: Vec<AccumulatedNumerators<SimdBackend>> = (0..n_sample_points)
+        .map(|i| {
+            let partial_numerators_acc = SecureColumnByCoords {
+                columns: std::array::from_fn(|j| BaseColumn {
+                    data: (0..(1 << log_size) / N_LANES)
+                        .map(|k| {
+                            PackedBaseField::from_array(std::array::from_fn(|l| {
+                                BaseField::from((i * 4 + j) * (1 << log_size) + k * N_LANES + l)
+                            }))
+                        })
+                        .collect(),
+                    length: 1 << log_size,
+                }),
+            };
+            AccumulatedNumerators {
+                sample_point: SECURE_FIELD_CIRCLE_GEN.mul(i as u128 + 1),
+                partial_numerators_acc,
+                first_linear_term_acc: SecureField::from_m31_array(std::array::from_fn(|j| {
+                    BaseField::from((i * 4 + j) as u32)
+                })),
+            }
+        })
+        .collect();
+
+    c.bench_function(
+        &format!("compute_quotients_and_combine 2^{lifting_log_size} x {n_sample_points} pts"),
+        |b| {
+            b.iter_batched(
+                || accumulations.clone(),
+                |acc| SimdBackend::compute_quotients_and_combine(black_box(acc), lifting_log_size),
+                BatchSize::LargeInput,
+            );
+        },
+    );
+}
 
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = bench_accumulate_numerators
+    targets = bench_accumulate_numerators, bench_compute_quotients_and_combine
 );
 criterion_main!(benches);
