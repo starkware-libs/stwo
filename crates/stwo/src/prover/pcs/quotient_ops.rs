@@ -44,6 +44,9 @@ pub trait QuotientOps: PolyOps {
 
 /// Helper struct that keeps track of the accumulation of the numerators involved in the FRI
 /// quotients.
+///
+/// Note: `Clone` is derived only for benchmarking purposes.
+#[derive(Clone)]
 pub struct AccumulatedNumerators<B: ColumnOps<BaseField>> {
     /// One of the sample points received by the pcs.
     pub sample_point: CirclePoint<SecureField>,
