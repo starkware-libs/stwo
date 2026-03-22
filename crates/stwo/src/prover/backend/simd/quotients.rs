@@ -14,7 +14,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
+use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
@@ -23,6 +23,8 @@ use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
+
+const QUOTIENTS_CHUNK_SIZE: usize = 64;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -40,26 +42,41 @@ impl QuotientOps for SimdBackend {
         let quotient_constants = quotient_constants(sample_batches);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
+            let mut partial_numerators_acc =
+                unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(size) };
 
             #[cfg(not(feature = "parallel"))]
-            let iter = partial_numerators_acc.chunks_mut(1);
+            let iter = partial_numerators_acc.chunks_mut(QUOTIENTS_CHUNK_SIZE);
 
-            // TODO(Leo): make chunk size configurable.
             #[cfg(feature = "parallel")]
-            let iter = partial_numerators_acc.par_chunks_mut(1);
+            let iter = partial_numerators_acc.par_chunks_mut(QUOTIENTS_CHUNK_SIZE);
 
             iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-                let query_values_at_row = batch.cols_vals_randpows.iter().map(
-                    |NumeratorData {
-                         column_index: idx, ..
-                     }| columns[*idx].data[chunk_idx],
-                );
-                let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
-                unsafe {
-                    values_dst.set_packed(0, row_value);
+                let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
+                // Initialize accumulators for the chunk.
+                let mut accumulators = [PackedSecureField::zero(); QUOTIENTS_CHUNK_SIZE];
+                // This is needed because because the last chunk may be smaller than
+                // `QUOTIENTS_CHUNK_SIZE`.
+                let packed_chunk_len = values_dst.0[0].0.len();
+                let accumulators = &mut accumulators[..packed_chunk_len];
+
+                for (numerator_data, (_, b, c)) in zip_eq(&batch.cols_vals_randpows, &coeffs) {
+                    let col_data = &columns[numerator_data.column_index].data;
+                    let b_broadcast = PackedSecureField::broadcast(*b);
+                    let c_broadcast = PackedSecureField::broadcast(*c);
+                    for (i, acc) in accumulators.iter_mut().enumerate() {
+                        let val = col_data[chunk_start + i];
+                        *acc += c_broadcast * val - b_broadcast;
+                    }
+                }
+
+                for (i, acc) in accumulators.iter().enumerate() {
+                    unsafe {
+                        values_dst.set_packed(i, *acc);
+                    }
                 }
             });
+
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
@@ -84,53 +101,46 @@ impl QuotientOps for SimdBackend {
         let denominators_inverses = denominator_inverses(&sample_points, domain);
 
         // Populate `quotients`.
-        // TODO(Leo): make chunk size configurable.
         #[cfg(not(feature = "parallel"))]
-        let iter = quotients.chunks_mut(1).enumerate();
+        let iter = quotients.chunks_mut(QUOTIENTS_CHUNK_SIZE).enumerate();
 
         #[cfg(feature = "parallel")]
-        let iter = quotients.par_chunks_mut(1).enumerate();
+        let iter = quotients.par_chunks_mut(QUOTIENTS_CHUNK_SIZE).enumerate();
 
-        iter.for_each(|(domain_idx, mut value_dst)| {
-            let mut quotient = PackedSecureField::zero();
-            for (acc, den_inv) in accumulations.iter().zip_eq(denominators_inverses.iter()) {
-                let mut full_numerator = PackedSecureField::zero();
+        iter.for_each(|(chunk_idx, mut value_dst)| {
+            let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
+            let packed_chunk_len = value_dst.0[0].0.len();
 
-                let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
-                let lifted_partial_numerator =
-                    PackedSecureField::from_packed_m31s(std::array::from_fn(|j| {
-                        let lifted_simd = to_lifted_simd(
-                            acc.partial_numerators_acc.columns[j].data[domain_idx >> log_ratio]
-                                .into_simd(),
-                            log_ratio,
-                            domain_idx,
-                        );
-                        unsafe { PackedBaseField::from_simd_unchecked(lifted_simd) }
-                    }));
+            for local_i in 0..packed_chunk_len {
+                let domain_idx = chunk_start + local_i;
+                let mut quotient = PackedSecureField::zero();
+                for (acc, den_inv) in accumulations.iter().zip_eq(denominators_inverses.iter()) {
+                    let mut full_numerator = PackedSecureField::zero();
 
-                full_numerator += lifted_partial_numerator
-                    - PackedSecureField::broadcast(acc.first_linear_term_acc)
-                        * domain_points[domain_idx].y;
-                quotient += full_numerator * den_inv[domain_idx];
-            }
-            unsafe {
-                value_dst.set_packed(0, quotient);
+                    let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
+                    let lifted_partial_numerator =
+                        PackedSecureField::from_packed_m31s(std::array::from_fn(|j| {
+                            let lifted_simd = to_lifted_simd(
+                                acc.partial_numerators_acc.columns[j].data[domain_idx >> log_ratio]
+                                    .into_simd(),
+                                log_ratio,
+                                domain_idx,
+                            );
+                            unsafe { PackedBaseField::from_simd_unchecked(lifted_simd) }
+                        }));
+
+                    full_numerator += lifted_partial_numerator
+                        - PackedSecureField::broadcast(acc.first_linear_term_acc)
+                            * domain_points[domain_idx].y;
+                    quotient += full_numerator * den_inv[domain_idx];
+                }
+                unsafe {
+                    value_dst.set_packed(local_i, quotient);
+                }
             }
         });
         SecureEvaluation::new(domain, quotients)
     }
-}
-
-fn accumulate_row_partial_numerators(
-    queried_values_at_row: impl Iterator<Item = PackedBaseField>,
-    coeffs: &Vec<(SecureField, SecureField, SecureField)>,
-) -> PackedSecureField {
-    let mut numerator = PackedSecureField::zero();
-    for (val_at_row, (_, b, c)) in zip_eq(queried_values_at_row, coeffs) {
-        let value = PackedSecureField::broadcast(*c) * val_at_row;
-        numerator += value - PackedSecureField::broadcast(*b);
-    }
-    numerator
 }
 
 fn denominator_inverses(
