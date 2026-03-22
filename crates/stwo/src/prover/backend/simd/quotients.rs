@@ -14,7 +14,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
+use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
@@ -159,32 +159,29 @@ fn accumulate_numerators_on_subdomain(
         let chunk_start = chunk_idx * QUOTIENTS_CHUNK_SIZE;
         let packed_chunk_len = values_dst.0[0].0.len();
 
-        for local_i in 0..packed_chunk_len {
-            let row_idx = chunk_start + local_i;
-            let query_values_at_row = sample_batch.cols_vals_randpows.iter().map(
-                |NumeratorData {
-                     column_index: idx, ..
-                 }| columns[*idx].data[row_idx],
-            );
-            let row_value = accumulate_row_partial_numerators(query_values_at_row, quotient_coeffs);
+        // Zero-initialize accumulators for the chunk.
+        let mut accumulators = vec![PackedSecureField::zero(); packed_chunk_len];
+
+        // Iterate columns (outer) × rows (inner) for better cache locality.
+        for (numerator_data, (_, b, c)) in
+            zip_eq(&sample_batch.cols_vals_randpows, quotient_coeffs)
+        {
+            let col_data = &columns[numerator_data.column_index].data;
+            let b_broadcast = PackedSecureField::broadcast(*b);
+            let c_broadcast = PackedSecureField::broadcast(*c);
+            for (local_i, acc) in accumulators.iter_mut().enumerate() {
+                let val = col_data[chunk_start + local_i];
+                *acc += c_broadcast * val - b_broadcast;
+            }
+        }
+
+        for (local_i, acc) in accumulators.iter().enumerate() {
             unsafe {
-                values_dst.set_packed(local_i, row_value);
+                values_dst.set_packed(local_i, *acc);
             }
         }
     });
     values
-}
-
-fn accumulate_row_partial_numerators(
-    queried_values_at_row: impl Iterator<Item = PackedBaseField>,
-    coeffs: &[(SecureField, SecureField, SecureField)],
-) -> PackedSecureField {
-    let mut numerator = PackedSecureField::zero();
-    for (val_at_row, (_, b, c)) in zip_eq(queried_values_at_row, coeffs) {
-        let value = PackedSecureField::broadcast(*c) * val_at_row;
-        numerator += value - PackedSecureField::broadcast(*b);
-    }
-    numerator
 }
 
 pub fn accumulate_numerators_no_fft(
