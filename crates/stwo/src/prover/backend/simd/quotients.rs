@@ -14,7 +14,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
+use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
@@ -36,28 +36,45 @@ impl QuotientOps for SimdBackend {
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
+        // This constant is chosen empirically by benchmarking.
+        const NUMERATORS_CHUNK_SIZE: usize = 1 << 6;
+
         let size = columns[0].length;
         let quotient_constants = quotient_constants(sample_batches);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
+            let mut partial_numerators_acc =
+                unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(size) };
 
             #[cfg(not(feature = "parallel"))]
-            let iter = partial_numerators_acc.chunks_mut(1);
+            let iter = partial_numerators_acc.chunks_mut(NUMERATORS_CHUNK_SIZE);
 
-            // TODO(Leo): make chunk size configurable.
             #[cfg(feature = "parallel")]
-            let iter = partial_numerators_acc.par_chunks_mut(1);
+            let iter = partial_numerators_acc.par_chunks_mut(NUMERATORS_CHUNK_SIZE);
 
             iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-                let query_values_at_row = batch.cols_vals_randpows.iter().map(
-                    |NumeratorData {
-                         column_index: idx, ..
-                     }| columns[*idx].data[chunk_idx],
-                );
-                let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
-                unsafe {
-                    values_dst.set_packed(0, row_value);
+                let chunk_start = chunk_idx * NUMERATORS_CHUNK_SIZE;
+                // Initialize accumulators for the chunk.
+                let mut accumulators = [PackedSecureField::zero(); NUMERATORS_CHUNK_SIZE];
+                // This is needed because the last chunk may be smaller than
+                // `NUMERATORS_CHUNK_SIZE`.
+                let packed_chunk_len = values_dst.0[0].0.len();
+                let accumulators = &mut accumulators[..packed_chunk_len];
+
+                for (numerator_data, (_, b, c)) in zip_eq(&batch.cols_vals_randpows, &coeffs) {
+                    let col_data = &columns[numerator_data.column_index].data;
+                    let b_broadcast = PackedSecureField::broadcast(*b);
+                    let c_broadcast = PackedSecureField::broadcast(*c);
+                    for (i, acc) in accumulators.iter_mut().enumerate() {
+                        let val = col_data[chunk_start + i];
+                        *acc += c_broadcast * val - b_broadcast;
+                    }
+                }
+
+                for (i, acc) in accumulators.iter().enumerate() {
+                    unsafe {
+                        values_dst.set_packed(i, *acc);
+                    }
                 }
             });
             let first_linear_term_acc: SecureField = coeffs.iter().map(|(a, ..)| a).sum();
@@ -119,18 +136,6 @@ impl QuotientOps for SimdBackend {
         });
         SecureEvaluation::new(domain, quotients)
     }
-}
-
-fn accumulate_row_partial_numerators(
-    queried_values_at_row: impl Iterator<Item = PackedBaseField>,
-    coeffs: &Vec<(SecureField, SecureField, SecureField)>,
-) -> PackedSecureField {
-    let mut numerator = PackedSecureField::zero();
-    for (val_at_row, (_, b, c)) in zip_eq(queried_values_at_row, coeffs) {
-        let value = PackedSecureField::broadcast(*c) * val_at_row;
-        numerator += value - PackedSecureField::broadcast(*b);
-    }
-    numerator
 }
 
 fn denominator_inverses(

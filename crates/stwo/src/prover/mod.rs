@@ -12,7 +12,7 @@ use crate::prover::backend::BackendForChannel;
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Poly, Trace};
 pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator, EvaluationMode};
-mod pcs;
+pub mod pcs;
 pub use pcs::quotient_ops::QuotientOps;
 pub use pcs::{CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder};
 pub mod backend;
