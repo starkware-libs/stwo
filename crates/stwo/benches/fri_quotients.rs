@@ -155,12 +155,22 @@ fn bench_compute_quotients_and_combine(c: &mut Criterion) {
         })
         .collect();
 
+    let sample_points: Vec<_> = accumulations.iter().map(|a| a.sample_point).collect();
+    let denominator_inverses =
+        SimdBackend::compute_denominator_inverses(&sample_points, lifting_log_size);
+
     c.bench_function(
         &format!("compute_quotients_and_combine 2^{lifting_log_size} x {n_sample_points} pts"),
         |b| {
             b.iter_batched(
                 || accumulations.clone(),
-                |acc| SimdBackend::compute_quotients_and_combine(black_box(acc), lifting_log_size),
+                |acc| {
+                    SimdBackend::compute_quotients_and_combine(
+                        black_box(acc),
+                        lifting_log_size,
+                        denominator_inverses.clone(),
+                    )
+                },
                 BatchSize::LargeInput,
             );
         },

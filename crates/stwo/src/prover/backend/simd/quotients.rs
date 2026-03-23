@@ -32,6 +32,8 @@ pub struct QuotientConstants {
 }
 
 impl QuotientOps for SimdBackend {
+    type DenominatorInverses = Vec<Vec<PackedCM31>>;
+
     // TODO(Leo): optimize.
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
@@ -86,11 +88,18 @@ impl QuotientOps for SimdBackend {
         }
     }
 
-    // TODO(Leo): optimize. Consider receiving the denominator inverses from the call site and
-    // having them computed in parallel to other task.
+    fn compute_denominator_inverses(
+        sample_points: &[CirclePoint<SecureField>],
+        lifting_log_size: u32,
+    ) -> Self::DenominatorInverses {
+        denominator_inverses(sample_points, CanonicCoset::new(lifting_log_size).circle_domain())
+    }
+
+    // TODO(Leo): optimize.
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        denominators_inverses: Self::DenominatorInverses,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         // This constant is chosen empirically by benchmarking.
         const COMBINE_CHUNK_SIZE: usize = 16;
@@ -100,9 +109,6 @@ impl QuotientOps for SimdBackend {
             CircleDomainBitRevIterator::new(domain).collect();
         let mut quotients: SecureColumnByCoords<SimdBackend> =
             unsafe { SecureColumnByCoords::uninitialized(1 << lifting_log_size) };
-        let sample_points: Vec<CirclePoint<SecureField>> =
-            accumulations.iter().map(|x| x.sample_point).collect();
-        let denominators_inverses = denominator_inverses(&sample_points, domain);
 
         // Precompute values needed inside the loop.
         let log_ratios: Vec<u32> = accumulations

@@ -5,10 +5,12 @@ use num_traits::Zero;
 
 use super::CpuBackend;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{
-    accumulate_row_partial_numerators, denominator_inverses, quotient_constants, ColumnSampleBatch,
+    accumulate_row_partial_numerators, quotient_constants, ColumnSampleBatch,
 };
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
@@ -20,6 +22,8 @@ use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
 impl QuotientOps for CpuBackend {
+    type DenominatorInverses = Vec<Vec<CM31>>;
+
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
@@ -47,21 +51,42 @@ impl QuotientOps for CpuBackend {
         }
     }
 
+    fn compute_denominator_inverses(
+        sample_points: &[CirclePoint<SecureField>],
+        lifting_log_size: u32,
+    ) -> Self::DenominatorInverses {
+        let domain = CanonicCoset::new(lifting_log_size).circle_domain();
+        sample_points
+            .iter()
+            .map(|sample_point| {
+                let prx = sample_point.x.0;
+                let pry = sample_point.y.0;
+                let pix = sample_point.x.1;
+                let piy = sample_point.y.1;
+                let denominators: Vec<CM31> = (0..1 << lifting_log_size)
+                    .map(|row| {
+                        let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
+                        (prx - domain_point.x) * piy - (pry - domain_point.y) * pix
+                    })
+                    .collect();
+                CM31::batch_inverse(&denominators)
+            })
+            .collect()
+    }
+
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        denominator_inverses: Self::DenominatorInverses,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         let domain = CanonicCoset::new(lifting_log_size).circle_domain();
         let mut quotients: SecureColumnByCoords<CpuBackend> =
             unsafe { SecureColumnByCoords::uninitialized(1 << lifting_log_size) };
-        let sample_points: Vec<CirclePoint<SecureField>> =
-            accumulations.iter().map(|x| x.sample_point).collect();
         // Populate `quotients`.
         for row in 0..quotients.len() {
             let domain_point = domain.at(bit_reverse_index(row, lifting_log_size));
-            let inverses = denominator_inverses(&sample_points, domain_point);
             let mut quotient = SecureField::zero();
-            for (acc, den_inv) in accumulations.iter().zip_eq(inverses) {
+            for (acc_idx, acc) in accumulations.iter().enumerate() {
                 let mut full_numerator = SecureField::zero();
                 let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
                 let lifted_idx = (row >> (log_ratio + 1) << 1) + (row & 1);
@@ -70,7 +95,7 @@ impl QuotientOps for CpuBackend {
                     - acc.first_linear_term_acc * domain_point.y;
                 // Note that `den_inv` is an element of CM31 (see the docs and comments in the
                 // function [`crates::core::pcs::quotients::denominator_inverses`]).
-                quotient += full_numerator.mul_cm31(den_inv)
+                quotient += full_numerator.mul_cm31(denominator_inverses[acc_idx][row])
             }
             quotients.set(row, quotient);
         }

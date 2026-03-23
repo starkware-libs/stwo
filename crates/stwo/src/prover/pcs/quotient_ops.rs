@@ -18,6 +18,9 @@ use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::AccumulationOps;
 
 pub trait QuotientOps: PolyOps {
+    /// The precomputed denominator inverses type, indexed by (sample_point, domain_point).
+    type DenominatorInverses: Send;
+
     /// Receives a non-empty set of columns of the *same* size, and populates the vector
     /// `accumulated_numerators_vec` with their FRI numerators accumulations, across
     /// `sample_batches`.
@@ -33,15 +36,24 @@ pub trait QuotientOps: PolyOps {
         log_blowup_factor: u32,
     );
 
-    /// Given a vector of `AccumulatedNumerators`, the function iterates over the points of the
-    /// largest domain of the accumulated numerators, and:
-    /// * for each sample point, computes the denominator of the quotient for that (domain point,
-    ///   sample point).
+    /// Precomputes the denominator inverses for all (sample_point, domain_point) pairs.
+    /// The result is indexed first by sample point (in the same order as `sample_points`),
+    /// then by domain point in bit-reversed order.
+    fn compute_denominator_inverses(
+        sample_points: &[CirclePoint<SecureField>],
+        lifting_log_size: u32,
+    ) -> Self::DenominatorInverses;
+
+    /// Given a vector of `AccumulatedNumerators` and precomputed denominator inverses, the function
+    /// iterates over the points of the largest domain of the accumulated numerators, and:
+    /// * for each sample point, looks up the precomputed denominator inverse for that
+    ///   (domain point, sample point).
     /// * multiplies it by the accumulated numerator for that domain point and sample point.
     /// * sums across sample points.
     fn compute_quotients_and_combine(
         accs: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        denominator_inverses: Self::DenominatorInverses,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
 }
 
@@ -85,7 +97,6 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-    let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         samples,
         columns
@@ -97,64 +108,94 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         random_coeff,
     );
 
-    // Populate `accumulated_numerators_vec`, per (log_size, sample_point). After this iteration,
-    // `accumulated_numerators_vec` will have length equal to
-    //
-    //   ∑_k (# of distinct sample points per log size k).
-    //
-    zip(
-        columns.iter().flatten(),
-        samples_with_randomness.iter().flatten(),
-    )
-    .sorted_by_key(|(c, _)| c.domain.log_size())
-    .group_by(|(c, _)| c.domain.log_size())
-    .into_iter()
-    .for_each(|(_, tuples)| {
-        let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
-        // TODO: slice.
-        let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(
-            &columns,
-            &sample_batches,
-            &mut accumulated_numerators_vec,
-            twiddles,
-            log_blowup_factor,
+    // Extract distinct sample points early so denominator inverses can be computed concurrently
+    // with the numerator accumulation.
+    let distinct_sample_points: Vec<CirclePoint<SecureField>> = samples_with_randomness
+        .iter()
+        .flatten()
+        .flat_map(|col_samples| col_samples.iter().map(|(ps, _)| ps.point))
+        .sorted_by_key(|p| (p.x, p.y))
+        .dedup()
+        .collect();
+
+    let compute_accumulations = || {
+        let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
+
+        // Populate `accumulated_numerators_vec`, per (log_size, sample_point). After this
+        // iteration, `accumulated_numerators_vec` will have length equal to
+        //
+        //   ∑_k (# of distinct sample points per log size k).
+        //
+        zip(
+            columns.iter().flatten(),
+            samples_with_randomness.iter().flatten(),
         )
-    });
-
-    // Group and accumulate the numerators per sample point: the accumulations (of different
-    // lengths) get lifted and accumulated to a single vector. After this step, there is a single
-    // accumulation per sample point.
-    let accumulations_per_sample_point = accumulated_numerators_vec
+        .sorted_by_key(|(c, _)| c.domain.log_size())
+        .group_by(|(c, _)| c.domain.log_size())
         .into_iter()
-        .sorted_by_key(|c| (c.sample_point.x, c.sample_point.y))
-        .group_by(|c| c.sample_point)
-        .into_iter()
-        .map(|(sample_point, accumulations_per_log_size)| {
-            let accumulations_per_log_size = accumulations_per_log_size.collect_vec();
-            // Accumulate the `a` coefficients.
-            let first_linear_term_acc: SecureField = accumulations_per_log_size
-                .iter()
-                .map(|x| x.first_linear_term_acc)
-                .sum();
-            // Lift and accumulate the partial numerators vectors.
-            // `partial_numerators_acc` is already sorted increasingly by size as required by
-            // `B::lift_and_accumulate`.
-            let partial_numerators_acc = accumulations_per_log_size
-                .into_iter()
-                .map(|x| x.partial_numerators_acc)
-                .collect_vec();
-            let res = B::lift_and_accumulate(partial_numerators_acc).unwrap();
+        .for_each(|(_, tuples)| {
+            let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
+            // TODO: slice.
+            let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
+            B::accumulate_numerators(
+                &columns,
+                &sample_batches,
+                &mut accumulated_numerators_vec,
+                twiddles,
+                log_blowup_factor,
+            )
+        });
 
-            AccumulatedNumerators {
-                sample_point,
-                partial_numerators_acc: res,
-                first_linear_term_acc,
-            }
-        })
-        .collect_vec();
+        // Group and accumulate the numerators per sample point: the accumulations (of different
+        // lengths) get lifted and accumulated to a single vector. After this step, there is a
+        // single accumulation per sample point.
+        accumulated_numerators_vec
+            .into_iter()
+            .sorted_by_key(|c| (c.sample_point.x, c.sample_point.y))
+            .group_by(|c| c.sample_point)
+            .into_iter()
+            .map(|(sample_point, accumulations_per_log_size)| {
+                let accumulations_per_log_size = accumulations_per_log_size.collect_vec();
+                // Accumulate the `a` coefficients.
+                let first_linear_term_acc: SecureField = accumulations_per_log_size
+                    .iter()
+                    .map(|x| x.first_linear_term_acc)
+                    .sum();
+                // Lift and accumulate the partial numerators vectors.
+                // `partial_numerators_acc` is already sorted increasingly by size as required
+                // by `B::lift_and_accumulate`.
+                let partial_numerators_acc = accumulations_per_log_size
+                    .into_iter()
+                    .map(|x| x.partial_numerators_acc)
+                    .collect_vec();
+                let res = B::lift_and_accumulate(partial_numerators_acc).unwrap();
 
-    B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size)
+                AccumulatedNumerators {
+                    sample_point,
+                    partial_numerators_acc: res,
+                    first_linear_term_acc,
+                }
+            })
+            .collect_vec()
+    };
+
+    #[cfg(feature = "parallel")]
+    let (denominator_inverses, accumulations_per_sample_point) = rayon::join(
+        || B::compute_denominator_inverses(&distinct_sample_points, lifting_log_size),
+        compute_accumulations,
+    );
+
+    #[cfg(not(feature = "parallel"))]
+    let (denominator_inverses, accumulations_per_sample_point) = (
+        B::compute_denominator_inverses(&distinct_sample_points, lifting_log_size),
+        compute_accumulations(),
+    );
+
+    B::compute_quotients_and_combine(
+        accumulations_per_sample_point,
+        lifting_log_size,
+        denominator_inverses,
+    )
 }
 
 #[cfg(test)]
