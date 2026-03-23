@@ -42,6 +42,8 @@ pub trait QuotientOps: PolyOps {
     fn compute_quotients_and_combine(
         accs: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        log_blowup_factor: u32,
+        twiddles: &TwiddleTree<Self>,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
 }
 
@@ -154,7 +156,12 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         })
         .collect_vec();
 
-    B::compute_quotients_and_combine(accumulations_per_sample_point, lifting_log_size)
+    B::compute_quotients_and_combine(
+        accumulations_per_sample_point,
+        lifting_log_size,
+        log_blowup_factor,
+        twiddles,
+    )
 }
 
 #[cfg(test)]

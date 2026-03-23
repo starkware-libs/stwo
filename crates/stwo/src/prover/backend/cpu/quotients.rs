@@ -50,6 +50,8 @@ impl QuotientOps for CpuBackend {
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        _log_blowup_factor: u32,
+        _twiddles: &TwiddleTree<Self>,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         let domain = CanonicCoset::new(lifting_log_size).circle_domain();
         let mut quotients: SecureColumnByCoords<CpuBackend> =

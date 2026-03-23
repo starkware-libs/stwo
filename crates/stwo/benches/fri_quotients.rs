@@ -133,6 +133,9 @@ fn bench_compute_quotients_and_combine(c: &mut Criterion) {
 
     let n_sample_points = 10;
     let lifting_log_size = 21;
+    let log_blowup_factor = 1;
+    let eval_domain = CanonicCoset::new(lifting_log_size).circle_domain();
+    let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
 
     let accumulations: Vec<AccumulatedNumerators<SimdBackend>> = (0..n_sample_points)
         .map(|i| {
@@ -160,7 +163,14 @@ fn bench_compute_quotients_and_combine(c: &mut Criterion) {
         |b| {
             b.iter_batched(
                 || accumulations.clone(),
-                |acc| SimdBackend::compute_quotients_and_combine(black_box(acc), lifting_log_size),
+                |acc| {
+                    SimdBackend::compute_quotients_and_combine(
+                        black_box(acc),
+                        lifting_log_size,
+                        log_blowup_factor,
+                        &twiddles,
+                    )
+                },
                 BatchSize::LargeInput,
             );
         },
