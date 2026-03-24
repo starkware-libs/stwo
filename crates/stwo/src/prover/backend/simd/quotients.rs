@@ -20,6 +20,7 @@ use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
@@ -35,6 +36,7 @@ impl QuotientOps for SimdBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
+        _log_blowup_factor: u32,
     ) {
         // This constant is chosen empirically by benchmarking.
         const NUMERATORS_CHUNK_SIZE: usize = 1 << 6;
@@ -91,6 +93,8 @@ impl QuotientOps for SimdBackend {
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
         lifting_log_size: u32,
+        _log_blowup_factor: u32,
+        _twiddles: &TwiddleTree<Self>,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         // This constant is chosen empirically by benchmarking.
         const COMBINE_CHUNK_SIZE: usize = 16;
@@ -220,6 +224,7 @@ mod tests {
     fn test_simd_and_cpu_numerators_are_consistent() {
         const LOG_SIZE: u32 = 10;
         const N_COLS: usize = 100;
+        const LOG_BLOWUP_FACTOR: u32 = 3;
         let mut rng = SmallRng::seed_from_u64(0);
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let values = BaseColumn::from_cpu(&(0..1 << LOG_SIZE).map(BaseField::from).collect_vec());
@@ -257,7 +262,7 @@ mod tests {
             .flatten()
             .collect_vec(),
         );
-        // SIMD
+        // SIMD (still accumulates over full domain).
         let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| columns.clone()).collect();
@@ -266,8 +271,9 @@ mod tests {
             &columns_simd.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
+            LOG_BLOWUP_FACTOR,
         );
-        // CPU
+        // CPU (accumulates over subdomain).
         let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
         let columns_cpu: Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| columns.to_cpu().clone()).collect();
@@ -275,8 +281,13 @@ mod tests {
             &columns_cpu.iter().collect_vec(),
             &sample_batches,
             &mut accumulated_numerators_vec_cpu,
+            LOG_BLOWUP_FACTOR,
         );
 
+        // The SIMD result is over the full domain, while the CPU result is over the subdomain
+        // (a bit-reversed prefix). Compare the prefix.
+        // TODO(Leo): revert in next PR after SIMD impl.
+        let subdomain_size = 1 << (LOG_SIZE - LOG_BLOWUP_FACTOR);
         accumulated_numerators_vec_simd
             .iter()
             .zip_eq(accumulated_numerators_vec_cpu)
@@ -285,10 +296,13 @@ mod tests {
                     acc_simd.first_linear_term_acc,
                     acc_cpu.first_linear_term_acc
                 );
-                assert_eq!(
-                    acc_simd.partial_numerators_acc.to_cpu().columns,
-                    acc_cpu.partial_numerators_acc.columns
-                );
+                let simd_cpu = acc_simd.partial_numerators_acc.to_cpu();
+                for col_idx in 0..4 {
+                    assert_eq!(
+                        simd_cpu.columns[col_idx][..subdomain_size],
+                        acc_cpu.partial_numerators_acc.columns[col_idx][..],
+                    );
+                }
             });
     }
 }
