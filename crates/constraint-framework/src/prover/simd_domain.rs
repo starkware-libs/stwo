@@ -17,13 +17,13 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
 use crate::logup::LogupAtRow;
-use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::{EvalAtRow, INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS};
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct SimdDomainEvaluator<'a> {
     pub trace_eval:
         &'a TreeVec<Vec<&'a CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-    pub column_index_per_interaction: Vec<usize>,
+    pub column_index_per_interaction: [usize; MAX_N_INTERACTIONS],
     /// The row index of the simd-vector row to evaluate the constraints at.
     pub vec_row: usize,
     pub random_coeff_powers: &'a [SecureField],
@@ -45,7 +45,10 @@ impl<'a> SimdDomainEvaluator<'a> {
     ) -> Self {
         Self {
             trace_eval,
-            column_index_per_interaction: vec![0; trace_eval.len()],
+            column_index_per_interaction: {
+                debug_assert!(trace_eval.len() <= MAX_N_INTERACTIONS);
+                [0; MAX_N_INTERACTIONS]
+            },
             vec_row,
             random_coeff_powers,
             row_res: VeryPackedSecureField::zero(),

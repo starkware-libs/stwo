@@ -38,6 +38,10 @@ use stwo::core::Fraction;
 pub use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
 pub const ORIGINAL_TRACE_IDX: usize = 1;
 pub const INTERACTION_TRACE_IDX: usize = 2;
+/// Maximum number of trace interactions (i.e. trace polynomials committed before the composition
+/// polynomial is computed). Currently all components need at most 3 interactions, except
+/// [`examples::xor::gkr_lookups::MleEvalProverComponent`] which uses 4.
+pub const MAX_N_INTERACTIONS: usize = 4;
 
 /// A vector that describes the batching of logup entries.
 /// Each vector member corresponds to a logup entry, and contains the batch number to which the

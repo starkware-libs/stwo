@@ -11,12 +11,12 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
 use crate::logup::LogupAtRow;
-use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::{EvalAtRow, INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS};
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct CpuDomainEvaluator<'a> {
     pub trace_eval: &'a TreeVec<Vec<&'a CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
-    pub column_index_per_interaction: Vec<usize>,
+    pub column_index_per_interaction: [usize; MAX_N_INTERACTIONS],
     pub row: usize,
     pub random_coeff_powers: &'a [SecureField],
     pub row_res: SecureField,
@@ -39,7 +39,10 @@ impl<'a> CpuDomainEvaluator<'a> {
     ) -> Self {
         Self {
             trace_eval,
-            column_index_per_interaction: vec![0; trace_eval.len()],
+            column_index_per_interaction: {
+                debug_assert!(trace_eval.len() <= MAX_N_INTERACTIONS);
+                [0; MAX_N_INTERACTIONS]
+            },
             row,
             random_coeff_powers,
             row_res: SecureField::zero(),

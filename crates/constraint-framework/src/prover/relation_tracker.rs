@@ -14,7 +14,7 @@ use stwo::prover::backend::Column;
 
 use crate::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS, PREPROCESSED_TRACE_IDX,
 };
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub fn add_to_relation_entries<E: FrameworkEval>(
 pub struct RelationTrackerEvaluator<'a> {
     entries: Vec<RelationTrackerEntry>,
     trace: &'a TreeVec<Vec<&'a Vec<BaseField>>>,
-    pub column_index_per_interaction: Vec<usize>,
+    pub column_index_per_interaction: [usize; MAX_N_INTERACTIONS],
     pub vec_row: usize,
     pub domain_log_size: u32,
 }
@@ -65,7 +65,10 @@ impl<'a> RelationTrackerEvaluator<'a> {
         Self {
             entries: vec![],
             trace,
-            column_index_per_interaction: vec![0; trace.len()],
+            column_index_per_interaction: {
+                debug_assert!(trace.len() <= MAX_N_INTERACTIONS);
+                [0; MAX_N_INTERACTIONS]
+            },
             vec_row: row,
             domain_log_size,
         }
