@@ -32,11 +32,12 @@ pub struct PcsConfig {
     /// The number of proof of work bits before the FRI queries.
     pub pow_bits: u32,
     pub fri_config: FriConfig,
-    /// An optional integer which controls the size of the lifting domain. If `None`, the prover
-    /// lifts each tree’s polynomials to the largest domain within that tree (an implicit
-    /// assumption here is that the largest domains are all of equal size across trees, except
-    /// possibly for the preprocessed tree). If not `None`, all polynomials are lifted to the
-    /// domain of given log size.
+    /// An optional integer which controls the size of the lifting domain (This size includes the
+    /// `log_blowup_factor`). When specified, the prover lifts all polynomials to the domain of
+    /// given log size.
+    /// If `None`, the prover lifts each tree’s polynomials to the largest domain within that tree
+    /// (an implicit assumption here is that the largest domains are all of equal size across
+    /// trees, except possibly for the preprocessed tree).
     pub lifting_log_size: Option<u32>,
 }
 impl PcsConfig {
