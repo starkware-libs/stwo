@@ -20,15 +20,14 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse, Field, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
+use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
-use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_tag};
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
-use crate::prover::fri::FriOps;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -351,18 +350,16 @@ impl PolyOps for SimdBackend {
         twiddles: &TwiddleTree<Self>,
     ) -> SecureField {
         let log_size = evals.domain.log_size();
-        let mut folding_alphas = get_folding_alphas(point, log_size as usize);
-
         let mut layer_evaluation =
-            fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
+            fold_circle_evaluation_into_line(evals, point.y, twiddles);
 
+        let mut x = point.x;
         while layer_evaluation.len() > 1 {
-            layer_evaluation = SimdBackend::fold_line(
-                &layer_evaluation,
-                folding_alphas.pop().unwrap(),
-                twiddles,
-                1,
-            );
+            let fold_step = layer_evaluation.len().ilog2().min(4);
+            layer_evaluation = fold_line_tag(&layer_evaluation, x, twiddles, fold_step);
+            for _ in 0..fold_step {
+                x = CirclePoint::double_x(x);
+            }
         }
 
         layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
