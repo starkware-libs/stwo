@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   run-avx-bench:
-    runs-on: stwo-avx
+    runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bootstrap_runners

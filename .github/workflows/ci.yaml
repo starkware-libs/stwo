@@ -23,7 +23,7 @@ on:
 
 jobs:
   format:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -34,7 +34,7 @@ jobs:
       - run: scripts/rust_fmt.sh --check
 
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -45,7 +45,7 @@ jobs:
       - run: scripts/clippy.sh
 
   doc:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -55,7 +55,7 @@ jobs:
       - run: cargo doc
 
   run-wasm32-wasip1-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -72,7 +72,7 @@ jobs:
           RUSTFLAGS: -C target-feature=+simd128
 
   run-wasm32-unknown-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -103,7 +103,7 @@ jobs:
     strategy:
       matrix:
         target-feature: [avx512f, avx2]
-    runs-on: stwo-avx
+    runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bootstrap_runners
@@ -116,7 +116,7 @@ jobs:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
   run-avx512-bench:
-    runs-on: stwo-avx
+    runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bootstrap_runners
@@ -145,7 +145,7 @@ jobs:
           alert-comment-cc-users: "@gilbens-starkware"
 
   run-avx512-bench-parallel:
-    runs-on: stwo-avx
+    runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bootstrap_runners
@@ -174,7 +174,7 @@ jobs:
           alert-comment-cc-users: "@gilbens-starkware"
 
   run-tests-no-prover:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -184,7 +184,7 @@ jobs:
       - run: cargo test --no-default-features --package stwo
 
   run-tests-prover-no-parallel:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -194,7 +194,7 @@ jobs:
       - run: cargo test --features prover --package stwo
 
   run-framework-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -204,7 +204,7 @@ jobs:
       - run: cargo test --no-default-features --package stwo-constraint-framework
 
   run-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -214,7 +214,7 @@ jobs:
       - run: cargo test --features="tracing, prover"
 
   run-slow-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -224,7 +224,7 @@ jobs:
       - run: cargo test --release --features="slow-tests, prover"
 
   run-tests-parallel:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -234,7 +234,7 @@ jobs:
       - run: cargo test --features="parallel, prover"
 
   ensure-no-std-core:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -244,7 +244,7 @@ jobs:
       - run: cd ensure-verifier-no_std && cargo build -r
 
   machete:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -257,7 +257,7 @@ jobs:
         run: cargo machete
 
   all-tests:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
     needs:
       - clippy
       - format

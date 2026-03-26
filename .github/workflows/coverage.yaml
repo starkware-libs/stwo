@@ -4,7 +4,7 @@ on: [pull_request, push]
 
 jobs:
   coverage:
-    runs-on: stwo-avx
+    runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     env:
       CARGO_TERM_COLOR: always
     steps:
