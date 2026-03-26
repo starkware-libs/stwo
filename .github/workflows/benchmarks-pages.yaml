@@ -15,7 +15,7 @@ jobs:
   run-avx-bench:
     runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
