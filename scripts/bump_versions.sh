@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CURRENT_VERSION='2.1.0'
+CURRENT_VERSION='2.2.0'
 NEW_VERSION="$@"
 
 if [ -z "$NEW_VERSION" ]; then
