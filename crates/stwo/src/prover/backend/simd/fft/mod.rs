@@ -35,24 +35,107 @@ pub const MIN_FFT_LOG_SIZE: u32 = 5;
 /// Behavior is undefined if `values` does not have the same alignment as [`u32x16`].
 pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
     let half = log_n_vecs / 2;
+    let n = 1usize << half;
+    let log_step = log_n_vecs - half;
+
+    // Tile size for the cache-blocked path. Within each tile the inner loop iterates over
+    // `a` (making j = c*stride+a sequential) while `c` is outer. Between c iterations,
+    // i[a, c+1] = i[a, c] + 1 (adjacent line, stays in L1). TILE must fit within one L1
+    // cache set (8-12 way on modern x86) so the strided i-lines don't evict each other.
+    const TILE: usize = 8;
 
     let values = UnsafeMut(values);
-    parallel_iter!(0..1 << half).for_each(|a| {
-        let values = values.get();
-        for b in 0..1 << (log_n_vecs & 1) {
-            for c in 0..1 << half {
-                let i = (a << (log_n_vecs - half)) | (b << half) | c;
-                let j = (c << (log_n_vecs - half)) | (b << half) | a;
-                if i >= j {
-                    continue;
+
+    for b in 0..1 << (log_n_vecs & 1) {
+        let b_offset = b << half;
+
+        if n < 2 * TILE {
+            // Small problem: use simple branchless loop. The dataset fits in L2 so the
+            // strided j-accesses are not expensive.
+            parallel_iter!(0..n).for_each(|a| {
+                let values = values.get();
+                for c in (a + 1)..n {
+                    let i = (a << log_step) | b_offset | c;
+                    let j = (c << log_step) | b_offset | a;
+                    let val0 = load(values.add(i << 4).cast_const());
+                    let val1 = load(values.add(j << 4).cast_const());
+                    store(values.add(i << 4), val1);
+                    store(values.add(j << 4), val0);
                 }
-                let val0 = load(values.add(i << 4).cast_const());
-                let val1 = load(values.add(j << 4).cast_const());
-                store(values.add(i << 4), val1);
-                store(values.add(j << 4), val0);
+            });
+        } else {
+            // Large problem: tile with a-inner loop for sequential j-access.
+            let n_tiles = n / TILE;
+
+            parallel_iter!(0..n_tiles).for_each(|a_tile| {
+                let values = values.get();
+                let a_start = a_tile * TILE;
+
+                // Off-diagonal tiles (a_tile < c_tile): all pairs satisfy a < c.
+                for c_tile in (a_tile + 1)..n_tiles {
+                    let c_start = c_tile * TILE;
+                    for dc in 0..TILE {
+                        let c = c_start + dc;
+                        let j_base = (c << log_step) | b_offset;
+                        for da in 0..TILE {
+                            let a = a_start + da;
+                            let i = (a << log_step) | b_offset | c;
+                            let j = j_base | a;
+                            let val0 = load(values.add(i << 4).cast_const());
+                            let val1 = load(values.add(j << 4).cast_const());
+                            store(values.add(i << 4), val1);
+                            store(values.add(j << 4), val0);
+                        }
+                    }
+                }
+
+                // Diagonal tile: only pairs where da < dc (i.e. a < c).
+                for dc in 1..TILE {
+                    let c = a_start + dc;
+                    let j_base = (c << log_step) | b_offset;
+                    for da in 0..dc {
+                        let a = a_start + da;
+                        let i = (a << log_step) | b_offset | c;
+                        let j = j_base | a;
+                        let val0 = load(values.add(i << 4).cast_const());
+                        let val1 = load(values.add(j << 4).cast_const());
+                        store(values.add(i << 4), val1);
+                        store(values.add(j << 4), val0);
+                    }
+                }
+
+                // Remainder columns not covered by c-tiles.
+                for c in (n_tiles * TILE)..n {
+                    let j_base = (c << log_step) | b_offset;
+                    for da in 0..TILE {
+                        let a = a_start + da;
+                        if a >= c {
+                            continue;
+                        }
+                        let i = (a << log_step) | b_offset | c;
+                        let j = j_base | a;
+                        let val0 = load(values.add(i << 4).cast_const());
+                        let val1 = load(values.add(j << 4).cast_const());
+                        store(values.add(i << 4), val1);
+                        store(values.add(j << 4), val0);
+                    }
+                }
+            });
+
+            // Remainder rows not covered by a-tiles.
+            let values_ptr = values.get();
+            for a in (n_tiles * TILE)..n {
+                for c in (a + 1)..n {
+                    let i = (a << log_step) | b_offset | c;
+                    let j = (c << log_step) | b_offset | a;
+                    let val0 = load(values_ptr.add(i << 4).cast_const());
+                    let val1 = load(values_ptr.add(j << 4).cast_const());
+                    store(values_ptr.add(i << 4), val1);
+                    store(values_ptr.add(j << 4), val0);
+                }
             }
         }
-    });
+    }
 }
 
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
