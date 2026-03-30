@@ -264,7 +264,23 @@ unsafe fn fft3_loop(
         let twiddles2: [u32x16; 1] = array::from_fn(|i| {
             u32x16::splat(*twiddle_dbl[2].get_unchecked((index + i) & (twiddle_dbl[2].len() - 1)))
         });
-        for l in (0..1 << layer).step_by(1 << LOG_N_LANES as usize) {
+        let step = 1usize << LOG_N_LANES as usize;
+        let end = 1usize << layer;
+        let mut l = 0;
+        while l + step < end {
+            fft3(src, dst, offset + l, layer, twiddles0, twiddles1, twiddles2);
+            fft3(
+                src,
+                dst,
+                offset + l + step,
+                layer,
+                twiddles0,
+                twiddles1,
+                twiddles2,
+            );
+            l += step * 2;
+        }
+        if l < end {
             fft3(src, dst, offset + l, layer, twiddles0, twiddles1, twiddles2);
         }
     }
