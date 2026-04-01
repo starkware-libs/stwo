@@ -200,9 +200,9 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
     ///
     /// The query evals need to be provided in the same order as their commitment.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if:
+    /// An `Err` will be returned if:
     /// * The queries were not yet sampled.
     /// * The queries were sampled on the wrong domain size.
     /// * There aren't the same number of decommitted values as degree bounds.
@@ -211,7 +211,10 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         mut self,
         first_layer_query_evals: Vec<SecureField>,
     ) -> Result<(), FriVerificationError> {
-        let queries = self.queries.take().expect("queries not sampled");
+        let queries = self
+            .queries
+            .take()
+            .ok_or(FriVerificationError::QueriesNotSampled)?;
         self.decommit_on_queries(&queries, first_layer_query_evals)
     }
 
@@ -305,6 +308,20 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
 pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,
+    #[error("queries have not been sampled before decommitment")]
+    QueriesNotSampled,
+    #[error(
+        "first layer query domain size mismatch: expected {expected}, got {got}"
+    )]
+    FirstLayerDomainMismatch { expected: u32, got: u32 },
+    #[error(
+        "inner layer {inner_layer} query domain size mismatch: expected {expected}, got {got}"
+    )]
+    InnerLayerDomainMismatch {
+        inner_layer: usize,
+        expected: u32,
+        got: u32,
+    },
     #[error("evaluations are invalid in the first layer")]
     FirstLayerEvaluationsInvalid,
     #[error("queries do not resolve to their commitment in the first layer")]
@@ -433,10 +450,6 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
     /// An `Err` will be returned if:
     /// * The proof doesn't store enough evaluations.
     /// * The merkle decommitment is invalid.
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
     /// * The queries are sampled on the wrong domain.
     /// * There are an invalid number of provided column evals.
     fn verify(
@@ -445,7 +458,12 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
         column_query_evals: Vec<SecureField>,
     ) -> Result<SparseEvaluation, FriVerificationError> {
         let column_log_size = self.column_commitment_domain.log_size();
-        assert_eq!(queries.log_domain_size, column_log_size);
+        if queries.log_domain_size != column_log_size {
+            return Err(FriVerificationError::FirstLayerDomainMismatch {
+                expected: column_log_size,
+                got: queries.log_domain_size,
+            });
+        }
 
         let mut fri_witness = self.proof.fri_witness.iter().copied();
 
@@ -514,10 +532,6 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
     /// An `Err` will be returned if:
     /// * The proof doesn't store the correct number of evaluations.
     /// * The merkle decommitment is invalid.
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
     /// * The number of queries doesn't match the number of evals.
     /// * The queries are sampled on the wrong domain.
     fn verify_and_fold(
@@ -525,7 +539,13 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
         queries: Queries,
         evals_at_queries: Vec<SecureField>,
     ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
-        assert_eq!(queries.log_domain_size, self.domain.log_size());
+        if queries.log_domain_size != self.domain.log_size() {
+            return Err(FriVerificationError::InnerLayerDomainMismatch {
+                inner_layer: self.layer_index,
+                expected: self.domain.log_size(),
+                got: queries.log_domain_size,
+            });
+        }
 
         let mut fri_witness = self.proof.fri_witness.iter().copied();
 
@@ -592,9 +612,10 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
 /// Returns a column's merkle tree decommitment positions and re-builds the evaluations needed by
 /// the verifier for folding and decommitment.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if the number of queries doesn't match the number of query evals.
+/// Returns `Err` if there are insufficient witness or query evaluations to rebuild the
+/// decommitment.
 fn compute_decommitment_positions_and_rebuild_evals(
     queries: &Queries,
     query_evals: &[QM31],
@@ -617,7 +638,7 @@ fn compute_decommitment_positions_and_rebuild_evals(
 
         let subset_eval = subset_decommitment_positions
             .map(|position| match subset_queries_iter.next_if_eq(&position) {
-                Some(_) => Ok(query_evals.next().unwrap()),
+                Some(_) => query_evals.next().ok_or(InsufficientWitnessError),
                 None => witness_evals.next().ok_or(InsufficientWitnessError),
             })
             .collect::<Result<_, _>>()?;
@@ -1081,7 +1102,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    fn decommit_without_sampling_queries_fails() {
+        const LOG_DEGREE: u32 = 3;
+        let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
+        let queries = Queries::from_positions(vec![5], evaluation.domain.log_size());
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), 1);
+        let decommitment_value = query_polynomial(&evaluation, &queries);
+        let prover = FriProver::commit(&mut test_channel(), config, &evaluation, &twiddles);
+        let proof = prover.decommit_on_queries(&queries).proof;
+        let bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        // Commit but do not call sample_query_positions.
+        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+
+        let result = verifier.decommit(decommitment_value);
+
+        assert!(
+            matches!(result, Err(FriVerificationError::QueriesNotSampled)),
+            "Got: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
     fn decommit_queries_on_invalid_domain_fails_verification() {
         const LOG_DEGREE: u32 = 3;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
@@ -1098,7 +1141,13 @@ mod tests {
         let mut invalid_queries = queries.clone();
         invalid_queries.log_domain_size -= 1;
 
-        let _ = verifier.decommit_on_queries(&invalid_queries, decommitment_value);
+        let result = verifier.decommit_on_queries(&invalid_queries, decommitment_value);
+
+        assert!(
+            matches!(result, Err(FriVerificationError::FirstLayerDomainMismatch { .. })),
+            "Got: {:?}",
+            result.err()
+        );
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
