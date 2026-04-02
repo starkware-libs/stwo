@@ -1,5 +1,7 @@
 use core::iter::Peekable;
+use core::mem::{self, MaybeUninit};
 use core::ops::Deref;
+use core::ptr;
 
 use std_shims::Vec;
 
@@ -83,7 +85,13 @@ pub const fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     i.reverse_bits() >> (usize::BITS - log_size)
 }
 
-/// Performs a naive bit-reversal permutation inplace.
+/// Conservative L1 data cache size estimate (bytes).
+const L1_CACHE_SIZE: usize = 32 * 1024;
+
+/// Performs an in-place bit-reversal permutation.
+///
+/// Uses a cache-blocking algorithm (Carter & Gatlin, 1998) for arrays larger than L1 cache,
+/// falling back to the naive swap-based approach for small arrays.
 ///
 /// # Panics
 ///
@@ -91,11 +99,142 @@ pub const fn bit_reverse_index(i: usize, log_size: u32) -> usize {
 pub fn bit_reverse<T>(v: &mut [T]) {
     let n = v.len();
     assert!(n.is_power_of_two());
+    if n <= 1 {
+        return;
+    }
+
+    let elem_size = mem::size_of::<T>().max(1);
+    let log_n = n.ilog2();
+
+    // Use cache-blocking when the array exceeds half the L1 cache and is large enough for
+    // tiling (need at least 2 * log_tile bits in log_n).
+    let log_tile = log_tile_size::<T>(log_n);
+    if n * elem_size > L1_CACHE_SIZE / 2 && 2 * log_tile <= log_n && log_tile > 0 {
+        // SAFETY: `bit_reverse_cache_blocked` only performs element-sized memcpy and swaps
+        // through raw pointers, which is valid for any `T`. All source and destination
+        // positions are within bounds, and every element ends up in exactly one valid
+        // position. No `Drop` glue is skipped because no values are created or destroyed;
+        // they are only moved between `v` and a temporary buffer.
+        unsafe {
+            bit_reverse_cache_blocked(v, log_tile);
+        }
+    } else {
+        bit_reverse_naive(v);
+    }
+}
+
+/// Naive bit-reversal permutation. O(n) swaps with random access pattern.
+fn bit_reverse_naive<T>(v: &mut [T]) {
+    let n = v.len();
     let log_n = n.ilog2();
     for i in 0..n {
         let j = bit_reverse_index(i, log_n);
         if j > i {
             v.swap(i, j);
+        }
+    }
+}
+
+/// Computes the log2 of the tile dimension for cache-blocking.
+///
+/// Tile is `tile_size x tile_size` elements. Chosen so that `tile_size^2 * sizeof(T)` fits
+/// in half of L1 cache (leaving room for the main array's active cache lines).
+fn log_tile_size<T>(log_n: u32) -> u32 {
+    let elem_size = mem::size_of::<T>().max(1);
+    let half_l1_elems = (L1_CACHE_SIZE / 2) / elem_size;
+    if half_l1_elems < 4 {
+        return 0;
+    }
+    let mut q = half_l1_elems.next_power_of_two().ilog2() / 2;
+
+    // Ensure tile is at least one cache line wide.
+    let elems_per_line = (64 / elem_size).max(1);
+    let min_q = elems_per_line.next_power_of_two().ilog2();
+    q = q.max(min_q);
+
+    // Shrink until 2*q fits in log_n.
+    while 2 * q > log_n {
+        if q == 0 {
+            return 0;
+        }
+        q -= 1;
+    }
+    q
+}
+
+/// Cache-blocked bit-reversal permutation (Carter & Gatlin, 1998).
+///
+/// Decomposes index bits as `a (log_tile) | b (log_b) | c (log_tile)` and processes
+/// tiles of `tile_size x tile_size` elements that fit in L1 cache.
+///
+/// # Safety
+///
+/// Caller must ensure `2 * log_tile <= log_n` and `log_tile > 0`.
+unsafe fn bit_reverse_cache_blocked<T>(v: &mut [T], log_tile: u32) {
+    let n = v.len();
+    let log_n = n.ilog2();
+    let tile_size = 1usize << log_tile;
+    let log_b = log_n - 2 * log_tile;
+    let b_len = 1usize << log_b;
+    let shift_a = (log_b + log_tile) as usize;
+
+    let mut temp: Vec<MaybeUninit<T>> = Vec::with_capacity(tile_size * tile_size);
+    temp.set_len(tile_size * tile_size);
+
+    let v_ptr = v.as_mut_ptr();
+
+    for b in 0..b_len {
+        let b_rev = bit_reverse_index(b, log_b);
+
+        // Phase 1: Copy tile into temp with partial bit-reversal of `a`.
+        // temp[rev(a) << log_tile | c] = v[a << shift_a | b << log_tile | c]
+        for a in 0..tile_size {
+            let a_rev = bit_reverse_index(a, log_tile);
+            let src_base = (a << shift_a) | (b << log_tile as usize);
+            let dst_base = a_rev << log_tile as usize;
+            for c in 0..tile_size {
+                ptr::copy_nonoverlapping(
+                    v_ptr.add(src_base | c),
+                    temp[dst_base | c].as_mut_ptr(),
+                    1,
+                );
+            }
+        }
+
+        // Phase 2: For idx < idx_rev, swap v[idx_rev] with temp[t_idx].
+        for c in 0..tile_size {
+            let c_rev = bit_reverse_index(c, log_tile);
+            for a_rev in 0..tile_size {
+                let a = bit_reverse_index(a_rev, log_tile);
+                let idx = (a << shift_a) | (b << log_tile as usize) | c;
+                let idx_rev = (c_rev << shift_a) | (b_rev << log_tile as usize) | a_rev;
+                if idx < idx_rev {
+                    let t_idx = (a_rev << log_tile as usize) | c;
+                    ptr::swap_nonoverlapping(
+                        v_ptr.add(idx_rev),
+                        temp[t_idx].as_mut_ptr(),
+                        1,
+                    );
+                }
+            }
+        }
+
+        // Phase 3: For idx < idx_rev, swap v[idx] with temp[t_idx].
+        for a in 0..tile_size {
+            let a_rev = bit_reverse_index(a, log_tile);
+            for c in 0..tile_size {
+                let c_rev = bit_reverse_index(c, log_tile);
+                let idx = (a << shift_a) | (b << log_tile as usize) | c;
+                let idx_rev = (c_rev << shift_a) | (b_rev << log_tile as usize) | a_rev;
+                if idx < idx_rev {
+                    let t_idx = (a_rev << log_tile as usize) | c;
+                    ptr::swap_nonoverlapping(
+                        v_ptr.add(idx),
+                        temp[t_idx].as_mut_ptr(),
+                        1,
+                    );
+                }
+            }
         }
     }
 }

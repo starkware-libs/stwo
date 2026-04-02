@@ -6,16 +6,18 @@ use stwo::core::fields::m31::BaseField;
 
 pub fn cpu_bit_rev(c: &mut Criterion) {
     use stwo::core::utils::bit_reverse;
-    // TODO(andrew): Consider using same size for all.
-    const SIZE: usize = 1 << 24;
-    let data = (0..SIZE).map(BaseField::from).collect_vec();
-    c.bench_function("cpu bit_rev 24bit", |b| {
-        b.iter_batched(
-            || data.clone(),
-            |mut data| bit_reverse(&mut data),
-            BatchSize::LargeInput,
-        );
-    });
+
+    for log_size in [16, 20, 24] {
+        let size: usize = 1 << log_size;
+        let data = (0..size).map(BaseField::from).collect_vec();
+        c.bench_function(&format!("cpu bit_rev {log_size}bit"), |b| {
+            b.iter_batched(
+                || data.clone(),
+                |mut data| bit_reverse(&mut data),
+                BatchSize::LargeInput,
+            );
+        });
+    }
 }
 
 pub fn simd_bit_rev(c: &mut Criterion) {
