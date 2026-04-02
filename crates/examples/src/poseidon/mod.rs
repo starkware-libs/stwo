@@ -116,21 +116,25 @@ where
 }
 
 // Applies the internal round matrix.
-//   mu_i = 2^{i+1} + 1.
+//   mu_0 = 4, mu_i = 2^{i+1} + 1 for i >= 1.
 // See <https://eprint.iacr.org/2023/323.pdf> 5.2.
+// The first diagonal entry is 3 (not 2) so that the matrix satisfies the minimal polynomial
+// condition from Section 5.3 of the Poseidon2 paper. See
+// <https://github.com/starkware-libs/stwo/issues/973> for the Sage verification.
 fn apply_internal_round_matrix<F>(state: &mut [F; 16])
 where
     F: Clone + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
-    // TODO(shahars): Check that these coefficients are good according to section  5.3 of Poseidon2
-    // paper.
     let sum = state[1..]
         .iter()
         .cloned()
         .fold(state[0].clone(), |acc, s| acc + s);
-    state.iter_mut().enumerate().for_each(|(i, s)| {
+    // mu_0 = 3 + 1 = 4. The remaining mu_i = 2^{i+1} + 1 are unchanged.
+    let diag_0 = BaseField::from_u32_unchecked(3);
+    state[0] = state[0].clone() * diag_0 + sum.clone();
+    state[1..].iter_mut().enumerate().for_each(|(i, s)| {
         // TODO(andrew): Change to rotations.
-        *s = s.clone() * BaseField::from_u32_unchecked(1 << (i + 1)) + sum.clone();
+        *s = s.clone() * BaseField::from_u32_unchecked(1 << (i + 2)) + sum.clone();
     });
 }
 
@@ -448,7 +452,9 @@ mod tests {
         const W: usize = 16;
         let mut state = array::from_fn(|i| M31((i * 3 + 187) as u32));
         let mut internal_matrix = ndarray::arr2(&[[M31(1); W]; W]);
-        for (i, elem) in internal_matrix.diag_mut().iter_mut().enumerate() {
+        // mu_0 = 4 (diag entry = 3 + 1), mu_i = 2^{i+1} + 1 for i >= 1.
+        internal_matrix[[0, 0]] += M31(3);
+        for (i, elem) in internal_matrix.diag_mut().iter_mut().enumerate().skip(1) {
             *elem += M31((1 << (i + 1)) as u32);
         }
         let expected_state = internal_matrix.dot(&ndarray::arr2(&[state]).t());
