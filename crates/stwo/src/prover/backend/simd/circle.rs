@@ -25,7 +25,7 @@ use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
-use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
+use crate::prover::backend::simd::fri::{fold_circle_evaluation_into_line, fold_line_4x};
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::fri::FriOps;
@@ -356,6 +356,20 @@ impl PolyOps for SimdBackend {
         let mut layer_evaluation =
             fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
 
+        // Use fold_line_4x when we have enough elements and alphas.
+        // fold_line_4x requires at least 2^(LOG_N_LANES + 4) = 256 elements.
+        let min_size_for_4x = 1 << (LOG_N_LANES + 4);
+        while layer_evaluation.len() >= min_size_for_4x && folding_alphas.len() >= 4 {
+            let alphas = [
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+                folding_alphas.pop().unwrap(),
+            ];
+            layer_evaluation = fold_line_4x(&layer_evaluation, alphas, twiddles);
+        }
+
+        // Handle remaining folds with single fold_line calls
         while layer_evaluation.len() > 1 {
             layer_evaluation =
                 SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
