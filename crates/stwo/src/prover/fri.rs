@@ -36,7 +36,7 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     /// Panics if there are less than two evaluations.
     fn fold_line(
         eval: &LineEvaluation<Self>,
-        alpha: SecureField,
+        alphas: &[SecureField],
         twiddles: &TwiddleTree<Self>,
         fold_step: u32,
     ) -> LineEvaluation<Self>;
@@ -70,6 +70,17 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField);
+}
+
+/// Computes `len` folding alphas derived by repeated squaring: `[alpha, alpha^2, alpha^4, ...]`.
+pub fn squared_alpha_powers(alpha: SecureField, len: u32) -> Vec<SecureField> {
+    let mut alphas = Vec::with_capacity(len as usize);
+    let mut alpha = alpha;
+    for _ in 0..len {
+        alphas.push(alpha);
+        alpha = alpha * alpha;
+    }
+    alphas
 }
 
 pub struct FriDecommitResult<H: MerkleHasherLifted> {
@@ -147,8 +158,9 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         if config.fold_step > 1 {
             let extra_line_folds = config.fold_step - 1;
             let alpha_sq = folding_alpha * folding_alpha;
+            let alpha_sq_powers = squared_alpha_powers(alpha_sq, extra_line_folds);
             layer_evaluation =
-                B::fold_line(&layer_evaluation, alpha_sq, twiddles, extra_line_folds);
+                B::fold_line(&layer_evaluation, &alpha_sq_powers, twiddles, extra_line_folds);
             line_log_size -= extra_line_folds;
         }
 
@@ -166,8 +178,9 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             let layer = FriInnerLayerProver::new(layer_evaluation, config.fold_step);
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
+            let alpha_sq_powers = squared_alpha_powers(folding_alpha, config.fold_step);
             layer_evaluation =
-                B::fold_line(&layer.evaluation, folding_alpha, twiddles, config.fold_step);
+                B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles, config.fold_step);
             layers.push(layer);
             line_log_size -= config.fold_step;
         }
@@ -177,7 +190,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
-        layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles, last_fold_step);
+        let alpha_sq_powers = squared_alpha_powers(folding_alpha, last_fold_step);
+        layer_evaluation = B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles, last_fold_step);
         layers.push(layer);
 
         (layers, layer_evaluation)

@@ -352,17 +352,28 @@ impl PolyOps for SimdBackend {
     ) -> SecureField {
         let log_size = evals.domain.log_size();
         let mut folding_alphas = get_folding_alphas(point, log_size as usize);
+        let circle_alpha = folding_alphas.pop().unwrap();
 
-        let mut layer_evaluation =
-            fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
+        // Fuse circle fold with first line folds to reduce memory traffic.
+        const MAX_FOLD_STEP: usize = 4;
+        let initial_line_folds = folding_alphas.len().min(MAX_FOLD_STEP);
+        let initial_line_alphas: Vec<_> = (0..initial_line_folds)
+            .map(|_| folding_alphas.pop().unwrap())
+            .collect();
+        let mut layer_evaluation = fold_circle_evaluation_into_line(
+            evals,
+            circle_alpha,
+            &initial_line_alphas,
+            twiddles,
+        );
 
         while layer_evaluation.len() > 1 {
-            layer_evaluation = SimdBackend::fold_line(
-                &layer_evaluation,
-                folding_alphas.pop().unwrap(),
-                twiddles,
-                1,
-            );
+            let fold_step = folding_alphas.len().min(MAX_FOLD_STEP) as u32;
+            let alphas: Vec<_> = (0..fold_step)
+                .map(|_| folding_alphas.pop().unwrap())
+                .collect();
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, &alphas, twiddles, fold_step);
         }
 
         layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))

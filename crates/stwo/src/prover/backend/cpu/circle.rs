@@ -163,9 +163,10 @@ impl PolyOps for CpuBackend {
         );
 
         while layer_evaluation.len() > 1 {
+            let alpha = folding_alphas.pop().unwrap();
             layer_evaluation = CpuBackend::fold_line(
                 &layer_evaluation,
-                folding_alphas.pop().unwrap(),
+                &[alpha],
                 twiddles,
                 1,
             );

@@ -15,17 +15,16 @@ use crate::prover::secure_column::SecureColumnByCoords;
 impl FriOps for CpuBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,
-        alpha: SecureField,
+        alphas: &[SecureField],
         _twiddles: &TwiddleTree<Self>,
         fold_step: u32,
     ) -> LineEvaluation<Self> {
         assert!(fold_step >= 1);
+        assert!(alphas.len() == fold_step as usize);
 
-        let mut folding_alpha = alpha;
-        let mut res = fold_line_cpu(eval, folding_alpha);
-        for _ in 0..fold_step - 1 {
-            folding_alpha = folding_alpha * folding_alpha;
-            res = fold_line_cpu(&res, folding_alpha)
+        let mut res = fold_line_cpu(eval, alphas[0]);
+        for &alpha in &alphas[1..] {
+            res = fold_line_cpu(&res, alpha);
         }
         res
     }
