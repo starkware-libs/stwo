@@ -6,7 +6,7 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
-use crate::core::pcs::utils::get_lifting_log_size;
+use crate::core::pcs::utils::try_get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
@@ -56,12 +56,18 @@ pub fn verify_ex<MC: MerkleChannel>(
 
     // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
     // composition polynomials' domain.
-    let lifting_log_size = get_lifting_log_size(
+    let lifting_log_size = try_get_lifting_log_size(
         &commitment_scheme.config,
         split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
-    );
+    )?;
     if include_all_preprocessed_columns {
-        assert!(lifting_log_size >= commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height);
+        let preprocessed_trace_height = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height;
+        if lifting_log_size < preprocessed_trace_height {
+            Err(crate::core::pcs::utils::InvalidLiftingLogSizeError {
+                lifting_log_size,
+                min_log_size: preprocessed_trace_height,
+            })?;
+        }
     }
 
     // The max degree of a committed polynomial. If `lifting_log_size` is not set,
@@ -130,4 +136,6 @@ pub enum VerificationError {
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]
     ProofOfWork,
+    #[error(transparent)]
+    InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
 }
