@@ -138,4 +138,6 @@ pub enum VerificationError {
     ProofOfWork,
     #[error(transparent)]
     InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
+    #[error(transparent)]
+    InvalidCanonicCosetLogSize(#[from] crate::core::poly::circle::InvalidCanonicCosetLogSize),
 }

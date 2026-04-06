@@ -1,6 +1,21 @@
+use thiserror::Error;
+
 use super::CircleDomain;
-use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
+use crate::core::poly::circle::MIN_CIRCLE_DOMAIN_LOG_SIZE;
+
+/// The maximum log size of a canonic coset is `M31_CIRCLE_LOG_ORDER - 1`, because the canonic coset
+/// of size 2^n is shifted by the generator of the group of size 2^(n+1).
+const MAX_CANONICAL_COSET_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
+
+#[derive(Clone, Copy, Debug, Error)]
+#[error(
+    "Invalid canonic coset log size ({log_size}). Must be between 1 and {MAX_CANONICAL_COSET_LOG_SIZE}."
+)]
+pub struct InvalidCanonicCosetLogSize {
+    pub log_size: u32,
+}
 
 /// A coset of the form `G_{2n} + <G_n>`, where `G_n` is the generator of the subgroup of order `n`.
 ///
@@ -25,11 +40,17 @@ pub struct CanonicCoset {
 }
 
 impl CanonicCoset {
-    pub fn new(log_size: u32) -> Self {
-        assert!(log_size > 0);
-        Self {
-            coset: Coset::odds(log_size),
+    pub fn try_new(log_size: u32) -> Result<Self, InvalidCanonicCosetLogSize> {
+        if !(MIN_CIRCLE_DOMAIN_LOG_SIZE..=MAX_CANONICAL_COSET_LOG_SIZE).contains(&log_size) {
+            return Err(InvalidCanonicCosetLogSize { log_size });
         }
+        Ok(Self {
+            coset: Coset::odds(log_size),
+        })
+    }
+
+    pub fn new(log_size: u32) -> Self {
+        Self::try_new(log_size).unwrap()
     }
 
     /// Gets the full coset represented G_{2n} + <G_n>.
