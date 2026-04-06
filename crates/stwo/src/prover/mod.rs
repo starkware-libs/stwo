@@ -4,7 +4,7 @@ use tracing::{info, instrument, span, Level};
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::pcs::utils::get_lifting_log_size;
+use crate::core::pcs::utils::{try_get_lifting_log_size, InvalidLiftingLogSizeError};
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
@@ -94,7 +94,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
     // composition polynomials' domain.
     let lifting_log_size =
-        get_lifting_log_size(&commitment_scheme.config, split_composition_log_size);
+        try_get_lifting_log_size(&commitment_scheme.config, split_composition_log_size)?;
     if include_all_preprocessed_columns {
         // If all the preprocessed columns are included, the lifting log size must be greater than
         // or equal to the preprocessed log size.
@@ -103,7 +103,12 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
             .layers
             .len() as u32
             - 1;
-        assert!(lifting_log_size >= preprocessed_log_size);
+        if lifting_log_size < preprocessed_log_size {
+            Err(InvalidLiftingLogSizeError {
+                lifting_log_size,
+                min_log_size: preprocessed_log_size,
+            })?;
+        }
     }
     let max_log_degree_bound =
         lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
@@ -150,4 +155,6 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 pub enum ProvingError {
     #[error("Constraints not satisfied.")]
     ConstraintsNotSatisfied,
+    #[error(transparent)]
+    InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
 }

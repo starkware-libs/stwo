@@ -3,6 +3,7 @@ use core::ops::{Deref, DerefMut};
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, BTreeSet, Vec};
+use thiserror::Error;
 
 use super::TreeSubspan;
 use crate::core::pcs::PcsConfig;
@@ -212,9 +213,24 @@ pub fn prepare_preprocessed_query_positions(
         .collect()
 }
 
-pub fn get_lifting_log_size(config: &PcsConfig, log_trace_size: u32) -> u32 {
-    let lifting_log_size = config.lifting_log_size.unwrap_or(log_trace_size);
-    assert!(log_trace_size <= lifting_log_size);
+#[derive(Clone, Copy, Debug, Error)]
+#[error("Lifting log size is too small ({lifting_log_size}). It must be at least {min_log_size}.")]
+pub struct InvalidLiftingLogSizeError {
+    pub lifting_log_size: u32,
+    pub min_log_size: u32,
+}
 
-    lifting_log_size
+pub fn try_get_lifting_log_size(
+    config: &PcsConfig,
+    log_trace_size: u32,
+) -> Result<u32, InvalidLiftingLogSizeError> {
+    let lifting_log_size = config.lifting_log_size.unwrap_or(log_trace_size);
+    if lifting_log_size < log_trace_size {
+        return Err(InvalidLiftingLogSizeError {
+            lifting_log_size,
+            min_log_size: log_trace_size,
+        });
+    }
+
+    Ok(lifting_log_size)
 }
