@@ -9,6 +9,7 @@ use crate::core::circle::{
 use crate::core::fields::m31::BaseField;
 
 pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
+pub const MIN_CIRCLE_DOMAIN_LOG_SIZE: u32 = 1;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 ///
