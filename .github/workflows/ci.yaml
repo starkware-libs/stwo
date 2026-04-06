@@ -265,6 +265,8 @@ jobs:
           toolchain: ${{ env.NIGHTLY_VERSION }}
       - name: Check Cargo.lock is up-to-date
         run: cargo fetch --locked
+      - name: Check ensure-verifier-no_std/Cargo.lock is up-to-date
+        run: cargo fetch --locked --manifest-path ensure-verifier-no_std/Cargo.toml
 
   all-tests:
     runs-on: namespace-profile-starkware-libs-stwo-small-ubuntu-24-04-amd64
