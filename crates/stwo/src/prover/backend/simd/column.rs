@@ -69,6 +69,13 @@ impl BaseColumn {
             .collect_vec()
     }
 
+    pub fn chunks(&self, chunk_size: usize) -> Vec<BaseColumnSlice<'_>> {
+        self.data
+            .chunks(chunk_size)
+            .map(BaseColumnSlice)
+            .collect_vec()
+    }
+
     pub fn into_secure_column(self) -> SecureColumn {
         let length = self.len();
         let data = self.data.into_iter().map(PackedSecureField::from).collect();
@@ -250,6 +257,8 @@ impl BaseColumnMutSlice<'_> {
     }
 }
 
+pub struct BaseColumnSlice<'a>(pub &'a [PackedBaseField]);
+
 pub struct VeryPackedBaseColumnMutSlice<'a>(pub &'a mut [VeryPackedBaseField]);
 
 /// An efficient structure for storing and operating on a arbitrary number of [`SecureField`]
@@ -372,6 +381,14 @@ impl FromIterator<PackedSecureField> for SecureColumn {
 pub struct SecureColumnByCoordsMutSlice<'a>(pub [BaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE]);
 
 impl<'a> SecureColumnByCoordsMutSlice<'a> {
+    pub const fn len(&self) -> usize {
+        self.0[0].0.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.0[0].0.is_empty()
+    }
+
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
@@ -406,6 +423,35 @@ impl<'a> SecureColumnByCoordsMutSlice<'a> {
         coords: [&'b mut [PackedBaseField]; SECURE_EXTENSION_DEGREE],
     ) -> Self {
         Self(coords.map(BaseColumnMutSlice))
+    }
+}
+
+/// An immutable slice of a SecureColumnByCoords.
+pub struct SecureColumnByCoordsSlice<'a>(pub [BaseColumnSlice<'a>; SECURE_EXTENSION_DEGREE]);
+
+impl<'a> SecureColumnByCoordsSlice<'a> {
+    pub const fn len(&self) -> usize {
+        self.0[0].0.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.0[0].0.is_empty()
+    }
+
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
+        PackedQM31([
+            PackedCM31([
+                *self.0[0].0.get_unchecked(vec_index),
+                *self.0[1].0.get_unchecked(vec_index),
+            ]),
+            PackedCM31([
+                *self.0[2].0.get_unchecked(vec_index),
+                *self.0[3].0.get_unchecked(vec_index),
+            ]),
+        ])
     }
 }
 
@@ -499,10 +545,41 @@ impl SecureColumnByCoords<SimdBackend> {
         &mut self,
         chunk_size: usize,
     ) -> impl IndexedParallelIterator<Item = SecureColumnByCoordsMutSlice<'_>> {
-        let [a, b, c, d] = self.columns.each_mut().map(|c| c.chunks_mut(chunk_size));
-        (a, b, c, d)
-            .into_par_iter()
-            .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
+        let [a, b, c, d] = &mut self.columns;
+        a.data
+            .par_chunks_mut(chunk_size)
+            .zip(b.data.par_chunks_mut(chunk_size))
+            .zip(c.data.par_chunks_mut(chunk_size))
+            .zip(d.data.par_chunks_mut(chunk_size))
+            .map(|(((a, b), c), d)| {
+                SecureColumnByCoordsMutSlice([
+                    BaseColumnMutSlice(a),
+                    BaseColumnMutSlice(b),
+                    BaseColumnMutSlice(c),
+                    BaseColumnMutSlice(d),
+                ])
+            })
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl IndexedParallelIterator<Item = SecureColumnByCoordsSlice<'_>> {
+        let [a, b, c, d] = &self.columns;
+        a.data
+            .par_chunks(chunk_size)
+            .zip(b.data.par_chunks(chunk_size))
+            .zip(c.data.par_chunks(chunk_size))
+            .zip(d.data.par_chunks(chunk_size))
+            .map(|(((a, b), c), d)| {
+                SecureColumnByCoordsSlice([
+                    BaseColumnSlice(a),
+                    BaseColumnSlice(b),
+                    BaseColumnSlice(c),
+                    BaseColumnSlice(d),
+                ])
+            })
     }
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
@@ -536,11 +613,13 @@ impl VeryPackedBaseColumn {
         &*(std::ptr::addr_of!(*value) as *const VeryPackedBaseColumn)
     }
 
-    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<VeryPackedBaseColumnMutSlice<'_>> {
+    pub fn chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl ExactSizeIterator<Item = VeryPackedBaseColumnMutSlice<'_>> {
         self.data
             .chunks_mut(chunk_size)
             .map(VeryPackedBaseColumnMutSlice)
-            .collect_vec()
     }
 }
 
@@ -709,7 +788,7 @@ impl VeryPackedSecureColumnByCoords {
     pub fn chunks_mut(
         &mut self,
         chunk_size: usize,
-    ) -> Vec<VeryPackedSecureColumnByCoordsMutSlice<'_>> {
+    ) -> impl ExactSizeIterator<Item = VeryPackedSecureColumnByCoordsMutSlice<'_>> {
         let [a, b, c, d] = self
             .columns
             .get_disjoint_mut([0, 1, 2, 3])
@@ -717,7 +796,27 @@ impl VeryPackedSecureColumnByCoords {
             .map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| VeryPackedSecureColumnByCoordsMutSlice([a, b, c, d]))
-            .collect_vec()
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl IndexedParallelIterator<Item = VeryPackedSecureColumnByCoordsMutSlice<'_>> {
+        let [a, b, c, d] = &mut self.columns;
+        a.data
+            .par_chunks_mut(chunk_size)
+            .zip(b.data.par_chunks_mut(chunk_size))
+            .zip(c.data.par_chunks_mut(chunk_size))
+            .zip(d.data.par_chunks_mut(chunk_size))
+            .map(|(((a, b), c), d)| {
+                VeryPackedSecureColumnByCoordsMutSlice([
+                    VeryPackedBaseColumnMutSlice(a),
+                    VeryPackedBaseColumnMutSlice(b),
+                    VeryPackedBaseColumnMutSlice(c),
+                    VeryPackedBaseColumnMutSlice(d),
+                ])
+            })
     }
 }
 

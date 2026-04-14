@@ -168,7 +168,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let iter = range
             .into_par_iter()
             .step_by(CHUNK_SIZE)
-            .zip(col.chunks_mut(CHUNK_SIZE));
+            .zip(col.par_chunks_mut(CHUNK_SIZE));
 
         // Define any `self` values outside the loop to prevent the compiler thinking there is a
         // `Sync` requirement on `Self`.
