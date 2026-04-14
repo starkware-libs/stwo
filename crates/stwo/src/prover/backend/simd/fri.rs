@@ -219,6 +219,14 @@ pub fn fold_circle_evaluation_into_line(
     let itwiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles)[0];
     let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
 
+    // Decompose alpha into M31 components. Since the input is BaseField (only coordinate 0 is
+    // nonzero), we avoid a full QM31*QM31 multiply and use 4 independent BaseField multiplies.
+    let [a0, a1, a2, a3] = alpha.to_m31_array();
+    let a0 = PackedBaseField::broadcast(a0);
+    let a1 = PackedBaseField::broadcast(a1);
+    let a2 = PackedBaseField::broadcast(a2);
+    let a3 = PackedBaseField::broadcast(a3);
+
     #[cfg(not(feature = "parallel"))]
     let dst_iter = folded_values.chunks_mut(FOLD_CHUNK_SIZE);
     #[cfg(feature = "parallel")]
@@ -239,25 +247,13 @@ pub fn fold_circle_evaluation_into_line(
                 let (t0, _) = compute_first_twiddles(twiddle_dbl);
                 let val0 = eval.values.data[vec_index * 2];
                 let val1 = eval.values.data[vec_index * 2 + 1];
-                let pairs = {
+                let (f, g) = {
                     let (a, b) = val0.deinterleave(val1);
                     simd_ibutterfly(a, b, t0)
                 };
-                let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                    if i == 0 {
-                        pairs.0
-                    } else {
-                        PackedBaseField::zero()
-                    }
-                }));
-                let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                    if i == 0 {
-                        pairs.1
-                    } else {
-                        PackedBaseField::zero()
-                    }
-                }));
-                val0 + PackedSecureField::broadcast(alpha) * val1
+                // f + alpha * g, where f and g are BaseField (packed in coordinate 0).
+                // alpha * g = (a0*g, a1*g, a2*g, a3*g) in M31 coordinates.
+                PackedSecureField::from_packed_m31s([f + a0 * g, a1 * g, a2 * g, a3 * g])
             };
             unsafe { dst_chunk.set_packed(index, value) };
         }
