@@ -794,8 +794,7 @@ impl VeryPackedSecureColumnByCoords {
             .get_disjoint_mut([0, 1, 2, 3])
             .unwrap()
             .map(|x| x.chunks_mut(chunk_size));
-        izip!(a, b, c, d)
-            .map(|(a, b, c, d)| VeryPackedSecureColumnByCoordsMutSlice([a, b, c, d]))
+        izip!(a, b, c, d).map(|(a, b, c, d)| VeryPackedSecureColumnByCoordsMutSlice([a, b, c, d]))
     }
 
     #[cfg(feature = "parallel")]

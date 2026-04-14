@@ -26,9 +26,8 @@ fn folding_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(CpuBackend::fold_line(
                 black_box(&evals),
-                black_box(alpha),
+                black_box(&[alpha]),
                 &twiddles,
-                1,
             ));
         })
     });
