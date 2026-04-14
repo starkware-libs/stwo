@@ -202,8 +202,6 @@ pub fn fold_circle_evaluation_into_line(
     twiddles: &TwiddleTree<SimdBackend>,
 ) -> LineEvaluation<SimdBackend> {
     let log_size = eval.domain.log_size();
-    let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
-    let mut line_evaluation = LineEvaluation::new_zero(line_domain);
 
     if log_size <= LOG_N_LANES {
         // Fall back to CPU implementation.
@@ -218,43 +216,55 @@ pub fn fold_circle_evaluation_into_line(
         );
     }
 
-    let itwiddles = domain_line_twiddles_from_tree(line_domain, &twiddles.itwiddles)[0];
+    let itwiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles)[0];
+    let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
 
-    for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
-        let value = {
-            // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
-            // next line domain. See `compute_first_twiddles()`.
-            let twiddle_dbl = u32x8::from_array(array::from_fn(|i| unsafe {
-                *itwiddles.get_unchecked(vec_index * 8 + i)
-            }));
-            let (t0, _) = compute_first_twiddles(twiddle_dbl);
-            let val0 = eval.values.data[vec_index * 2];
-            let val1 = eval.values.data[vec_index * 2 + 1];
-            let pairs = {
-                let (a, b) = val0.deinterleave(val1);
-                simd_ibutterfly(a, b, t0)
+    #[cfg(not(feature = "parallel"))]
+    let dst_iter = folded_values.chunks_mut(FOLD_CHUNK_SIZE);
+    #[cfg(feature = "parallel")]
+    let dst_iter = folded_values.par_chunks_mut(FOLD_CHUNK_SIZE);
+
+    dst_iter.enumerate().for_each(|(chunk_idx, mut dst_chunk)| {
+        let chunk_start = chunk_idx * FOLD_CHUNK_SIZE;
+        let packed_chunk_len = dst_chunk.0[0].0.len();
+
+        for index in 0..packed_chunk_len {
+            let vec_index = chunk_start + index;
+            let value = {
+                // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
+                // next line domain. See `compute_first_twiddles()`.
+                let twiddle_dbl = u32x8::from_array(array::from_fn(|i| unsafe {
+                    *itwiddles.get_unchecked(vec_index * 8 + i)
+                }));
+                let (t0, _) = compute_first_twiddles(twiddle_dbl);
+                let val0 = eval.values.data[vec_index * 2];
+                let val1 = eval.values.data[vec_index * 2 + 1];
+                let pairs = {
+                    let (a, b) = val0.deinterleave(val1);
+                    simd_ibutterfly(a, b, t0)
+                };
+                let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                    if i == 0 {
+                        pairs.0
+                    } else {
+                        PackedBaseField::zero()
+                    }
+                }));
+                let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                    if i == 0 {
+                        pairs.1
+                    } else {
+                        PackedBaseField::zero()
+                    }
+                }));
+                val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                if i == 0 {
-                    pairs.0
-                } else {
-                    PackedBaseField::zero()
-                }
-            }));
-            let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
-                if i == 0 {
-                    pairs.1
-                } else {
-                    PackedBaseField::zero()
-                }
-            }));
-            val0 + PackedSecureField::broadcast(alpha) * val1
-        };
+            unsafe { dst_chunk.set_packed(index, value) };
+        }
+    });
 
-        unsafe { line_evaluation.values.set_packed(vec_index, value) };
-    }
-
-    line_evaluation
+    let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
+    LineEvaluation::new(line_domain, folded_values)
 }
 
 /// See [`decomposition_coefficient`].
