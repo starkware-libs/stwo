@@ -119,7 +119,7 @@ mod tests {
     use stwo::core::verifier::verify;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::{Column, CpuBackend};
-    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use stwo::prover::poly::circle::PolyOps;
     use stwo::prover::{prove, CommitmentSchemeProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
@@ -498,91 +498,6 @@ mod tests {
         let trace_sizes = [
             vec![LOG_SIZE_LONG; N_COLS_LONG_COMPONENT],
             vec![LOG_SIZE_SHORT; N_COLS_SHORT_COMPONENT],
-        ]
-        .concat();
-        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = TreeVec::new(vec![vec![], trace_sizes]);
-        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
-
-        assert!(verify(
-            &[&component0, &component1],
-            verifier_channel,
-            commitment_scheme,
-            proof,
-        )
-        .is_ok());
-    }
-
-    #[test]
-    fn test_fib_prove_with_disabled_components() {
-        const LOG_SIZE_SHORT: u32 = 4;
-        const LOG_SIZE_LONG: u32 = 9;
-
-        const N_ROWS_LONG_COMPONENT: usize = 4;
-        const N_ROWS_SHORT_COMPONENT: usize = 5;
-
-        let config = PcsConfig::default();
-        // Precompute twiddles.
-        let twiddles = CpuBackend::precompute_twiddles(
-            CanonicCoset::new(LOG_SIZE_LONG + config.fri_config.log_blowup_factor)
-                .circle_domain()
-                .half_coset,
-        );
-
-        // Setup protocol.
-        let prover_channel = &mut Blake2sM31Channel::default();
-        let mut commitment_scheme =
-            CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
-        commitment_scheme.set_store_polynomials_coefficients();
-        // Preprocessed trace
-        let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(vec![]);
-        tree_builder.commit(prover_channel);
-
-        // Trace.
-        let trace = [
-            generate_trace::<N_ROWS_LONG_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_LONG)),
-            vec![CircleEvaluation::zero_padding(); N_ROWS_SHORT_COMPONENT],
-        ]
-        .concat();
-
-        let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(trace);
-        tree_builder.commit(prover_channel);
-
-        // Generate components.
-        let mut trace_alloc = TraceLocationAllocator::default();
-        let component0 = WideFibonacciComponent::new(
-            &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
-                log_n_rows: LOG_SIZE_LONG,
-            },
-            SecureField::zero(),
-        );
-        let component1 = WideFibonacciComponent::disabled(
-            &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_SHORT_COMPONENT> {
-                log_n_rows: LOG_SIZE_SHORT,
-            },
-        );
-
-        // Prove.
-        let proof = prove::<CpuBackend, Blake2sM31MerkleChannel>(
-            &[&component0, &component1],
-            prover_channel,
-            commitment_scheme,
-        )
-        .unwrap();
-
-        // Verify.
-        let verifier_channel = &mut Blake2sM31Channel::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
-
-        let trace_sizes = [
-            vec![LOG_SIZE_LONG; N_ROWS_LONG_COMPONENT],
-            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
         ]
         .concat();
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

@@ -123,11 +123,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             return;
         }
 
-        if self.is_disabled() {
-            evaluation_accumulator.skip_coeffs(self.n_constraints());
-            return;
-        }
-
         let ConstraintQuotientInputs {
             eval_domain,
             trace_domain,
@@ -220,11 +215,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
         if self.n_constraints() == 0 {
-            return;
-        }
-
-        if self.is_disabled() {
-            evaluation_accumulator.skip_coeffs(self.n_constraints());
             return;
         }
 
