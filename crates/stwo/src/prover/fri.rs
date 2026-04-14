@@ -24,21 +24,20 @@ use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
-    /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
+    /// Folds a degree `d` polynomial into a degree `d / 2^k` polynomial, where `k = alphas.len()`.
     ///
-    /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
-    /// element and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function
-    /// returns `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x *
-    /// f1(pi(x))`.
+    /// Each fold halves the degree: given a polynomial evaluated on a [LineDomain] `E`, a
+    /// random field element folding alpha and `pi(x) = 2x^2 - 1` the x-coordinate doubling map, the
+    /// folded result is `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) =
+    /// f0(pi(x)) + x * f1(pi(x))`. This is applied `k` times with the successive alphas.
     ///
     /// # Panics
     ///
-    /// Panics if there are less than two evaluations.
+    /// Panics if `alphas` is empty.
     fn fold_line(
         eval: &LineEvaluation<Self>,
-        alpha: SecureField,
+        alphas: &[SecureField],
         twiddles: &TwiddleTree<Self>,
-        fold_step: u32,
     ) -> LineEvaluation<Self>;
 
     /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
@@ -70,6 +69,17 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField);
+}
+
+/// Computes `len` folding alphas derived by repeated squaring: `[alpha, alpha^2, alpha^4, ...]`.
+pub fn squared_alpha_powers(alpha: SecureField, len: u32) -> Vec<SecureField> {
+    let mut alphas = Vec::with_capacity(len as usize);
+    let mut alpha = alpha;
+    for _ in 0..len {
+        alphas.push(alpha);
+        alpha = alpha * alpha;
+    }
+    alphas
 }
 
 pub struct FriDecommitResult<H: MerkleHasherLifted> {
@@ -146,9 +156,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         // Apply any additional line folds requested for the first stage.
         if config.fold_step > 1 {
             let extra_line_folds = config.fold_step - 1;
-            let alpha_sq = folding_alpha * folding_alpha;
-            layer_evaluation =
-                B::fold_line(&layer_evaluation, alpha_sq, twiddles, extra_line_folds);
+            let alpha_sq_powers = squared_alpha_powers(folding_alpha * folding_alpha, extra_line_folds);
+            layer_evaluation = B::fold_line(&layer_evaluation, &alpha_sq_powers, twiddles);
             line_log_size -= extra_line_folds;
         }
 
@@ -166,8 +175,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             let layer = FriInnerLayerProver::new(layer_evaluation, config.fold_step);
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
-            layer_evaluation =
-                B::fold_line(&layer.evaluation, folding_alpha, twiddles, config.fold_step);
+            let alpha_sq_powers = squared_alpha_powers(folding_alpha, config.fold_step);
+            layer_evaluation = B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles);
             layers.push(layer);
             line_log_size -= config.fold_step;
         }
@@ -177,7 +186,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
-        layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles, last_fold_step);
+        let alpha_sq_powers = squared_alpha_powers(folding_alpha, last_fold_step);
+        layer_evaluation = B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles);
         layers.push(layer);
 
         (layers, layer_evaluation)
