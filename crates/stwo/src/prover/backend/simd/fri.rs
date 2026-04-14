@@ -31,28 +31,20 @@ const FOLD_CHUNK_SIZE: usize = 128;
 impl FriOps for SimdBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,
-        alpha: SecureField,
+        alphas: &[SecureField],
         twiddles: &TwiddleTree<Self>,
-        fold_step: u32,
     ) -> LineEvaluation<Self> {
+        let fold_step = alphas.len() as u32;
         assert!(fold_step >= 1, "fold_step must be positive.");
 
         let log_size = eval.len().ilog2();
         // Fallback to cpu if the log size is too small.
         if log_size < LOG_N_LANES + fold_step {
-            let mut folding_alpha = alpha;
-            let mut eval = fold_line_cpu(&eval.to_cpu(), folding_alpha);
-            for _ in 0..fold_step - 1 {
-                folding_alpha = folding_alpha * folding_alpha;
-                eval = fold_line_cpu(&eval, folding_alpha)
+            let mut eval = fold_line_cpu(&eval.to_cpu(), alphas[0]);
+            for &alpha in &alphas[1..] {
+                eval = fold_line_cpu(&eval, alpha)
             }
             return LineEvaluation::new(eval.domain(), eval.values.into_iter().collect());
-        }
-        let mut alphas = vec![];
-        let mut folding_alpha = alpha;
-        for _ in 0..fold_step {
-            alphas.push(folding_alpha);
-            folding_alpha = folding_alpha * folding_alpha;
         }
 
         let domain = eval.domain();
@@ -328,16 +320,14 @@ mod tests {
         let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
         let cpu_fold = CpuBackend::fold_line(
             &LineEvaluation::new(domain, values.iter().copied().collect()),
-            alpha,
+            &[alpha],
             &CpuBackend::precompute_twiddles(domain.coset()),
-            1,
         );
 
         let avx_fold = SimdBackend::fold_line(
             &LineEvaluation::new(domain, values.iter().copied().collect()),
-            alpha,
+            &[alpha],
             &SimdBackend::precompute_twiddles(domain.coset()),
-            1,
         );
 
         assert_eq!(cpu_fold.values.to_vec(), avx_fold.values.to_vec());
