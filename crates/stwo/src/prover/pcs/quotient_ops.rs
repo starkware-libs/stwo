@@ -175,12 +175,13 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         twiddles,
     )
 }
-#[expect(unused)]
-fn line_interpolant(a: CirclePoint<SecureField>, b: CirclePoint<SecureField>) -> (SecureField, SecureField, SecureField) {
-    todo!()
+/// Returns `(a, b, c)` such that `a*X + b*Y + c = 0` is the line passing through `p` and `q`.
+pub fn line_interpolant(
+    p: &CirclePoint<SecureField>,
+    q: &CirclePoint<SecureField>,
+) -> (SecureField, SecureField, SecureField) {
+    (q.y - p.y, p.x - q.x, q.x * p.y - p.x * q.y)
 }
-
-
 
 #[cfg(test)]
 mod tests {

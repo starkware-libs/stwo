@@ -240,14 +240,27 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         const ADDITIONAL_BLOWUP: u32 = 3;
         // Pick some hardcoded queries.
         let queries_in_pairs = vec![];
-        let oods = (CirclePoint::get_random_point(channel), CirclePoint::get_random_point(channel)); 
+        let oods = (
+            CirclePoint::get_random_point(channel),
+            CirclePoint::get_random_point(channel),
+        );
         let fri_log_blowup = self.config.fri_config.log_blowup_factor + ADDITIONAL_BLOWUP;
-        let stir_quotient = B::build_stir_quotient(quotients, queries_in_pairs, oods, fri_log_blowup, self.twiddles);
+        let stir_quotient = B::build_stir_quotient(
+            quotients,
+            queries_in_pairs,
+            oods,
+            fri_log_blowup,
+            self.twiddles,
+        );
         // let folded_stir_quotient = SimdBackend::fold_circle_into_line(src, alpha, twiddles);
 
         // Run FRI commitment phase on the oods quotients.
-        let fri_prover =
-            FriProver::<B, MC>::commit(channel, self.config.fri_config, &stir_quotient, self.twiddles);
+        let fri_prover = FriProver::<B, MC>::commit(
+            channel,
+            self.config.fri_config,
+            &stir_quotient,
+            self.twiddles,
+        );
 
         // Proof of work.
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
