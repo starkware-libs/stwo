@@ -324,9 +324,35 @@ fn accumulate_numerators_on_subdomain(
 }
 
 #[expect(unused)]
-fn denominator_inverses_v2(domain: CircleDomain, queries_in_pairs: &[(CirclePoint<BaseField>, CirclePoint<BaseField>)]) -> Vec<Vec<BaseField>> {
+fn denominator_inverses_v2(
+    domain: CircleDomain,
+    queries_in_pairs: &[(CirclePoint<BaseField>, CirclePoint<BaseField>)],
+) -> Vec<Vec<PackedBaseField>> {
     // Go over the subdomain points (X,Y), and compute (qy-py)X + (px-qx)Y + (qx*py - px*qy). Then do batch inverse.
-    todo!()
+    let domain_points = CircleDomainBitRevIterator::new(domain);
+
+    #[cfg(not(feature = "parallel"))]
+    let (domain_points_iter, queries_iter) = (domain_points, queries_in_pairs.iter());
+    #[cfg(feature = "parallel")]
+    let (domain_points_iter, queries_iter) =
+        (domain_points.par_iter(), queries_in_pairs.par_iter());
+
+    queries_iter
+        .map(|(p, q)| {
+            let px = PackedBaseField::broadcast(p.x);
+            let py = PackedBaseField::broadcast(p.y);
+            let qx = PackedBaseField::broadcast(q.x);
+            let qy = PackedBaseField::broadcast(q.y);
+            let constant = qx * py - px * qy;
+
+            // The iter itself is cloned for each query pair.
+            let denominators = domain_points_iter
+                .clone()
+                .map(|point| (qy - py) * point.x + (px - qx) * point.y + constant)
+                .collect::<Vec<_>>();
+            PackedBaseField::batch_inverse(&denominators)
+        })
+        .collect()
 }
 
 fn denominator_inverses(
