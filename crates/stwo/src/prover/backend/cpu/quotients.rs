@@ -99,4 +99,14 @@ impl QuotientOps for CpuBackend {
         };
         SecureEvaluation::new(eval_domain, evals)
     }
+
+    fn build_stir_quotient(
+        _eval: SecureEvaluation<Self, BitReversedOrder>,
+        _queries_in_pairs: Vec<(CirclePoint<BaseField>, CirclePoint<BaseField>)>,
+        _oods: (CirclePoint<SecureField>, CirclePoint<SecureField>),
+        _fri_log_blowup: u32,
+        _twiddles: &TwiddleTree<Self>,
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
+        todo!()
+    }
 }

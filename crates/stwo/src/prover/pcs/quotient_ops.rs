@@ -50,6 +50,14 @@ pub trait QuotientOps: PolyOps {
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
+
+    fn build_stir_quotient(
+        eval: SecureEvaluation<Self, BitReversedOrder>,
+        queries_in_pairs: Vec<(CirclePoint<BaseField>, CirclePoint<BaseField>)>,
+        oods: (CirclePoint<SecureField>, CirclePoint<SecureField>),
+        fri_log_blowup: u32,
+        twiddles: &TwiddleTree<Self>,
+    ) -> SecureEvaluation<Self, BitReversedOrder>;
 }
 
 /// Helper struct that keeps track of the accumulation of the numerators involved in the FRI
@@ -167,6 +175,12 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         twiddles,
     )
 }
+#[expect(unused)]
+fn line_interpolant(a: CirclePoint<SecureField>, b: CirclePoint<SecureField>) -> (SecureField, SecureField, SecureField) {
+    todo!()
+}
+
+
 
 #[cfg(test)]
 mod tests {
