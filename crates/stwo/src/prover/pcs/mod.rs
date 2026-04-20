@@ -245,6 +245,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             CirclePoint::get_random_point(channel),
         );
         self.config.fri_config.log_blowup_factor += ADDITIONAL_BLOWUP;
+
+        let _span = span!(
+            Level::INFO,
+            "Compute STIR quotient",
+            class = "STIRQuotients"
+        )
+        .entered();
         let stir_quotient = B::build_stir_quotient(
             quotients,
             queries_in_pairs,
@@ -252,6 +259,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.config.fri_config.log_blowup_factor,
             self.twiddles,
         );
+        _span.exit();
         // Fold the stir poly.
         // let folded_stir_quotient = SimdBackend::fold_circle_into_line(src, alpha, twiddles);
 
@@ -275,7 +283,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
-        // This obviously wrong for stir, it's here just to make things work.
+        // This is obviously wrong for stir, it's here just to make things work.
         let query_positions: Vec<usize> = query_positions
             .into_iter()
             .map(|x| x.min((1 << lifting_log_size) - 1))

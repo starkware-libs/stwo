@@ -204,11 +204,10 @@ impl QuotientOps for SimdBackend {
         SecureEvaluation::new(fri_eval_domain, evals)
     }
 
-    #[expect(unused)]
     fn build_stir_quotient(
         eval: SecureEvaluation<Self, BitReversedOrder>,
         queries_in_pairs: Vec<(CirclePoint<BaseField>, CirclePoint<BaseField>)>,
-        oods: (CirclePoint<SecureField>, CirclePoint<SecureField>),
+        _oods: (CirclePoint<SecureField>, CirclePoint<SecureField>),
         fri_log_blowup: u32,
         twiddles: &TwiddleTree<Self>,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
@@ -223,13 +222,13 @@ impl QuotientOps for SimdBackend {
 
         let mut quotients = unsafe { SecureColumnByCoords::uninitialized(subdomain.size()) };
         let mut quotients_constants = vec![];
-        let subdomain_points: Vec<CirclePoint<PackedBaseField>> =
+        let _subdomain_points: Vec<CirclePoint<PackedBaseField>> =
             CircleDomainBitRevIterator::new(subdomain).collect();
         for (a, b) in queries_in_pairs.iter() {
             quotients_constants.push(line_interpolant(&a.into_ef(), &b.into_ef()))
         }
         let denominator_inverses: Vec<Vec<PackedBaseField>> =
-            denominator_inverses_v2(subdomain, &queries_in_pairs);
+            denominator_inverses_by_pair(subdomain, &queries_in_pairs);
         quotients
             .par_chunks_mut(CHUNK_SIZE)
             .enumerate()
@@ -238,13 +237,15 @@ impl QuotientOps for SimdBackend {
                 let packed_chunk_len = value_dst.0[0].0.len();
                 let mut chunk_acc = [PackedSecureField::zero(); CHUNK_SIZE];
                 let chunk_acc = &mut chunk_acc[..packed_chunk_len];
-                for ((a, b, c), den_inv) in quotients_constants
+
+                for ((_a, _b, _c), den_inv) in quotients_constants
                     .iter()
                     .zip_eq(denominator_inverses.iter())
                 {
                     for (i, acc) in chunk_acc.iter_mut().enumerate() {
                         let domain_idx = chunk_start + i;
-                        // linear func with subdomain point and a,b,c.
+                        // Here there should the correct linear func of eval[domain_idx],
+                        // subdomain_points[domain_idx] and a, b, c.
                         let numerator = unsafe { eval.packed_at(domain_idx) };
                         *acc += numerator * den_inv[domain_idx]
                     }
@@ -331,7 +332,7 @@ fn accumulate_numerators_on_subdomain(
     values
 }
 
-fn denominator_inverses_v2(
+fn denominator_inverses_by_pair(
     domain: CircleDomain,
     queries_in_pairs: &[(CirclePoint<BaseField>, CirclePoint<BaseField>)],
 ) -> Vec<Vec<PackedBaseField>> {
