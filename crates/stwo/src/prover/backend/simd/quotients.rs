@@ -20,6 +20,7 @@ use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::backend::CpuBackend;
 use crate::prover::pcs::quotient_ops::{line_interpolant, AccumulatedNumerators};
+use crate::prover::pcs::ADDITIONAL_BLOWUP;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
@@ -185,6 +186,9 @@ impl QuotientOps for SimdBackend {
                 .itwiddles
                 .extract_subdomain_twiddles(eval_domain.log_size(), eval_subdomain.log_size()),
         };
+
+        let fri_eval_domain =
+            CanonicCoset::new(lifting_log_size + ADDITIONAL_BLOWUP).circle_domain();
         let evals = SecureColumnByCoords {
             columns: quotients.columns.map(|eval| {
                 let poly = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
@@ -192,11 +196,12 @@ impl QuotientOps for SimdBackend {
                     eval,
                 )
                 .interpolate_with_twiddles(&subdomain_twiddles);
-                poly.evaluate_with_twiddles(eval_domain, twiddles).values
+                poly.evaluate_with_twiddles(fri_eval_domain, twiddles)
+                    .values
             }),
         };
 
-        SecureEvaluation::new(eval_domain, evals)
+        SecureEvaluation::new(fri_eval_domain, evals)
     }
 
     #[expect(unused)]
@@ -223,8 +228,8 @@ impl QuotientOps for SimdBackend {
         for (a, b) in queries_in_pairs.iter() {
             quotients_constants.push(line_interpolant(&a.into_ef(), &b.into_ef()))
         }
-        let den_inv: Vec<PackedSecureField> = vec![];
-        // let eval_values = eval.values
+        let denominator_inverses: Vec<Vec<PackedBaseField>> =
+            denominator_inverses_v2(subdomain, &queries_in_pairs);
         quotients
             .par_chunks_mut(CHUNK_SIZE)
             .enumerate()
@@ -233,11 +238,14 @@ impl QuotientOps for SimdBackend {
                 let packed_chunk_len = value_dst.0[0].0.len();
                 let mut chunk_acc = [PackedSecureField::zero(); CHUNK_SIZE];
                 let chunk_acc = &mut chunk_acc[..packed_chunk_len];
-                for (a, b, c) in quotients_constants.iter() {
+                for ((a, b, c), den_inv) in quotients_constants
+                    .iter()
+                    .zip_eq(denominator_inverses.iter())
+                {
                     for (i, acc) in chunk_acc.iter_mut().enumerate() {
                         let domain_idx = chunk_start + i;
-                        // linear func with subdomain point
-                        let numerator = unsafe {eval.packed_at(domain_idx) };
+                        // linear func with subdomain point and a,b,c.
+                        let numerator = unsafe { eval.packed_at(domain_idx) };
                         *acc += numerator * den_inv[domain_idx]
                     }
                 }
@@ -323,12 +331,12 @@ fn accumulate_numerators_on_subdomain(
     values
 }
 
-#[expect(unused)]
 fn denominator_inverses_v2(
     domain: CircleDomain,
     queries_in_pairs: &[(CirclePoint<BaseField>, CirclePoint<BaseField>)],
 ) -> Vec<Vec<PackedBaseField>> {
-    // Go over the subdomain points (X,Y), and compute (qy-py)X + (px-qx)Y + (qx*py - px*qy). Then do batch inverse.
+    // Go over the subdomain points (X,Y), and compute (qy-py)X + (px-qx)Y + (qx*py - px*qy). Then
+    // do batch inverse.
     let domain_points = CircleDomainBitRevIterator::new(domain);
 
     #[cfg(not(feature = "parallel"))]

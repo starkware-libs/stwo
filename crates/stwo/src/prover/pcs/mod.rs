@@ -5,7 +5,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::{info, span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, M31_CIRCLE_GEN};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
@@ -30,6 +30,7 @@ use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub mod quotient_ops;
 
+pub const ADDITIONAL_BLOWUP: u32 = 3;
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
     pub trees: TreeVec<MaybeOwned<'a, CommitmentTreeProver<B, MC>>>,
@@ -236,25 +237,25 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.config.fri_config.log_blowup_factor,
         );
 
-        // TODO: one stir step.
-        const ADDITIONAL_BLOWUP: u32 = 3;
+        // Do one stir step.
         // Pick some hardcoded queries.
-        let queries_in_pairs = vec![];
+        let queries_in_pairs = build_queries_in_pairs(channel);
         let oods = (
             CirclePoint::get_random_point(channel),
             CirclePoint::get_random_point(channel),
         );
-        let fri_log_blowup = self.config.fri_config.log_blowup_factor + ADDITIONAL_BLOWUP;
+        self.config.fri_config.log_blowup_factor += ADDITIONAL_BLOWUP;
         let stir_quotient = B::build_stir_quotient(
             quotients,
             queries_in_pairs,
             oods,
-            fri_log_blowup,
+            self.config.fri_config.log_blowup_factor,
             self.twiddles,
         );
+        // Fold the stir poly.
         // let folded_stir_quotient = SimdBackend::fold_circle_into_line(src, alpha, twiddles);
 
-        // Run FRI commitment phase on the oods quotients.
+        // Run FRI commitment phase on the folded stir poly.
         let fri_prover = FriProver::<B, MC>::commit(
             channel,
             self.config.fri_config,
@@ -274,12 +275,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
+        // This obviously wrong for stir, it's here just to make things work.
+        let query_positions: Vec<usize> = query_positions
+            .into_iter()
+            .map(|x| x.min((1 << lifting_log_size) - 1))
+            .dedup()
+            .collect();
         // Build the query position tree.
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
             lifting_log_size,
             self.trees[0].commitment.layers.len() as u32 - 1,
         );
+
         let query_positions_tree = TreeVec::new(
             self.trees
                 .iter()
@@ -453,4 +461,22 @@ fn print_column_size_histogram<B: BackendForChannel<MC>, MC: MerkleChannel>(
     for (log_size, count) in log_size_histogram {
         info!("Log size {log_size}: {count}");
     }
+}
+
+fn build_queries_in_pairs<C: Channel>(
+    channel: &mut C,
+) -> Vec<(CirclePoint<BaseField>, CirclePoint<BaseField>)> {
+    const N_PAIRS: usize = 20;
+    let mut indices = Vec::with_capacity(2 * N_PAIRS);
+    for _ in 0..(2 * N_PAIRS).div_ceil(8) {
+        indices.extend(channel.draw_u32s());
+    }
+    indices[..2 * N_PAIRS]
+        .array_chunks()
+        .map(|[x, y]| {
+            let a = M31_CIRCLE_GEN.mul(*x as u128);
+            let b = M31_CIRCLE_GEN.mul(*y as u128);
+            (a, b)
+        })
+        .collect()
 }
