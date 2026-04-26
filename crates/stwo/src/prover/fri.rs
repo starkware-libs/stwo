@@ -570,6 +570,47 @@ mod tests {
     }
 
     #[test]
+    fn test_fri_commit_decommit_keccak256_cpu() {
+        use crate::core::channel::Keccak256Channel;
+        use crate::core::vcs_lifted::keccak256_merkle::Keccak256MerkleChannel;
+
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
+        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+
+        let prover = super::FriProver::<'_, CpuBackend, Keccak256MerkleChannel>::commit(
+            &mut Keccak256Channel::default(),
+            config,
+            &column,
+            &twiddles,
+        );
+        let queries = Queries::from_positions(vec![0, 3], 6 + LOG_BLOWUP_FACTOR);
+        prover.decommit_on_queries(&queries);
+    }
+
+    #[test]
+    fn test_fri_commit_decommit_keccak256_simd() {
+        use crate::core::channel::Keccak256Channel;
+        use crate::core::vcs_lifted::keccak256_merkle::Keccak256MerkleChannel;
+
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let cpu_eval = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
+        let column = SecureEvaluation::new(
+            cpu_eval.domain,
+            cpu_eval.values.to_vec().into_iter().collect(),
+        );
+        let twiddles = SimdBackend::precompute_twiddles(column.domain.half_coset);
+        let prover = super::FriProver::<'_, SimdBackend, Keccak256MerkleChannel>::commit(
+            &mut Keccak256Channel::default(),
+            config,
+            &column,
+            &twiddles,
+        );
+        let queries = Queries::from_positions(vec![1, 6, 11], 8 + LOG_BLOWUP_FACTOR);
+        prover.decommit_on_queries(&queries);
+    }
+
+    #[test]
     fn test_pack_leaves_input_simd_matches_cpu() {
         for log_size in 2..8 {
             let values = (0..1 << log_size).map(|i| {
