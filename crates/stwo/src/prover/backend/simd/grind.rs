@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::SimdBackend;
-use crate::core::channel::Blake2sChannelGeneric;
+use crate::core::channel::{Blake2sChannelGeneric, Channel, Keccak256Channel};
 use crate::core::fields::m31::P;
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
@@ -137,6 +137,21 @@ where
         .min();
 
     found.expect("Grind failed to find a solution.")
+}
+
+// TODO: replace with an optimized SIMD implementation using parallel keccak permutations
+// (e.g. `keccak::parallel` `f1600x4`/`x8`), similar to the parallel + SIMD path used for
+// `Blake2sChannelGeneric` above.
+impl GrindOps<Keccak256Channel> for SimdBackend {
+    fn grind(channel: &Keccak256Channel, pow_bits: u32) -> u64 {
+        let mut nonce = 0u64;
+        loop {
+            if channel.verify_pow_nonce(pow_bits, nonce) {
+                return nonce;
+            }
+            nonce += 1;
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

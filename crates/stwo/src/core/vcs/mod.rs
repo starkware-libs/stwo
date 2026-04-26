@@ -4,6 +4,7 @@ pub mod blake2_hash;
 pub mod blake2_merkle;
 pub mod blake3_hash;
 pub mod hash;
+pub mod keccak256_hash;
 mod merkle_hasher;
 pub use merkle_hasher::MerkleHasher;
 #[cfg(not(target_arch = "wasm32"))]
