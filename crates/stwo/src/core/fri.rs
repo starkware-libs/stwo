@@ -915,6 +915,37 @@ mod tests {
     }
 
     #[test]
+    fn valid_proof_passes_verification_keccak256() -> Result<(), FriVerificationError> {
+        use crate::core::channel::Keccak256Channel;
+        use crate::core::vcs_lifted::keccak256_merkle::Keccak256MerkleChannel;
+
+        const LOG_DEGREE: u32 = 4;
+        let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+        let queries = Queries::from_positions(vec![5], column.domain.log_size());
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), 1);
+        let decommitment_value = query_polynomial(&column, &queries);
+        let prover =
+            crate::prover::fri::FriProver::<'_, CpuBackend, Keccak256MerkleChannel>::commit(
+                &mut Keccak256Channel::default(),
+                config,
+                &column,
+                &twiddles,
+            );
+        let proof = prover.decommit_on_queries(&queries).proof;
+        let bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let verifier = super::FriVerifier::<Keccak256MerkleChannel>::commit(
+            &mut Keccak256Channel::default(),
+            config,
+            proof,
+            bound,
+        )
+        .unwrap();
+
+        verifier.decommit_on_queries(&queries, decommitment_value)
+    }
+
+    #[test]
     fn valid_proof_with_constant_last_layer_passes_verification() -> Result<(), FriVerificationError>
     {
         const LOG_DEGREE: u32 = 3;

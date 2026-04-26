@@ -59,8 +59,10 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
                 .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
                 .collect();
 
-            // We chunk by 16 because it's the amount of M31 elements needed to trigger a
-            // hash permutation, both in blake and in poseidon.
+            // We chunk by 16 — the amount of M31 elements that triggers a hash permutation
+            // in Blake2s (block = 64 bytes = 16 × 4) and matches Poseidon252's absorption rate.
+            // For Keccak256 the rate is larger (136 bytes ≈ 34 M31s), so this chunking is
+            // suboptimal but still correct.
             for chunk in &group.into_iter().chunks(16) {
                 let vec = chunk.into_iter().collect_vec();
                 prev_layer.iter_mut().enumerate().for_each(|(i, hasher)| {

@@ -13,6 +13,9 @@ pub use poseidon252::Poseidon252Channel;
 mod blake2s;
 pub use blake2s::{Blake2sChannel, Blake2sChannelGeneric, Blake2sM31Channel};
 
+mod keccak256;
+pub use keccak256::Keccak256Channel;
+
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 pub trait Channel: Default + Clone + Debug {
