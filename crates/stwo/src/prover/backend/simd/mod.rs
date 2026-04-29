@@ -21,6 +21,7 @@ pub mod fft;
 pub mod fri;
 mod grind;
 pub mod keccak256;
+pub mod keccak256_permutation;
 pub mod lookups;
 pub mod m31;
 #[cfg(not(target_arch = "wasm32"))]
