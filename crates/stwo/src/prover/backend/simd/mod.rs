@@ -21,6 +21,7 @@ pub mod fft;
 pub mod fri;
 mod grind;
 pub mod keccak256;
+mod keccak256_lifted;
 pub mod keccak256_permutation;
 pub mod lookups;
 pub mod m31;
