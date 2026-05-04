@@ -184,7 +184,7 @@ macro_rules! logup_proxy {
             if self.logup.fracs.is_empty() {
                 self.logup.is_finalized = false;
             }
-            self.logup.fracs.push(fraction.clone());
+            self.logup.fracs.push(fraction);
         }
 
         /// Finalize the logup by adding the constraints for the fractions, batched by
