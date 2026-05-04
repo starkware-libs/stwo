@@ -13,8 +13,8 @@ use stwo::core::Fraction;
 use stwo::prover::backend::Column;
 
 use crate::{
-    Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry, INTERACTION_TRACE_IDX,
+    MAX_N_INTERACTIONS, PREPROCESSED_TRACE_IDX,
 };
 
 #[derive(Debug)]
@@ -123,7 +123,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
 
     fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {}
 
-    fn finalize_logup_batched(&mut self, _batching: &Batching) {}
+    fn finalize_logup_batched(&mut self, _batch_size: usize) {}
     fn finalize_logup(&mut self) {}
     fn finalize_logup_in_pairs(&mut self) {}
 

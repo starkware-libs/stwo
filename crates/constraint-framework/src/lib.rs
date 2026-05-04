@@ -28,7 +28,6 @@ pub use prover::{
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
     SimdDomainEvaluator,
 };
-use std_shims::Vec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::fields::FieldExpOps;
@@ -42,13 +41,6 @@ pub const INTERACTION_TRACE_IDX: usize = 2;
 /// polynomial is computed). Currently all components need at most 3 interactions, except
 /// [`examples::xor::gkr_lookups::MleEvalProverComponent`] which uses 4.
 pub const MAX_N_INTERACTIONS: usize = 4;
-
-/// A vector that describes the batching of logup entries.
-/// Each vector member corresponds to a logup entry, and contains the batch number to which the
-/// entry should be added.
-/// Note that the batch numbers should be consecutive and start from 0, and that the vector's
-/// length should be equal to the number of logup entries.
-type Batching = Vec<usize>;
 
 /// A trait for evaluating expressions at some point or row.
 pub trait EvalAtRow {
@@ -162,7 +154,7 @@ pub trait EvalAtRow {
     fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
         unimplemented!()
     }
-    fn finalize_logup_batched(&mut self, _batching: &Batching) {
+    fn finalize_logup_batched(&mut self, _batch_size: usize) {
         unimplemented!()
     }
 
@@ -187,42 +179,26 @@ macro_rules! logup_proxy {
             self.logup.fracs.push(fraction);
         }
 
-        /// Finalize the logup by adding the constraints for the fractions, batched by
-        /// the given `batching`.
-        /// `batching` should contain the batch into which every logup entry should be inserted.
-        fn finalize_logup_batched(&mut self, batching: &crate::Batching) {
+        /// Finalize the logup by adding the constraints for the fractions, batched into
+        /// consecutive groups of `batch_size`. If the number of fractions is not a multiple
+        /// of `batch_size`, the last group is smaller.
+        fn finalize_logup_batched(&mut self, batch_size: usize) {
             assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
-            assert_eq!(
-                batching.len(),
-                self.logup.fracs.len(),
-                "Batching must be of the same length as the number of entries"
-            );
+            assert!(batch_size > 0, "Batch size must be positive");
 
-            let last_batch = *batching.iter().max().unwrap();
+            let mut batched: std_shims::Vec<Fraction<Self::EF, Self::EF>> = self
+                .logup
+                .fracs
+                .chunks(batch_size)
+                .map(|chunk| chunk.iter().cloned().sum())
+                .collect();
 
-            let mut fracs_by_batch =
-                hashbrown::HashMap::<usize, std_shims::Vec<Fraction<Self::EF, Self::EF>>>::new();
-
-            for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
-                fracs_by_batch
-                    .entry(*batch)
-                    .or_insert_with(std_shims::Vec::new)
-                    .push(frac.clone());
-            }
-
-            let keys_set: hashbrown::HashSet<_> = fracs_by_batch.keys().cloned().collect();
-            let all_batches_set: hashbrown::HashSet<_> = (0..last_batch + 1).collect();
-
-            assert_eq!(
-                keys_set, all_batches_set,
-                "Batching must contain all consecutive batches"
-            );
+            let last_frac = batched.pop().expect("No fractions to finalize");
 
             let mut prev_col_cumsum = <Self::EF as num_traits::Zero>::zero();
 
             // All batches except the last are cumulatively summed in new interaction columns.
-            for batch_id in (0..last_batch) {
-                let cur_frac: Fraction<_, _> = fracs_by_batch[&batch_id].iter().cloned().sum();
+            for cur_frac in batched {
                 let [cur_cumsum] =
                     self.next_extension_interaction_mask(self.logup.interaction, [0]);
                 let diff = cur_cumsum.clone() - prev_col_cumsum.clone();
@@ -230,7 +206,6 @@ macro_rules! logup_proxy {
                 self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
             }
 
-            let frac: Fraction<_, _> = fracs_by_batch[&last_batch].clone().into_iter().sum();
             let [prev_row_cumsum, cur_cumsum] =
                 self.next_extension_interaction_mask(self.logup.interaction, [-1, 0]);
 
@@ -240,22 +215,20 @@ macro_rules! logup_proxy {
             // uniform - apply on all rows.
             let shifted_diff = diff + self.logup.cumsum_shift.clone();
 
-            self.add_constraint(shifted_diff * frac.denominator - frac.numerator);
+            self.add_constraint(shifted_diff * last_frac.denominator - last_frac.numerator);
 
             self.logup.is_finalized = true;
         }
 
         /// Finalizes the row's logup in the default way. Currently, this means no batching.
         fn finalize_logup(&mut self) {
-            let batches = (0..self.logup.fracs.len()).collect();
-            self.finalize_logup_batched(&batches)
+            self.finalize_logup_batched(1)
         }
 
         /// Finalizes the row's logup, batched in pairs.
         /// TODO(alont) Remove this once a better batching mechanism is implemented.
         fn finalize_logup_in_pairs(&mut self) {
-            let batches = (0..self.logup.fracs.len()).map(|n| n / 2).collect();
-            self.finalize_logup_batched(&batches)
+            self.finalize_logup_batched(2)
         }
     };
 }
