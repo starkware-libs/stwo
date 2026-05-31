@@ -149,3 +149,8 @@ required-features = ["prover"]
 harness = false
 name = "fri_quotients"
 required-features = ["prover"]
+
+[[bench]]
+harness = false
+name = "zk_phase1"
+required-features = ["prover"]

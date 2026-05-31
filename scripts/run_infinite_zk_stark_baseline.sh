@@ -16,6 +16,8 @@ json_escape() {
 }
 
 write_metadata() {
+  local cargo_lock_hash
+  cargo_lock_hash="$(shasum -a 256 Cargo.lock 2>/dev/null | awk '{print $1}' || true)"
   {
     echo "# Infinite STWO ZK STARK ${MODE} run"
     echo
@@ -29,6 +31,12 @@ write_metadata() {
     echo "- git_status: $(git status --short 2>/dev/null | wc -l | tr -d ' ') dirty entries"
     echo "- rayon_num_threads: ${RAYON_NUM_THREADS:-unset}"
     echo "- rustflags: ${RUSTFLAGS:-unset}"
+    echo "- cargo_target_dir: ${CARGO_TARGET_DIR:-unset}"
+    echo "- cargo_lock_sha256: ${cargo_lock_hash:-unavailable}"
+    echo "- os: $(uname -a 2>/dev/null || true)"
+    echo "- cpu_model: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
+    echo "- cpu_count: $(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || true)"
+    echo "- memory_bytes: $(sysctl -n hw.memsize 2>/dev/null || true)"
     echo "- cargo_features: prover,parallel where supported"
     echo
     echo "## Commands"
@@ -77,6 +85,60 @@ run_command() {
   fi
 }
 
+parse_criterion_stdout() {
+  local name="$1"
+  python3 - "${name}" "${RUN_DIR}/${name}.stdout" "${METRICS}" <<'PY'
+import re
+import sys
+
+command_name, stdout_path, metrics_path = sys.argv[1:]
+pending = None
+
+def sanitize(value: str) -> str:
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    return value.strip("_")
+
+def normalize_unit(unit: str) -> str:
+    return unit.replace("\u00b5", "u")
+
+with open(stdout_path, "r", encoding="utf-8", errors="replace") as source, open(
+    metrics_path, "a", encoding="utf-8"
+) as metrics:
+    for raw_line in source:
+        line = raw_line.rstrip()
+        if not line.strip():
+            continue
+
+        match = re.search(
+            r"time:\s+\[([0-9.]+)\s+([^\s]+)\s+([0-9.]+)\s+([^\s]+)\s+([0-9.]+)\s+([^\s]+)\]",
+            line,
+        )
+        if match:
+            benchmark_name = line[: match.start()].strip() or pending
+            if not benchmark_name:
+                continue
+            key = f"criterion.{command_name}.{sanitize(benchmark_name)}"
+            low, low_unit, mid, mid_unit, high, high_unit = match.groups()
+            metrics.write(f"{key}.low\t{low}\t{normalize_unit(low_unit)}\n")
+            metrics.write(f"{key}.mid\t{mid}\t{normalize_unit(mid_unit)}\n")
+            metrics.write(f"{key}.high\t{high}\t{normalize_unit(high_unit)}\n")
+            pending = None
+            continue
+
+        stripped = line.strip()
+        if (
+            stripped.startswith("Benchmarking ")
+            or stripped.startswith("Analyzing ")
+            or stripped.startswith("Found ")
+            or stripped.startswith("change:")
+            or stripped.startswith("sample")
+        ):
+            continue
+        pending = stripped
+PY
+}
+
 write_metadata
 : > "${JSONL}"
 : > "${METRICS}"
@@ -89,9 +151,15 @@ run_command "stwo-prover-tests" \
 
 run_command "stwo-pcs-bench" \
   "${ZK_STARK_CMD_PCS_BENCH:-cargo bench --locked --features prover,parallel --bench pcs}"
+parse_criterion_stdout "stwo-pcs-bench"
 
 run_command "stwo-fri-bench" \
   "${ZK_STARK_CMD_FRI_BENCH:-cargo bench --locked --features prover,parallel --bench fri}"
+parse_criterion_stdout "stwo-fri-bench"
+
+run_command "stwo-zk-phase1-bench" \
+  "${ZK_STARK_CMD_ZK_PHASE1_BENCH:-cargo bench --locked --features prover,parallel --bench zk_phase1}"
+parse_criterion_stdout "stwo-zk-phase1-bench"
 
 if [ -n "${ZK_STARK_CMD_SMALL_TRACE:-}" ]; then
   run_command "zk-small-trace" "${ZK_STARK_CMD_SMALL_TRACE}"
