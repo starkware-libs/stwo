@@ -1,14 +1,72 @@
 use itertools::Itertools;
+use std_shims::Vec;
 
 use crate::core::fields::m31::BaseField;
+use crate::core::zk::{
+    ZkColumnDegreeBound, ZkFriBatchMaskProof, ZkFriBatchMaskQueryValues, ZkPrivacyMap,
+    ZkPublicMetadata,
+};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
-use crate::core::zk::{ZkFriBatchMaskProof, ZkFriBatchMaskQueryValues};
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::circle::SecureEvaluation;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkDerivationGate {
+    StwoSplitQueryExpansion,
+    CircleRandomizerSpace,
+    OodsDomainExclusion,
+    ZkAwareDegreeMetadata,
+    FriBatchMaskDegree,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZkDerivationReview {
+    pub gate: ZkDerivationGate,
+    pub review_hash: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZkProvingConfig {
+    pub metadata: ZkPublicMetadata,
+    pub privacy_map: ZkPrivacyMap,
+    pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
+    pub derivation_reviews: Vec<ZkDerivationReview>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkProvingConfigError {
+    MissingDerivationReview(ZkDerivationGate),
+    EmptyReviewHash(ZkDerivationGate),
+}
+
+impl ZkProvingConfig {
+    pub fn validate_for_witness_randomization(&self) -> Result<(), ZkProvingConfigError> {
+        for gate in [
+            ZkDerivationGate::StwoSplitQueryExpansion,
+            ZkDerivationGate::CircleRandomizerSpace,
+            ZkDerivationGate::OodsDomainExclusion,
+            ZkDerivationGate::ZkAwareDegreeMetadata,
+            ZkDerivationGate::FriBatchMaskDegree,
+        ] {
+            let Some(review) = self
+                .derivation_reviews
+                .iter()
+                .find(|review| review.gate == gate)
+            else {
+                return Err(ZkProvingConfigError::MissingDerivationReview(gate));
+            };
+            if review.review_hash.iter().all(|&byte| byte == 0) {
+                return Err(ZkProvingConfigError::EmptyReviewHash(gate));
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// Forms the Protocol 2 FRI input `H_batch = raw_quotient + R`.
 ///
