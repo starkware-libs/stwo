@@ -79,6 +79,32 @@ pub struct ZkColumnDegreeBound {
     pub log_degree_bound: u32,
 }
 
+/// Public profile for Phase 2 witness randomization.
+///
+/// `randomizer_space_hash` must bind the reviewed STWO circle randomizer-space
+/// derivation, including basis, dimension, `v_H * r_i` construction, and query
+/// closure rank argument. The hash is public review evidence, not secret
+/// randomness.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkWitnessRandomizationProfile {
+    pub h_witness: u64,
+    pub randomizer_space_hash: [u8; 32],
+    pub private_column_degree_bounds: Vec<ZkColumnDegreeBound>,
+}
+
+/// Public profile for Phase 3 quotient/OODS/FRI integration.
+///
+/// `split_derivation_hash` binds the reviewed STWO `split_at_mid`
+/// query-expansion derivation. `h_batch` is the reviewed Protocol 2 batch-mask
+/// degree budget for `H_batch = raw_quotient + R`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkQuotientIntegrationProfile {
+    pub h_batch: u64,
+    pub fri_first_layer_log_size: u32,
+    pub split_derivation_hash: [u8; 32],
+    pub quotient_degree_bounds: Vec<ZkColumnDegreeBound>,
+}
+
 /// Public metadata echoed by a ZK proof and compared against verifier-owned
 /// configuration before affected Fiat-Shamir challenges.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +113,8 @@ pub struct ZkPublicMetadata {
     pub privacy_map_hash: ZkPrivacyMapHash,
     pub public_statement_hash: ZkPublicStatementHash,
     pub degree_profile: ZkDegreeProfile,
+    pub witness_randomization: ZkWitnessRandomizationProfile,
+    pub quotient_integration: ZkQuotientIntegrationProfile,
 }
 
 /// Verifier-owned ZK configuration. Verification trusts this configuration,

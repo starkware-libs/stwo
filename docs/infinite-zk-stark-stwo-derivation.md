@@ -82,6 +82,13 @@ Implemented:
 - deterministic public OODS rejection helper;
 - separate FRI `R` oracle commit/decommit/authentication helpers;
 - ZK-only PCS `R` ordering and `H_batch` first-layer answer handling.
+- Phase 2 witness-randomization profile metadata, including
+  `randomizer_space_hash`, `h_witness`, and private-column degree bounds.
+- Phase 3 quotient-integration profile metadata, including
+  `split_derivation_hash`, `h_batch`, FRI first-layer log size, and quotient
+  degree bounds.
+- fail-closed prover validation that rejects Phase 2/3 activation unless all
+  derivation reviews and degree/profile commitments are present and consistent.
 
 Blocked:
 
@@ -89,3 +96,24 @@ Blocked:
 - randomized composition degree metadata;
 - full `prove_zk_ex` / `verify_zk_ex`;
 - claiming complete paper-level witness zero-knowledge.
+
+## 8. Candidate Phase 2/3 activation rule
+
+Semantic witness randomization may be implemented only when
+`ZkProvingConfig::validate_for_phase_2_and_3()` succeeds.
+
+That requires:
+
+- review evidence for all five derivation gates;
+- non-zero `randomizer_space_hash`;
+- non-zero `split_derivation_hash`;
+- non-empty private-column degree bounds;
+- non-empty quotient degree bounds;
+- equality between `ZkDegreeProfile.h_witness` and
+  `ZkWitnessRandomizationProfile.h_witness`;
+- equality between `ZkDegreeProfile.h_batch` and
+  `ZkQuotientIntegrationProfile.h_batch`;
+- equality between `ZkDegreeProfile.fri_first_layer_log_size` and
+  `ZkQuotientIntegrationProfile.fri_first_layer_log_size`.
+
+This is an activation rule, not a substitute for the missing derivation.

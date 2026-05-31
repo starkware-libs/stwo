@@ -41,6 +41,11 @@ pub struct ZkProvingConfig {
 pub enum ZkProvingConfigError {
     MissingDerivationReview(ZkDerivationGate),
     EmptyReviewHash(ZkDerivationGate),
+    MissingPrivateColumnDegreeBounds,
+    MissingQuotientDegreeBounds,
+    EmptyRandomizerSpaceHash,
+    EmptySplitDerivationHash,
+    DegreeProfileMismatch,
 }
 
 impl ZkProvingConfig {
@@ -62,6 +67,51 @@ impl ZkProvingConfig {
             if review.review_hash.iter().all(|&byte| byte == 0) {
                 return Err(ZkProvingConfigError::EmptyReviewHash(gate));
             }
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_for_phase_2_and_3(&self) -> Result<(), ZkProvingConfigError> {
+        self.validate_for_witness_randomization()?;
+
+        let metadata = &self.metadata;
+        if metadata
+            .witness_randomization
+            .randomizer_space_hash
+            .iter()
+            .all(|&byte| byte == 0)
+        {
+            return Err(ZkProvingConfigError::EmptyRandomizerSpaceHash);
+        }
+        if metadata
+            .quotient_integration
+            .split_derivation_hash
+            .iter()
+            .all(|&byte| byte == 0)
+        {
+            return Err(ZkProvingConfigError::EmptySplitDerivationHash);
+        }
+        if metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .is_empty()
+        {
+            return Err(ZkProvingConfigError::MissingPrivateColumnDegreeBounds);
+        }
+        if metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty()
+        {
+            return Err(ZkProvingConfigError::MissingQuotientDegreeBounds);
+        }
+        if metadata.degree_profile.h_witness != metadata.witness_randomization.h_witness
+            || metadata.degree_profile.h_batch != metadata.quotient_integration.h_batch
+            || metadata.degree_profile.fri_first_layer_log_size
+                != metadata.quotient_integration.fri_first_layer_log_size
+        {
+            return Err(ZkProvingConfigError::DegreeProfileMismatch);
         }
 
         Ok(())
