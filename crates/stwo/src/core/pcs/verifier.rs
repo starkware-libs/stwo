@@ -16,8 +16,8 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
-    mix_zk_public_metadata, validate_zk_public_only_metadata, ZkCommitmentSchemeProof,
-    ZkVerificationConfig,
+    mix_zk_public_metadata, validate_zk_public_only_metadata, zk_fri_batch_mask_fri_config,
+    zk_fri_batch_mask_query_positions, ZkCommitmentSchemeProof, ZkVerificationConfig,
 };
 use crate::core::ColumnVec;
 
@@ -182,6 +182,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 "ZK FRI batch mask domain does not match first FRI layer",
             )));
         }
+        if fri_batch_mask.commitment != fri_batch_mask.fri_proof.first_layer.commitment {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK FRI batch mask opening commitment does not match its low-degree proof",
+            )));
+        }
 
         mix_zk_public_metadata(
             channel,
@@ -189,10 +194,16 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             &zk_config.column_degree_bounds,
         );
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
-        MC::mix_root(channel, fri_batch_mask.commitment);
-        let random_coeff = channel.draw_secure_felt();
         let bound =
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
+        let fri_batch_mask_fri_proof = fri_batch_mask.fri_proof.clone();
+        let fri_batch_mask_fri_verifier = FriVerifier::<MC>::commit(
+            channel,
+            zk_fri_batch_mask_fri_config(self.config.fri_config),
+            fri_batch_mask_fri_proof,
+            bound,
+        )?;
+        let random_coeff = channel.draw_secure_felt();
 
         let mut fri_verifier =
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
@@ -202,6 +213,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         }
         channel.mix_u64(proof.proof_of_work);
         let query_positions = fri_verifier.sample_query_positions(channel);
+        let fri_batch_mask_query_positions = zk_fri_batch_mask_query_positions(
+            channel,
+            lifting_log_size,
+            self.config.fri_config.n_queries,
+            &query_positions,
+            self.config.fri_config,
+        )
+        .map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Insufficient ZK FRI batch mask query domain",
+            ))
+        })?;
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
             lifting_log_size,
@@ -251,6 +274,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             proof.queried_values,
             lifting_log_size,
         )?;
+        let fri_batch_mask_fri_values = fri_batch_mask.fri_queried_values.to_secure_values();
+        if fri_batch_mask_fri_values.len() != fri_batch_mask_query_positions.len() {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "Unexpected ZK FRI batch mask low-degree query count",
+            )));
+        }
         let fri_batch_mask_values = fri_batch_mask
             .verify_openings(&query_positions, lifting_log_size)
             .map_err(|_| {
@@ -258,6 +287,10 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                     "Invalid ZK FRI batch mask openings",
                 ))
             })?;
+        fri_batch_mask_fri_verifier.decommit_on_query_positions(
+            &fri_batch_mask_query_positions,
+            fri_batch_mask_fri_values,
+        )?;
         if fri_batch_mask_values.len() != fri_answers.len() {
             return Err(VerificationError::InvalidStructure(String::from(
                 "Unexpected ZK FRI batch mask query count",

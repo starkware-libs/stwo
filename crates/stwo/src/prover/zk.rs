@@ -5,6 +5,7 @@ use std_shims::Vec;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::{BaseField, P as M31_MODULUS};
 use crate::core::fields::qm31::SecureField;
+use crate::core::fri::FriProof;
 use crate::core::pcs::utils::TreeVec;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -113,6 +114,7 @@ pub enum ZkProvingConfigError {
     RandomizerRank(ZkRandomizerRankValidationError),
     SampleMetadata(ZkSampleMetadataBuildError),
     ColumnDegreeBoundsMismatch,
+    InsufficientFriBatchMaskQueryDomain,
     UnexpectedPrivateColumnsForPhase1,
     UnexpectedColumnDegreeBoundsForPhase1,
     Phase1MetadataMismatch(ZkMetadataValidationError),
@@ -494,10 +496,22 @@ where
         &self.evaluation
     }
 
+    #[must_use]
+    pub fn query_values(&self, query_positions: &[usize]) -> ZkFriBatchMaskQueryValues {
+        let queries = query_positions
+            .iter()
+            .map(|&position| self.evaluation.values.at(position).to_m31_array())
+            .collect();
+        ZkFriBatchMaskQueryValues { queries }
+    }
+
     pub fn decommit(
         self,
         query_positions: &[usize],
+        fri_query_positions: &[usize],
+        fri_proof: FriProof<H>,
     ) -> (ZkFriBatchMaskProof<H>, MerkleDecommitmentLiftedAux<H>) {
+        let fri_queried_values = self.query_values(fri_query_positions);
         let log_size = self.log_size();
         let commitment = self.root();
         let (queried_columns, extended_decommitment) = self.commitment.decommit(
@@ -533,8 +547,10 @@ where
             ZkFriBatchMaskProof {
                 commitment,
                 log_size,
+                fri_proof,
                 decommitment: extended_decommitment.decommitment,
                 queried_values: ZkFriBatchMaskQueryValues { queries },
+                fri_queried_values,
             },
             extended_decommitment.aux,
         )
@@ -547,8 +563,10 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
-    use crate::core::channel::MerkleChannel;
+    use crate::core::channel::{Blake2sChannel, MerkleChannel};
+    use crate::core::fri::FriConfig;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::queries::Queries;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::zk::{
         ZkColumnRange, ZkDegreeProfile, ZkFriBatchMaskVerificationError, ZkPrivacyMapHash,
@@ -558,6 +576,7 @@ mod tests {
         ZkRandomizerRankValidationError, ZkSampleMetadataBuildError, ZkWitnessRandomizationProfile,
     };
     use crate::prover::backend::CpuBackend;
+    use crate::prover::fri::FriProver;
 
     type TestFriMaskHasher = <Blake2sMerkleChannel as MerkleChannel>::H;
 
@@ -765,9 +784,23 @@ mod tests {
             &mut rng,
         );
         let queries = vec![0, 3, 7];
+        let fri_queries = vec![1, 5, 9];
         let oracle = ZkFriBatchMaskOracleProver::<CpuBackend, TestFriMaskHasher>::new(mask);
+        let fri_config = FriConfig::new(0, 1, queries.len(), 1);
+        let mut channel = Blake2sChannel::default();
+        let fri_prover = FriProver::<CpuBackend, Blake2sMerkleChannel>::commit(
+            &mut channel,
+            fri_config,
+            oracle.evaluation(),
+            &twiddles,
+        );
+        let fri_proof = fri_prover.decommit_on_queries(&Queries::new(&fri_queries, log_size));
 
-        (oracle.decommit(&queries).0, queries, log_size)
+        (
+            oracle.decommit(&queries, &fri_queries, fri_proof.proof).0,
+            queries,
+            log_size,
+        )
     }
 
     #[test]

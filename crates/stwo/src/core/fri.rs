@@ -215,6 +215,22 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         self.decommit_on_queries(&queries, first_layer_query_evals)
     }
 
+    /// Verifies the decommitment stage of FRI against externally supplied
+    /// first-layer query positions.
+    ///
+    /// This is used when another proof component samples the query positions
+    /// and this FRI proof must authenticate a related oracle on exactly the
+    /// same positions.
+    pub fn decommit_on_query_positions(
+        self,
+        query_positions: &[usize],
+        first_layer_query_evals: Vec<SecureField>,
+    ) -> Result<(), FriVerificationError> {
+        let first_layer_log_size = self.first_layer.column_commitment_domain.log_size();
+        let queries = Queries::new(query_positions, first_layer_log_size);
+        self.decommit_on_queries(&queries, first_layer_query_evals)
+    }
+
     fn decommit_on_queries(
         self,
         queries: &Queries,

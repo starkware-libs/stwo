@@ -1,6 +1,6 @@
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, Vec};
+use std_shims::{vec, BTreeSet, Vec};
 
 use crate::core::channel::Channel;
 use crate::core::circle::{CirclePoint, Coset};
@@ -8,6 +8,7 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ComplexConjugate;
+use crate::core::fri::{FriConfig, FriProof, FriProofAux};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
 use crate::core::pcs::utils::TreeVec;
 use crate::core::poly::circle::CanonicCoset;
@@ -1299,14 +1300,29 @@ impl From<MerkleVerificationError> for ZkFriBatchMaskVerificationError {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkFriBatchMaskQueryPositionsError {
+    InvalidFriConfig,
+    QueryDomainTooLarge { log_size: u32 },
+    QueryPositionOutOfDomain { position: usize, domain_size: usize },
+    InsufficientPositions { required: usize, available: usize },
+}
+
 /// Separate public oracle proof for the Protocol 2 FRI batch mask polynomial
 /// `R`.
+///
+/// This ZK-only proof format is still guarded by explicit metadata validation.
+/// Adding `fri_proof` and `fri_queried_values` is an intentional incompatible
+/// V1 branch change: older masked proofs must fail closed rather than verify
+/// without the low-degree proof for `R`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkFriBatchMaskProof<H: MerkleHasherLifted> {
     pub commitment: H::Hash,
     pub log_size: u32,
+    pub fri_proof: FriProof<H>,
     pub decommitment: MerkleDecommitmentLifted<H>,
     pub queried_values: ZkFriBatchMaskQueryValues,
+    pub fri_queried_values: ZkFriBatchMaskQueryValues,
 }
 
 impl<H: MerkleHasherLifted> ZkFriBatchMaskProof<H> {
@@ -1360,6 +1376,191 @@ impl<H: MerkleHasherLifted> ZkFriBatchMaskProof<H> {
     }
 }
 
+#[must_use]
+pub fn zk_fri_batch_mask_fri_config(mut config: FriConfig) -> FriConfig {
+    config.fold_step = 1;
+    config
+}
+
+#[must_use]
+pub fn zk_fri_batch_mask_query_positions<C: Channel>(
+    channel: &mut C,
+    log_domain_size: u32,
+    n_queries: usize,
+    h_batch_query_positions: &[usize],
+    h_batch_fri_config: FriConfig,
+) -> Result<Vec<usize>, ZkFriBatchMaskQueryPositionsError> {
+    if log_domain_size >= usize::BITS {
+        return Err(ZkFriBatchMaskQueryPositionsError::QueryDomainTooLarge {
+            log_size: log_domain_size,
+        });
+    }
+
+    let domain_size = 1usize << log_domain_size;
+    if n_queries == 0 {
+        return Ok(Vec::new());
+    }
+    if log_domain_size == 0 {
+        return Err(ZkFriBatchMaskQueryPositionsError::InsufficientPositions {
+            required: n_queries,
+            available: 0,
+        });
+    }
+
+    let Some(mut current_log_degree) =
+        log_domain_size.checked_sub(h_batch_fri_config.log_blowup_factor)
+    else {
+        return Err(ZkFriBatchMaskQueryPositionsError::InvalidFriConfig);
+    };
+    if h_batch_fri_config.fold_step == 0
+        || current_log_degree <= h_batch_fri_config.log_last_layer_degree_bound
+    {
+        return Err(ZkFriBatchMaskQueryPositionsError::InvalidFriConfig);
+    }
+
+    let query_mask = domain_size - 1;
+    let mut h_batch_positions = BTreeSet::new();
+    for &position in h_batch_query_positions {
+        if position >= domain_size {
+            return Err(
+                ZkFriBatchMaskQueryPositionsError::QueryPositionOutOfDomain {
+                    position,
+                    domain_size,
+                },
+            );
+        }
+        h_batch_positions.insert(position);
+    }
+
+    let mut forbidden_pair_ranges = Vec::new();
+    let mut layer_queries: Vec<usize> = h_batch_positions.into_iter().collect();
+    let mut layer_log_size = log_domain_size;
+    let mut cumulative_folds = 0;
+    let max_raw_openings = n_queries.saturating_mul(2);
+
+    while current_log_degree > h_batch_fri_config.log_last_layer_degree_bound {
+        let fold_step = if cumulative_folds == 0 {
+            h_batch_fri_config.fold_step
+        } else {
+            (current_log_degree - h_batch_fri_config.log_last_layer_degree_bound)
+                .min(h_batch_fri_config.fold_step)
+        };
+
+        if fold_step == 0
+            || fold_step > layer_log_size
+            || fold_step > current_log_degree
+            || current_log_degree - fold_step < h_batch_fri_config.log_last_layer_degree_bound
+        {
+            return Err(ZkFriBatchMaskQueryPositionsError::InvalidFriConfig);
+        }
+
+        let fold_size = 1usize << fold_step;
+        let original_block_size = 1usize << cumulative_folds;
+        for &position in &layer_queries {
+            let closure_start = (position >> fold_step) << fold_step;
+            for layer_position in closure_start..closure_start + fold_size {
+                let original_start = layer_position << cumulative_folds;
+                if cumulative_folds == 0 {
+                    forbid_pair_containing_position(&mut forbidden_pair_ranges, original_start);
+                } else if original_block_size <= max_raw_openings {
+                    forbid_pairs_inside_block(
+                        &mut forbidden_pair_ranges,
+                        original_start,
+                        original_block_size,
+                    );
+                }
+            }
+        }
+
+        layer_queries = layer_queries
+            .into_iter()
+            .map(|query| query >> fold_step)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        layer_log_size -= fold_step;
+        current_log_degree -= fold_step;
+        cumulative_folds += fold_step;
+    }
+
+    let last_layer_block_size = 1usize << cumulative_folds;
+    if last_layer_block_size <= max_raw_openings {
+        // The H-batch last-layer polynomial is public over the whole last-layer
+        // domain, not only on the sampled query path. If a final folded block is
+        // small enough to be reconstructed from the R raw openings, any R pair
+        // inside such a block could leak the corresponding folded raw quotient.
+        return Err(ZkFriBatchMaskQueryPositionsError::InsufficientPositions {
+            required: n_queries,
+            available: 0,
+        });
+    }
+
+    let forbidden_pair_ranges = merge_pair_ranges(forbidden_pair_ranges);
+    let pair_count = domain_size >> 1;
+    let forbidden_pairs = forbidden_pair_ranges
+        .iter()
+        .map(|(start, end)| end - start)
+        .sum::<usize>();
+    let available = pair_count.saturating_sub(forbidden_pairs) * 2;
+    if available < n_queries {
+        return Err(ZkFriBatchMaskQueryPositionsError::InsufficientPositions {
+            required: n_queries,
+            available,
+        });
+    }
+
+    let mut positions = BTreeSet::new();
+    while positions.len() < n_queries {
+        for word in channel.draw_u32s() {
+            let position = (word as usize) & query_mask;
+            if pair_is_forbidden(&forbidden_pair_ranges, position >> 1) {
+                continue;
+            }
+            positions.insert(position);
+            if positions.len() == n_queries {
+                break;
+            }
+        }
+    }
+
+    Ok(positions.into_iter().collect())
+}
+
+fn forbid_pair_containing_position(ranges: &mut Vec<(usize, usize)>, position: usize) {
+    let pair_index = position >> 1;
+    ranges.push((pair_index, pair_index + 1));
+}
+
+fn forbid_pairs_inside_block(ranges: &mut Vec<(usize, usize)>, start: usize, len: usize) {
+    if len == 0 {
+        return;
+    }
+    ranges.push((start >> 1, (start + len) >> 1));
+}
+
+fn merge_pair_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in ranges {
+        if start == end {
+            continue;
+        }
+        match merged.last_mut() {
+            Some((_, last_end)) if start <= *last_end => {
+                *last_end = (*last_end).max(end);
+            }
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
+fn pair_is_forbidden(ranges: &[(usize, usize)], pair_index: usize) -> bool {
+    ranges
+        .iter()
+        .any(|(start, end)| *start <= pair_index && pair_index < *end)
+}
+
 /// ZK PCS proof. The embedded randomized PCS proof is incomplete without
 /// `fri_batch_mask`; this type intentionally does not implement `Deref` or
 /// conversion into the original proof type.
@@ -1374,6 +1575,7 @@ pub struct ZkCommitmentSchemeProof<H: MerkleHasherLifted> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkCommitmentSchemeProofAux<H: MerkleHasherLifted> {
     pub randomized_pcs_aux: CommitmentSchemeProofAux<H>,
+    pub fri_batch_mask_fri_aux: FriProofAux<H>,
     pub fri_batch_mask_decommitment_aux: MerkleDecommitmentLiftedAux<H>,
 }
 
@@ -1447,6 +1649,7 @@ impl ZkPerformanceMetric {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::channel::Blake2sChannel;
     use crate::core::poly::circle::CanonicCoset;
 
     fn zero_hash() -> [u8; 32] {
@@ -1855,6 +2058,36 @@ mod tests {
                 4,
             ),
             Err(ZkSampleMetadataBuildError::NonSingletonPrivateRange { range })
+        );
+    }
+
+    #[test]
+    fn fri_batch_mask_query_positions_avoid_small_h_batch_fri_opened_blocks() {
+        let mut channel = Blake2sChannel::default();
+        let positions =
+            zk_fri_batch_mask_query_positions(&mut channel, 8, 8, &[0], FriConfig::new(0, 1, 8, 1))
+                .unwrap();
+
+        assert_eq!(positions.len(), 8);
+        assert!(positions.iter().all(|position| *position >= 32));
+    }
+
+    #[test]
+    fn fri_batch_mask_query_positions_reject_insufficient_safe_domain() {
+        let mut channel = Blake2sChannel::default();
+
+        assert_eq!(
+            zk_fri_batch_mask_query_positions(
+                &mut channel,
+                4,
+                16,
+                &[0, 15],
+                FriConfig::new(0, 1, 16, 1),
+            ),
+            Err(ZkFriBatchMaskQueryPositionsError::InsufficientPositions {
+                required: 16,
+                available: 0,
+            })
         );
     }
 }

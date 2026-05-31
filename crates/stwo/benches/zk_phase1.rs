@@ -1,11 +1,16 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use rand::rngs::SmallRng;
 use rand::{CryptoRng, RngCore, SeedableRng};
+use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::{BaseField, P as M31_MODULUS};
 use stwo::core::fields::qm31::SecureField;
+use stwo::core::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::queries::Queries;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+use stwo::core::zk::zk_fri_batch_mask_query_positions;
 use stwo::prover::backend::{BackendForChannel, Col, CpuBackend};
+use stwo::prover::fri::FriProver;
 use stwo::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation};
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
@@ -191,6 +196,7 @@ fn bench_zk_r_opening(c: &mut Criterion) {
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let mask = sample_mask::<CpuBackend>(log_size, &twiddles, 5);
         let queries = query_positions(log_size);
+        let fri_config = FriConfig::new(0, LOG_BLOWUP_FACTOR, queries.len(), 1);
 
         c.bench_function(
             &format!("zk phase1 r opening construction cpu 2^{log_size}"),
@@ -203,9 +209,52 @@ fn bench_zk_r_opening(c: &mut Criterion) {
                         >::new(mask.clone())
                     },
                     |oracle| {
-                        black_box(oracle.decommit(black_box(queries.as_slice())));
+                        let mut channel = Blake2sChannel::default();
+                        let fri_queries = zk_fri_batch_mask_query_positions(
+                            &mut channel,
+                            log_size,
+                            fri_config.n_queries,
+                            &queries,
+                            fri_config,
+                        )
+                        .unwrap();
+                        let fri_prover = FriProver::<CpuBackend, Blake2sMerkleChannel>::commit(
+                            &mut channel,
+                            fri_config,
+                            oracle.evaluation(),
+                            &twiddles,
+                        );
+                        let fri_proof =
+                            fri_prover.decommit_on_queries(&Queries::new(&fri_queries, log_size));
+                        black_box(oracle.decommit(
+                            black_box(queries.as_slice()),
+                            black_box(fri_queries.as_slice()),
+                            fri_proof.proof,
+                        ));
                     },
                     BatchSize::LargeInput,
+                );
+            },
+        );
+
+        c.bench_function(
+            &format!("zk phase1 r independent query sampling cpu 2^{log_size}"),
+            |b| {
+                b.iter_batched(
+                    Blake2sChannel::default,
+                    |mut channel| {
+                        black_box(
+                            zk_fri_batch_mask_query_positions(
+                                black_box(&mut channel),
+                                log_size,
+                                fri_config.n_queries,
+                                black_box(&queries),
+                                fri_config,
+                            )
+                            .unwrap(),
+                        );
+                    },
+                    BatchSize::SmallInput,
                 );
             },
         );
@@ -218,6 +267,16 @@ fn bench_zk_r_verification(c: &mut Criterion) {
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let mask = sample_mask::<CpuBackend>(log_size, &twiddles, 6);
         let queries = query_positions(log_size);
+        let fri_config = FriConfig::new(0, LOG_BLOWUP_FACTOR, queries.len(), 1);
+        let mut query_channel = Blake2sChannel::default();
+        let fri_queries = zk_fri_batch_mask_query_positions(
+            &mut query_channel,
+            log_size,
+            fri_config.n_queries,
+            &queries,
+            fri_config,
+        )
+        .unwrap();
 
         c.bench_function(
             &format!("zk phase1 r opening verification cpu 2^{log_size}"),
@@ -228,9 +287,31 @@ fn bench_zk_r_verification(c: &mut Criterion) {
                             CpuBackend,
                             <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
                         >::new(mask.clone());
-                        oracle.decommit(&queries).0
+                        let mut channel = Blake2sChannel::default();
+                        let fri_prover = FriProver::<CpuBackend, Blake2sMerkleChannel>::commit(
+                            &mut channel,
+                            fri_config,
+                            oracle.evaluation(),
+                            &twiddles,
+                        );
+                        let fri_proof =
+                            fri_prover.decommit_on_queries(&Queries::new(&fri_queries, log_size));
+                        oracle.decommit(&queries, &fri_queries, fri_proof.proof).0
                     },
                     |proof| {
+                        let fri_proof = proof.fri_proof.clone();
+                        let fri_values = proof.fri_queried_values.to_secure_values();
+                        let mut channel = Blake2sChannel::default();
+                        let fri_verifier = FriVerifier::<Blake2sMerkleChannel>::commit(
+                            &mut channel,
+                            fri_config,
+                            fri_proof,
+                            CirclePolyDegreeBound::new(log_size - LOG_BLOWUP_FACTOR),
+                        )
+                        .unwrap();
+                        fri_verifier
+                            .decommit_on_query_positions(&fri_queries, fri_values)
+                            .unwrap();
                         black_box(
                             proof
                                 .verify_openings(black_box(queries.as_slice()), log_size)

@@ -15,12 +15,13 @@ use crate::core::pcs::quotients::{
 use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
+use crate::core::queries::Queries;
 use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::core::zk::{
-    mix_zk_public_metadata, ExtendedZkCommitmentSchemeProof, ZkCommitmentSchemeProof,
-    ZkCommitmentSchemeProofAux,
+    mix_zk_public_metadata, zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
+    ExtendedZkCommitmentSchemeProof, ZkCommitmentSchemeProof, ZkCommitmentSchemeProofAux,
 };
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
@@ -319,6 +320,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         }
     }
 
+    pub fn prove_values_zk<R>(
+        self,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        zk_config: &ZkProvingConfig,
+        rng: &mut R,
+        channel: &mut MC::C,
+    ) -> Result<ExtendedZkCommitmentSchemeProof<MC::H>, ZkProvingConfigError>
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        self.prove_values_zk_with_fri_batch_mask(sampled_points, zk_config, rng, channel)
+    }
+
     pub fn prove_values_zk_with_fri_batch_mask<R>(
         mut self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
@@ -396,7 +410,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             lifting_log_size,
             "FRI batch mask must use the first FRI layer domain"
         );
-        MC::mix_root(channel, fri_batch_mask_oracle.root());
+        let fri_batch_mask_fri_prover = FriProver::<B, MC>::commit(
+            channel,
+            zk_fri_batch_mask_fri_config(self.config.fri_config),
+            fri_batch_mask_oracle.evaluation(),
+            self.twiddles,
+        );
 
         let columns = self.evaluations();
         print_column_size_histogram::<B, MC>(&columns);
@@ -424,6 +443,23 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
+        let fri_batch_mask_query_positions = zk_fri_batch_mask_query_positions(
+            channel,
+            lifting_log_size,
+            self.config.fri_config.n_queries,
+            &query_positions,
+            self.config.fri_config,
+        )
+        .map_err(|_| ZkProvingConfigError::InsufficientFriBatchMaskQueryDomain)?;
+        let fri_batch_mask_queries =
+            Queries::new(&fri_batch_mask_query_positions, lifting_log_size);
+        let fri_batch_mask_fri_proof =
+            fri_batch_mask_fri_prover.decommit_on_queries(&fri_batch_mask_queries);
+        assert_eq!(
+            fri_batch_mask_oracle.root(),
+            fri_batch_mask_fri_proof.proof.first_layer.commitment,
+            "FRI batch mask opening commitment must match its low-degree FRI commitment"
+        );
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
             lifting_log_size,
@@ -453,8 +489,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .map(|(v, x)| (v, x.decommitment, x.aux))
             .multiunzip();
 
-        let (fri_batch_mask, fri_batch_mask_decommitment_aux) =
-            fri_batch_mask_oracle.decommit(&query_positions);
+        let (fri_batch_mask, fri_batch_mask_decommitment_aux) = fri_batch_mask_oracle.decommit(
+            &query_positions,
+            &fri_batch_mask_query_positions,
+            fri_batch_mask_fri_proof.proof,
+        );
 
         for tree in &mut self.trees.0 {
             if let MaybeOwned::Owned(tree) = tree {
@@ -486,6 +525,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     trace_decommitment: TreeVec(aux),
                     fri: fri_proof.aux,
                 },
+                fri_batch_mask_fri_aux: fri_batch_mask_fri_proof.aux,
                 fri_batch_mask_decommitment_aux,
             },
         })
