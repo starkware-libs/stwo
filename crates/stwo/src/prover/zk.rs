@@ -38,6 +38,8 @@ pub enum ZkDerivationGate {
     ZkAwareDegreeMetadata,
     FriBatchMaskDegree,
     PrivateLookupPermutationExclusion,
+    ProofDataSecrecy,
+    ZkPerformanceControls,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +224,8 @@ impl ZkProvingConfig {
             ZkDerivationGate::ZkAwareDegreeMetadata,
             ZkDerivationGate::FriBatchMaskDegree,
             ZkDerivationGate::PrivateLookupPermutationExclusion,
+            ZkDerivationGate::ProofDataSecrecy,
+            ZkDerivationGate::ZkPerformanceControls,
         ] {
             let Some(review) = self
                 .derivation_reviews
@@ -569,11 +573,12 @@ mod tests {
     use crate::core::queries::Queries;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::zk::{
-        ZkColumnRange, ZkDegreeProfile, ZkFriBatchMaskVerificationError, ZkPrivacyMapHash,
-        ZkPrivateColumnScope, ZkPrivateColumnScopeEntry, ZkPrivateColumnScopeValidationError,
-        ZkPrivateColumnUsage, ZkProofVersion, ZkPublicStatementHash, ZkQueryClosureKind,
-        ZkQueryClosureValidationError, ZkQuotientIntegrationProfile,
-        ZkRandomizerRankValidationError, ZkSampleMetadataBuildError, ZkWitnessRandomizationProfile,
+        canonical_zk_private_column_scope_hash, ZkColumnRange, ZkDegreeProfile,
+        ZkFriBatchMaskVerificationError, ZkPrivacyMapHash, ZkPrivateColumnScope,
+        ZkPrivateColumnScopeEntry, ZkPrivateColumnScopeValidationError, ZkPrivateColumnUsage,
+        ZkProofVersion, ZkPublicStatementHash, ZkQueryClosureKind, ZkQueryClosureValidationError,
+        ZkQuotientIntegrationProfile, ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
+        ZkWitnessRandomizationProfile,
     };
     use crate::prover::backend::CpuBackend;
     use crate::prover::fri::FriProver;
@@ -688,7 +693,16 @@ mod tests {
         let private_bound = degree_bound(0);
         let quotient_bound = degree_bound(1);
         let private_range = private_bound.range;
-        let private_column_scope_hash = hash(7);
+        let private_column_scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: zero_hash(),
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range: private_range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+            }],
+        };
+        let private_column_scope_hash =
+            canonical_zk_private_column_scope_hash(&private_column_scope);
         let metadata = ZkPublicMetadata {
             version: ZkProofVersion::V1,
             privacy_map_hash,
@@ -721,12 +735,8 @@ mod tests {
                 hash: privacy_map_hash,
             },
             private_column_scope: Some(ZkPrivateColumnScope {
-                version: ZkProofVersion::V1,
                 hash: private_column_scope_hash,
-                entries: vec![ZkPrivateColumnScopeEntry {
-                    range: private_range,
-                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
-                }],
+                ..private_column_scope
             }),
             query_closure: None,
             randomizer_rank_profile: None,
@@ -756,6 +766,14 @@ mod tests {
                 ZkDerivationReview {
                     gate: ZkDerivationGate::PrivateLookupPermutationExclusion,
                     review_hash: hash(15),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::ProofDataSecrecy,
+                    review_hash: hash(16),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::ZkPerformanceControls,
+                    review_hash: hash(17),
                 },
             ],
         };
@@ -1002,7 +1020,7 @@ mod tests {
         assert_eq!(
             config.validate_for_witness_and_quotient_integration(),
             Err(ZkProvingConfigError::MissingDerivationReview(
-                ZkDerivationGate::PrivateLookupPermutationExclusion
+                ZkDerivationGate::ZkPerformanceControls
             ))
         );
     }
@@ -1037,6 +1055,13 @@ mod tests {
         let mut config = witness_and_quotient_config();
         config.private_column_scope.as_mut().unwrap().entries[0].usage =
             ZkPrivateColumnUsage::Lookup;
+        let scope_hash =
+            canonical_zk_private_column_scope_hash(config.private_column_scope.as_ref().unwrap());
+        config.private_column_scope.as_mut().unwrap().hash = scope_hash;
+        config
+            .metadata
+            .witness_randomization
+            .private_column_scope_hash = scope_hash;
 
         assert_eq!(
             config.validate_for_witness_and_quotient_integration(),

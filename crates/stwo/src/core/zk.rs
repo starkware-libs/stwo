@@ -14,6 +14,7 @@ use crate::core::pcs::utils::TreeVec;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::utils::get_folding_alphas;
 use crate::core::utils::bit_reverse_index;
+use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{
     MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
@@ -138,6 +139,177 @@ impl ZkPrivateColumnScope {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkCirclePointEncoding {
+    pub x: BaseField,
+    pub y: BaseField,
+}
+
+impl From<CirclePoint<BaseField>> for ZkCirclePointEncoding {
+    fn from(point: CirclePoint<BaseField>) -> Self {
+        Self {
+            x: point.x,
+            y: point.y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkCircleCosetEncoding {
+    pub log_size: u32,
+    pub initial_index: u64,
+    pub initial: ZkCirclePointEncoding,
+    pub step_size: u64,
+    pub step: ZkCirclePointEncoding,
+}
+
+impl From<Coset> for ZkCircleCosetEncoding {
+    fn from(coset: Coset) -> Self {
+        Self {
+            log_size: coset.log_size,
+            initial_index: u64::try_from(coset.initial_index.0)
+                .expect("ZK coset initial index must fit in u64"),
+            initial: coset.initial.into(),
+            step_size: u64::try_from(coset.step_size.0)
+                .expect("ZK coset step size must fit in u64"),
+            step: coset.step.into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkRandomizerSpaceEntry {
+    pub range: ZkColumnRange,
+    pub trace_domain: ZkCircleCosetEncoding,
+    pub randomized_log_degree: u32,
+    pub randomizer_dimension: u64,
+}
+
+const ZK_PRIVATE_COLUMN_SCOPE_HASH_DOMAIN: &[u8] = b"stwo.zk.private-column-scope.v1";
+const ZK_RANDOMIZER_SPACE_HASH_DOMAIN: &[u8] = b"stwo.zk.randomizer-space.v1";
+const ZK_SPLIT_DERIVATION_HASH_DOMAIN: &[u8] = b"stwo.zk.split-derivation.v1";
+const ZK_RANDOMIZER_BASIS_ID: &[u8] = b"circle-fft-bit-reversed";
+const ZK_RANDOMIZER_CONSTRUCTION_ID: &[u8] = b"eval-coset-vanishing-times-r-interpolate";
+const ZK_RANDOMIZER_RANK_MATRIX_ID: &[u8] = b"base-field-functional-matrix-v1";
+const ZK_SPLIT_IDENTITY: &[u8] = b"p(z)=left(z)+pi^(L-2)(z.x)*right(z)";
+const ZK_QUOTIENT_OPENING_MODEL: &[u8] = b"internal-pcs-fri-only";
+const ZK_H_BATCH_RULE: &[u8] = b"fri-first-layer-degree-bound";
+
+fn push_tag(dst: &mut Vec<u8>, tag: &[u8]) {
+    push_u64(dst, tag.len() as u64);
+    dst.extend_from_slice(tag);
+}
+
+fn push_u32(dst: &mut Vec<u8>, value: u32) {
+    dst.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u64(dst: &mut Vec<u8>, value: u64) {
+    dst.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_usize(dst: &mut Vec<u8>, value: usize) {
+    push_u64(
+        dst,
+        u64::try_from(value).expect("ZK metadata usize field must fit in u64"),
+    );
+}
+
+fn push_hash(dst: &mut Vec<u8>, value: &[u8; 32]) {
+    dst.extend_from_slice(value);
+}
+
+fn push_base_field(dst: &mut Vec<u8>, value: BaseField) {
+    push_u32(dst, value.0);
+}
+
+fn push_column_range(dst: &mut Vec<u8>, range: ZkColumnRange) {
+    push_usize(dst, range.tree_index);
+    push_usize(dst, range.column_start);
+    push_usize(dst, range.column_end);
+}
+
+fn push_circle_point(dst: &mut Vec<u8>, point: ZkCirclePointEncoding) {
+    push_base_field(dst, point.x);
+    push_base_field(dst, point.y);
+}
+
+fn push_circle_coset(dst: &mut Vec<u8>, coset: ZkCircleCosetEncoding) {
+    push_u32(dst, coset.log_size);
+    push_u64(dst, coset.initial_index);
+    push_circle_point(dst, coset.initial);
+    push_u64(dst, coset.step_size);
+    push_circle_point(dst, coset.step);
+}
+
+fn private_column_usage_tag(usage: ZkPrivateColumnUsage) -> u32 {
+    match usage {
+        ZkPrivateColumnUsage::OrdinaryWitness => 0,
+        ZkPrivateColumnUsage::Lookup => 1,
+        ZkPrivateColumnUsage::Permutation => 2,
+        ZkPrivateColumnUsage::Fractional => 3,
+        ZkPrivateColumnUsage::LogUp => 4,
+        ZkPrivateColumnUsage::Memory => 5,
+        ZkPrivateColumnUsage::GrandProduct => 6,
+        ZkPrivateColumnUsage::Multiset => 7,
+    }
+}
+
+fn blake2s_hash(bytes: &[u8]) -> [u8; 32] {
+    Blake2sHasher::hash(bytes).into()
+}
+
+#[must_use]
+pub fn canonical_zk_private_column_scope_hash(scope: &ZkPrivateColumnScope) -> [u8; 32] {
+    let scope = scope.clone().canonicalized();
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_PRIVATE_COLUMN_SCOPE_HASH_DOMAIN);
+    push_u32(&mut bytes, scope.version.0);
+    push_u64(&mut bytes, scope.entries.len() as u64);
+    for entry in scope.entries {
+        push_column_range(&mut bytes, entry.range);
+        push_u32(&mut bytes, private_column_usage_tag(entry.usage));
+    }
+    blake2s_hash(&bytes)
+}
+
+#[must_use]
+pub fn canonical_zk_randomizer_space_hash(
+    private_column_scope_hash: [u8; 32],
+    entries: &[ZkRandomizerSpaceEntry],
+) -> [u8; 32] {
+    let mut entries = entries.to_vec();
+    entries.sort_unstable();
+
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_RANDOMIZER_SPACE_HASH_DOMAIN);
+    push_u32(&mut bytes, ZkProofVersion::V1.0);
+    push_hash(&mut bytes, &private_column_scope_hash);
+    push_u64(&mut bytes, entries.len() as u64);
+    for entry in entries {
+        push_column_range(&mut bytes, entry.range);
+        push_circle_coset(&mut bytes, entry.trace_domain);
+        push_u32(&mut bytes, entry.randomized_log_degree);
+        push_u64(&mut bytes, entry.randomizer_dimension);
+        push_tag(&mut bytes, ZK_RANDOMIZER_BASIS_ID);
+        push_tag(&mut bytes, ZK_RANDOMIZER_CONSTRUCTION_ID);
+        push_tag(&mut bytes, ZK_RANDOMIZER_RANK_MATRIX_ID);
+    }
+    blake2s_hash(&bytes)
+}
+
+#[must_use]
+pub fn canonical_zk_split_derivation_hash(composition_log_split: u32) -> [u8; 32] {
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_SPLIT_DERIVATION_HASH_DOMAIN);
+    push_u32(&mut bytes, ZkProofVersion::V1.0);
+    push_u32(&mut bytes, composition_log_split);
+    push_tag(&mut bytes, ZK_SPLIT_IDENTITY);
+    push_tag(&mut bytes, ZK_QUOTIENT_OPENING_MODEL);
+    push_tag(&mut bytes, ZK_H_BATCH_RULE);
+    blake2s_hash(&bytes)
+}
+
 pub fn validate_zk_private_column_scope_for_witness_randomization(
     privacy_map: &ZkPrivacyMap,
     expected_scope_hash: [u8; 32],
@@ -154,6 +326,9 @@ pub fn validate_zk_private_column_scope_for_witness_randomization(
         return Err(ZkPrivateColumnScopeValidationError::VersionMismatch);
     }
     if scope.hash != expected_scope_hash {
+        return Err(ZkPrivateColumnScopeValidationError::ScopeHashMismatch);
+    }
+    if scope.hash != canonical_zk_private_column_scope_hash(scope) {
         return Err(ZkPrivateColumnScopeValidationError::ScopeHashMismatch);
     }
     if scope.entries != scope.clone().canonicalized().entries {
@@ -1848,20 +2023,21 @@ mod tests {
     #[test]
     fn private_column_scope_rejects_non_singleton_private_range() {
         let range = ZkColumnRange::new(0, 0, 2);
-        let scope_hash = nonzero_hash();
         let privacy_map = ZkPrivacyMap {
             version: ZkProofVersion::V1,
             private_columns: vec![range],
             hash: ZkPrivacyMapHash(nonzero_hash()),
         };
-        let scope = ZkPrivateColumnScope {
+        let mut scope = ZkPrivateColumnScope {
             version: ZkProofVersion::V1,
-            hash: scope_hash,
+            hash: zero_hash(),
             entries: vec![ZkPrivateColumnScopeEntry {
                 range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
             }],
         };
+        let scope_hash = canonical_zk_private_column_scope_hash(&scope);
+        scope.hash = scope_hash;
 
         assert_eq!(
             validate_zk_private_column_scope_for_witness_randomization(
@@ -2058,6 +2234,82 @@ mod tests {
                 4,
             ),
             Err(ZkSampleMetadataBuildError::NonSingletonPrivateRange { range })
+        );
+    }
+
+    #[test]
+    fn private_column_scope_hash_is_canonical_and_binds_usage() {
+        let range0 = ZkColumnRange::new(0, 0, 1);
+        let range1 = ZkColumnRange::new(0, 1, 2);
+        let scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: zero_hash(),
+            entries: vec![
+                ZkPrivateColumnScopeEntry {
+                    range: range1,
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                },
+                ZkPrivateColumnScopeEntry {
+                    range: range0,
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                },
+            ],
+        };
+        let mut canonical_scope = scope.clone();
+        canonical_scope.canonicalize();
+        let mut changed_scope = canonical_scope.clone();
+        changed_scope.entries[0].usage = ZkPrivateColumnUsage::Lookup;
+
+        assert_eq!(
+            canonical_zk_private_column_scope_hash(&scope),
+            canonical_zk_private_column_scope_hash(&canonical_scope)
+        );
+        assert_ne!(
+            canonical_zk_private_column_scope_hash(&canonical_scope),
+            canonical_zk_private_column_scope_hash(&changed_scope)
+        );
+    }
+
+    #[test]
+    fn randomizer_space_hash_binds_per_column_metadata() {
+        let scope_hash = nonzero_hash();
+        let range0 = ZkColumnRange::new(0, 0, 1);
+        let range1 = ZkColumnRange::new(0, 1, 2);
+        let trace_domain = ZkCircleCosetEncoding::from(CanonicCoset::new(3).coset);
+        let entries = vec![
+            ZkRandomizerSpaceEntry {
+                range: range1,
+                trace_domain,
+                randomized_log_degree: 5,
+                randomizer_dimension: 8,
+            },
+            ZkRandomizerSpaceEntry {
+                range: range0,
+                trace_domain,
+                randomized_log_degree: 5,
+                randomizer_dimension: 8,
+            },
+        ];
+        let mut canonical_entries = entries.clone();
+        canonical_entries.sort_unstable();
+        let mut changed_entries = canonical_entries.clone();
+        changed_entries[0].randomizer_dimension += 1;
+
+        assert_eq!(
+            canonical_zk_randomizer_space_hash(scope_hash, &entries),
+            canonical_zk_randomizer_space_hash(scope_hash, &canonical_entries)
+        );
+        assert_ne!(
+            canonical_zk_randomizer_space_hash(scope_hash, &canonical_entries),
+            canonical_zk_randomizer_space_hash(scope_hash, &changed_entries)
+        );
+    }
+
+    #[test]
+    fn split_derivation_hash_binds_split_parameter() {
+        assert_ne!(
+            canonical_zk_split_derivation_hash(1),
+            canonical_zk_split_derivation_hash(2)
         );
     }
 
