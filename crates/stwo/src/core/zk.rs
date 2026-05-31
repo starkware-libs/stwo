@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, Vec};
 
+use crate::core::channel::Channel;
+use crate::core::circle::{CirclePoint, Coset};
+use crate::core::constraints::coset_vanishing;
+use crate::core::fields::ComplexConjugate;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
@@ -9,6 +13,7 @@ use crate::core::vcs_lifted::verifier::{
     MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
     MerkleVerifierLifted,
 };
+use num_traits::Zero;
 
 /// Version marker for the explicit ZK proof format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +72,13 @@ pub struct ZkDegreeProfile {
     pub fri_first_layer_log_size: u32,
 }
 
+/// Verifier-owned degree bound for a stable tree/column range.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkColumnDegreeBound {
+    pub range: ZkColumnRange,
+    pub log_degree_bound: u32,
+}
+
 /// Public metadata echoed by a ZK proof and compared against verifier-owned
 /// configuration before affected Fiat-Shamir challenges.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +94,63 @@ pub struct ZkPublicMetadata {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZkVerificationConfig {
     pub metadata: ZkPublicMetadata,
+    pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
+}
+
+/// Public OODS exclusion policy for the ZK path.
+///
+/// Every forbidden coset is interpreted through its STWO circle vanishing
+/// polynomial. This is intentionally verifier-side data: prover and verifier
+/// must derive the same accept/reject decision from the Fiat-Shamir point.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZkOodsExclusionSet {
+    pub forbidden_cosets: Vec<Coset>,
+    pub reject_line_degeneracy: bool,
+}
+
+impl ZkOodsExclusionSet {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            forbidden_cosets: Vec::new(),
+            reject_line_degeneracy: true,
+        }
+    }
+
+    #[must_use]
+    pub fn accepts(&self, point: CirclePoint<SecureField>) -> bool {
+        if self.reject_line_degeneracy && point.y == point.y.complex_conjugate() {
+            return false;
+        }
+
+        self.forbidden_cosets
+            .iter()
+            .all(|&coset| !coset_vanishing(coset, point).is_zero())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkOodsSamplingError {
+    ExhaustedAttempts { attempts: usize },
+}
+
+/// Draws an OODS point from the Fiat-Shamir channel with deterministic public
+/// rejection. This must be used by both prover and verifier in the ZK path.
+pub fn draw_zk_oods_point<C: Channel>(
+    channel: &mut C,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<CirclePoint<SecureField>, ZkOodsSamplingError> {
+    for _ in 0..max_attempts {
+        let point = CirclePoint::<SecureField>::get_random_point(channel);
+        if exclusion_set.accepts(point) {
+            return Ok(point);
+        }
+    }
+
+    Err(ZkOodsSamplingError::ExhaustedAttempts {
+        attempts: max_attempts,
+    })
 }
 
 /// Canonical public encoding of `R(query)` values.
