@@ -1,0 +1,8 @@
+simd polynomial commitment 2^20
+                        time:   [39.822 ms 40.079 ms 40.368 ms]
+
+cpu polynomial commitment 2^20
+                        time:   [326.69 ms 327.64 ms 328.77 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+

@@ -15,7 +15,10 @@ use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
-use crate::core::zk::{ZkCommitmentSchemeProof, ZkVerificationConfig};
+use crate::core::zk::{
+    mix_zk_public_metadata, validate_zk_phase1_metadata, ZkCommitmentSchemeProof,
+    ZkVerificationConfig,
+};
 use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
@@ -152,16 +155,43 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             )));
         }
 
+        let lifting_log_size = self.trees.last().unwrap().height;
+        validate_zk_phase1_metadata(
+            &zk_config.metadata,
+            lifting_log_size,
+            self.config.fri_config.log_blowup_factor,
+        )
+        .map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Invalid ZK phase 1 public metadata",
+            ))
+        })?;
+        if !zk_config.column_degree_bounds.is_empty() {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK phase 1 verifier config must not contain private column degree bounds",
+            )));
+        }
+
         let ZkCommitmentSchemeProof {
             randomized_pcs_proof: proof,
             fri_batch_mask,
             ..
         } = proof;
 
+        if fri_batch_mask.log_size != lifting_log_size {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK FRI batch mask domain does not match first FRI layer",
+            )));
+        }
+
+        mix_zk_public_metadata(
+            channel,
+            &zk_config.metadata,
+            &zk_config.column_degree_bounds,
+        );
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         MC::mix_root(channel, fri_batch_mask.commitment);
         let random_coeff = channel.draw_secure_felt();
-        let lifting_log_size = self.trees.last().unwrap().height;
         let bound =
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
 
@@ -223,7 +253,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             lifting_log_size,
         )?;
         let fri_batch_mask_values = fri_batch_mask
-            .verify_openings(&query_positions)
+            .verify_openings(&query_positions, lifting_log_size)
             .map_err(|_| {
                 VerificationError::InvalidStructure(String::from(
                     "Invalid ZK FRI batch mask openings",

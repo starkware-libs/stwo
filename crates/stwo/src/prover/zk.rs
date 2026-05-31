@@ -1,15 +1,19 @@
 use itertools::Itertools;
+use rand::{CryptoRng, RngCore};
 use std_shims::Vec;
 
+use crate::core::fields::m31::P as M31_MODULUS;
 use crate::core::fields::m31::BaseField;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::zk::{
-    ZkColumnDegreeBound, ZkFriBatchMaskProof, ZkFriBatchMaskQueryValues, ZkPrivacyMap,
-    ZkPublicMetadata,
+    validate_zk_phase1_metadata, ZkColumnDegreeBound, ZkFriBatchMaskProof,
+    ZkFriBatchMaskQueryValues, ZkMetadataValidationError, ZkPrivacyMap, ZkPublicMetadata,
 };
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
-use crate::prover::backend::ColumnOps;
-use crate::prover::poly::circle::SecureEvaluation;
+use crate::prover::backend::{Col, ColumnOps};
+use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation};
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
@@ -46,10 +50,49 @@ pub enum ZkProvingConfigError {
     EmptyRandomizerSpaceHash,
     EmptySplitDerivationHash,
     DegreeProfileMismatch,
+    PrivacyMapVersionMismatch,
+    PrivacyMapHashMismatch,
+    ColumnDegreeBoundsMismatch,
+    UnexpectedPrivateColumnsForPhase1,
+    UnexpectedColumnDegreeBoundsForPhase1,
+    Phase1MetadataMismatch(ZkMetadataValidationError),
+    Phase2And3ActivationBlocked,
 }
 
 impl ZkProvingConfig {
+    fn validate_privacy_map_binding(&self) -> Result<(), ZkProvingConfigError> {
+        if self.metadata.version != self.privacy_map.version {
+            return Err(ZkProvingConfigError::PrivacyMapVersionMismatch);
+        }
+        if self.metadata.privacy_map_hash != self.privacy_map.hash {
+            return Err(ZkProvingConfigError::PrivacyMapHashMismatch);
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_for_phase_1_fri_batch_mask_only(
+        &self,
+        lifting_log_size: u32,
+        log_blowup_factor: u32,
+    ) -> Result<(), ZkProvingConfigError> {
+        self.validate_privacy_map_binding()?;
+        validate_zk_phase1_metadata(&self.metadata, lifting_log_size, log_blowup_factor)
+            .map_err(ZkProvingConfigError::Phase1MetadataMismatch)?;
+
+        if !self.privacy_map.private_columns.is_empty() {
+            return Err(ZkProvingConfigError::UnexpectedPrivateColumnsForPhase1);
+        }
+        if !self.column_degree_bounds.is_empty() {
+            return Err(ZkProvingConfigError::UnexpectedColumnDegreeBoundsForPhase1);
+        }
+
+        Ok(())
+    }
+
     pub fn validate_for_witness_randomization(&self) -> Result<(), ZkProvingConfigError> {
+        self.validate_privacy_map_binding()?;
+
         for gate in [
             ZkDerivationGate::StwoSplitQueryExpansion,
             ZkDerivationGate::CircleRandomizerSpace,
@@ -113,8 +156,17 @@ impl ZkProvingConfig {
         {
             return Err(ZkProvingConfigError::DegreeProfileMismatch);
         }
+        let mut expected_column_degree_bounds = metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .clone();
+        expected_column_degree_bounds
+            .extend(metadata.quotient_integration.quotient_degree_bounds.clone());
+        if self.column_degree_bounds != expected_column_degree_bounds {
+            return Err(ZkProvingConfigError::ColumnDegreeBoundsMismatch);
+        }
 
-        Ok(())
+        Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
     }
 }
 
@@ -149,10 +201,48 @@ where
     raw_quotient
 }
 
+/// Samples the Protocol 2 FRI batch mask polynomial `R` from prover-private
+/// randomness and evaluates it on the first FRI layer domain.
+///
+/// The RNG must be private to the prover and must not be derived from the
+/// Fiat-Shamir channel. The verifier sees only the commitment and authenticated
+/// query openings.
+pub fn sample_fri_batch_mask_evaluation<B, R>(
+    domain: CircleDomain,
+    log_degree_bound: u32,
+    twiddles: &TwiddleTree<B>,
+    rng: &mut R,
+) -> SecureEvaluation<B, BitReversedOrder>
+where
+    B: PolyOps,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let coefficient_count = 1usize
+        .checked_shl(log_degree_bound)
+        .expect("FRI batch mask degree bound must fit usize");
+    let coordinate_polys = core::array::from_fn(|_| {
+        let coeffs: Col<B, BaseField> = (0..coefficient_count)
+            .map(|_| sample_base_field(rng))
+            .collect();
+        CircleCoefficients::<B>::new(coeffs)
+    });
+    SecureCirclePoly(coordinate_polys).evaluate_with_twiddles(domain, twiddles)
+}
+
+fn sample_base_field<R: RngCore + ?Sized>(rng: &mut R) -> BaseField {
+    loop {
+        let candidate = rng.next_u32() & 0x7fff_ffff;
+        if candidate < M31_MODULUS {
+            return BaseField::from_u32_unchecked(candidate);
+        }
+    }
+}
+
 /// Prover-side oracle for the Protocol 2 FRI batch mask polynomial `R`.
 ///
-/// This helper commits only the `R` oracle. It does not alter the default PCS
-/// proof path and does not sample `R`.
+/// This helper commits only the `R` oracle. The evaluation must come from
+/// [`sample_fri_batch_mask_evaluation`] or an equivalent prover-private,
+/// bounded polynomial sampler.
 pub struct ZkFriBatchMaskOracleProver<B, H>
 where
     B: ColumnOps<BaseField> + MerkleOpsLifted<H>,

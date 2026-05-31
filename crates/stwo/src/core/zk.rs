@@ -125,6 +125,170 @@ pub struct ZkVerificationConfig {
     pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkMetadataValidationError {
+    InvalidFriBatchDegreeBound,
+    FriFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
+    QuotientFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
+    FriBatchDegreeMismatch { expected: u64, actual: u64 },
+    QuotientFriBatchDegreeMismatch { expected: u64, actual: u64 },
+    UnexpectedWitnessRandomizationForPhase1,
+    UnexpectedPrivateColumnDegreeBoundsForPhase1,
+    UnexpectedQuotientDegreeBoundsForPhase1,
+    UnexpectedRandomizerSpaceHashForPhase1,
+    UnexpectedSplitDerivationHashForPhase1,
+}
+
+#[must_use]
+pub fn expected_zk_fri_batch_degree_bound(
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Option<u64> {
+    lifting_log_size
+        .checked_sub(log_blowup_factor)
+        .and_then(|log_degree_bound| 1u64.checked_shl(log_degree_bound))
+}
+
+pub fn validate_zk_phase1_metadata(
+    metadata: &ZkPublicMetadata,
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Result<(), ZkMetadataValidationError> {
+    let expected_h_batch = expected_zk_fri_batch_degree_bound(
+        lifting_log_size,
+        log_blowup_factor,
+    )
+    .ok_or(ZkMetadataValidationError::InvalidFriBatchDegreeBound)?;
+
+    if metadata.degree_profile.fri_first_layer_log_size != lifting_log_size {
+        return Err(ZkMetadataValidationError::FriFirstLayerLogSizeMismatch {
+            expected: lifting_log_size,
+            actual: metadata.degree_profile.fri_first_layer_log_size,
+        });
+    }
+    if metadata.quotient_integration.fri_first_layer_log_size != lifting_log_size {
+        return Err(ZkMetadataValidationError::QuotientFirstLayerLogSizeMismatch {
+            expected: lifting_log_size,
+            actual: metadata.quotient_integration.fri_first_layer_log_size,
+        });
+    }
+    if metadata.degree_profile.h_batch != expected_h_batch {
+        return Err(ZkMetadataValidationError::FriBatchDegreeMismatch {
+            expected: expected_h_batch,
+            actual: metadata.degree_profile.h_batch,
+        });
+    }
+    if metadata.quotient_integration.h_batch != expected_h_batch {
+        return Err(ZkMetadataValidationError::QuotientFriBatchDegreeMismatch {
+            expected: expected_h_batch,
+            actual: metadata.quotient_integration.h_batch,
+        });
+    }
+    if metadata.degree_profile.h_witness != 0 || metadata.witness_randomization.h_witness != 0 {
+        return Err(ZkMetadataValidationError::UnexpectedWitnessRandomizationForPhase1);
+    }
+    if !metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .is_empty()
+    {
+        return Err(
+            ZkMetadataValidationError::UnexpectedPrivateColumnDegreeBoundsForPhase1,
+        );
+    }
+    if !metadata
+        .quotient_integration
+        .quotient_degree_bounds
+        .is_empty()
+    {
+        return Err(ZkMetadataValidationError::UnexpectedQuotientDegreeBoundsForPhase1);
+    }
+    if metadata
+        .witness_randomization
+        .randomizer_space_hash
+        .iter()
+        .any(|&byte| byte != 0)
+    {
+        return Err(ZkMetadataValidationError::UnexpectedRandomizerSpaceHashForPhase1);
+    }
+    if metadata
+        .quotient_integration
+        .split_derivation_hash
+        .iter()
+        .any(|&byte| byte != 0)
+    {
+        return Err(ZkMetadataValidationError::UnexpectedSplitDerivationHashForPhase1);
+    }
+
+    Ok(())
+}
+
+const ZK_PUBLIC_METADATA_TRANSCRIPT_DOMAIN: u32 = 0x5a4b_0001;
+const ZK_COLUMN_BOUNDS_TRANSCRIPT_DOMAIN: u32 = 0x5a4b_0002;
+
+pub fn mix_zk_public_metadata<C: Channel>(
+    channel: &mut C,
+    metadata: &ZkPublicMetadata,
+    column_degree_bounds: &[ZkColumnDegreeBound],
+) {
+    channel.mix_u32s(&[
+        ZK_PUBLIC_METADATA_TRANSCRIPT_DOMAIN,
+        metadata.version.0,
+        metadata.degree_profile.trace_domain_log_size,
+        metadata.degree_profile.fri_first_layer_log_size,
+    ]);
+    channel.mix_u64(metadata.degree_profile.h_witness);
+    channel.mix_u64(metadata.degree_profile.h_batch);
+    mix_hash_bytes(channel, &metadata.privacy_map_hash.0);
+    mix_hash_bytes(channel, &metadata.public_statement_hash.0);
+
+    channel.mix_u64(metadata.witness_randomization.h_witness);
+    mix_hash_bytes(
+        channel,
+        &metadata.witness_randomization.randomizer_space_hash,
+    );
+    mix_column_degree_bounds(
+        channel,
+        &metadata.witness_randomization.private_column_degree_bounds,
+    );
+
+    channel.mix_u64(metadata.quotient_integration.h_batch);
+    channel.mix_u32s(&[metadata
+        .quotient_integration
+        .fri_first_layer_log_size]);
+    mix_hash_bytes(channel, &metadata.quotient_integration.split_derivation_hash);
+    mix_column_degree_bounds(
+        channel,
+        &metadata.quotient_integration.quotient_degree_bounds,
+    );
+
+    mix_column_degree_bounds(channel, column_degree_bounds);
+}
+
+fn mix_hash_bytes<C: Channel>(channel: &mut C, bytes: &[u8; 32]) {
+    let words: [u32; 8] = core::array::from_fn(|index| {
+        let offset = index * 4;
+        u32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ])
+    });
+    channel.mix_u32s(&words);
+}
+
+fn mix_column_degree_bounds<C: Channel>(channel: &mut C, bounds: &[ZkColumnDegreeBound]) {
+    channel.mix_u32s(&[ZK_COLUMN_BOUNDS_TRANSCRIPT_DOMAIN]);
+    channel.mix_u64(bounds.len() as u64);
+    for bound in bounds {
+        channel.mix_u64(bound.range.tree_index as u64);
+        channel.mix_u64(bound.range.column_start as u64);
+        channel.mix_u64(bound.range.column_end as u64);
+        channel.mix_u32s(&[bound.log_degree_bound]);
+    }
+}
+
 /// Public OODS exclusion policy for the ZK path.
 ///
 /// Every forbidden coset is interpreted through its STWO circle vanishing
@@ -225,6 +389,10 @@ impl ZkFriBatchMaskQueryValues {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ZkFriBatchMaskVerificationError {
     QueryCountMismatch { expected: usize, actual: usize },
+    DomainLogSizeMismatch { expected: u32, actual: u32 },
+    QueryDomainTooSmall { log_size: u32 },
+    QueryDomainTooLarge { log_size: u32 },
+    QueryPositionOutOfDomain { position: usize, domain_size: usize },
     Merkle(MerkleVerificationError),
 }
 
@@ -248,7 +416,33 @@ impl<H: MerkleHasherLifted> ZkFriBatchMaskProof<H> {
     pub fn verify_openings(
         self,
         query_positions: &[usize],
+        expected_log_size: u32,
     ) -> Result<Vec<SecureField>, ZkFriBatchMaskVerificationError> {
+        if self.log_size != expected_log_size {
+            return Err(ZkFriBatchMaskVerificationError::DomainLogSizeMismatch {
+                expected: expected_log_size,
+                actual: self.log_size,
+            });
+        }
+        if self.log_size == 0 && !query_positions.is_empty() {
+            return Err(ZkFriBatchMaskVerificationError::QueryDomainTooSmall {
+                log_size: self.log_size,
+            });
+        }
+        let domain_size = 1usize
+            .checked_shl(self.log_size)
+            .ok_or(ZkFriBatchMaskVerificationError::QueryDomainTooLarge {
+                log_size: self.log_size,
+            })?;
+        if let Some(&position) = query_positions
+            .iter()
+            .find(|&&position| position >= domain_size)
+        {
+            return Err(ZkFriBatchMaskVerificationError::QueryPositionOutOfDomain {
+                position,
+                domain_size,
+            });
+        }
         if self.queried_values.len() != query_positions.len() {
             return Err(ZkFriBatchMaskVerificationError::QueryCountMismatch {
                 expected: query_positions.len(),

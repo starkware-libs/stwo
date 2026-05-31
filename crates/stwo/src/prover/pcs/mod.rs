@@ -17,18 +17,25 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
-use crate::core::zk::{ExtendedZkCommitmentSchemeProof, ZkCommitmentSchemeProof, ZkCommitmentSchemeProofAux, ZkPublicMetadata};
+use crate::core::zk::{
+    mix_zk_public_metadata, ExtendedZkCommitmentSchemeProof, ZkCommitmentSchemeProof,
+    ZkCommitmentSchemeProofAux,
+};
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
 use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::mempool::BaseColumnPool;
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
-use crate::prover::zk::{add_fri_batch_mask, ZkFriBatchMaskOracleProver};
+use crate::prover::zk::{
+    add_fri_batch_mask, sample_fri_batch_mask_evaluation, ZkFriBatchMaskOracleProver,
+    ZkProvingConfig, ZkProvingConfigError,
+};
+use rand::{CryptoRng, RngCore};
 
 pub mod quotient_ops;
 
@@ -312,13 +319,16 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         }
     }
 
-    pub fn prove_values_zk_with_fri_batch_mask(
+    pub fn prove_values_zk_with_fri_batch_mask<R>(
         mut self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
-        fri_batch_mask: SecureEvaluation<B, BitReversedOrder>,
-        public_metadata: ZkPublicMetadata,
+        zk_config: &ZkProvingConfig,
+        fri_batch_mask_rng: &mut R,
         channel: &mut MC::C,
-    ) -> ExtendedZkCommitmentSchemeProof<MC::H> {
+    ) -> Result<ExtendedZkCommitmentSchemeProof<MC::H>, ZkProvingConfigError>
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
         let span = span!(
             Level::INFO,
             "Evaluate ZK columns out of domain",
@@ -327,6 +337,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         .entered();
 
         let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        zk_config.validate_for_phase_1_fri_batch_mask_only(
+            lifting_log_size,
+            self.config.fri_config.log_blowup_factor,
+        )?;
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
@@ -361,10 +375,22 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let sampled_values = samples
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());
+        mix_zk_public_metadata(
+            channel,
+            &zk_config.metadata,
+            &zk_config.column_degree_bounds,
+        );
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
-        let fri_batch_mask_oracle =
-            ZkFriBatchMaskOracleProver::<B, MC::H>::new(fri_batch_mask);
+        let fri_batch_log_degree_bound =
+            lifting_log_size - self.config.fri_config.log_blowup_factor;
+        let fri_batch_mask = sample_fri_batch_mask_evaluation(
+            CanonicCoset::new(lifting_log_size).circle_domain(),
+            fri_batch_log_degree_bound,
+            self.twiddles,
+            fri_batch_mask_rng,
+        );
+        let fri_batch_mask_oracle = ZkFriBatchMaskOracleProver::<B, MC::H>::new(fri_batch_mask);
         assert_eq!(
             fri_batch_mask_oracle.log_size(),
             lifting_log_size,
@@ -439,9 +465,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             }
         }
 
-        ExtendedZkCommitmentSchemeProof {
+        Ok(ExtendedZkCommitmentSchemeProof {
             proof: ZkCommitmentSchemeProof {
-                version: public_metadata.version,
+                version: zk_config.metadata.version,
                 randomized_pcs_proof: CommitmentSchemeProof {
                     commitments,
                     sampled_values,
@@ -452,7 +478,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     config: self.config,
                 },
                 fri_batch_mask,
-                public_metadata,
+                public_metadata: zk_config.metadata.clone(),
             },
             aux: ZkCommitmentSchemeProofAux {
                 randomized_pcs_aux: CommitmentSchemeProofAux {
@@ -462,7 +488,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 },
                 fri_batch_mask_decommitment_aux,
             },
-        }
+        })
     }
 }
 
