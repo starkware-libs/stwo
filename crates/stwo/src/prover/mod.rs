@@ -25,6 +25,7 @@ pub mod poly;
 pub mod secure_column;
 pub mod vcs;
 pub mod vcs_lifted;
+pub mod zk;
 
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],

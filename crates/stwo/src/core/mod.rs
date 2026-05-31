@@ -21,6 +21,7 @@ pub mod utils;
 pub mod vcs;
 pub mod vcs_lifted;
 pub mod verifier;
+pub mod zk;
 
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;

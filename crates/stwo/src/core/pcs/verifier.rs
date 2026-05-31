@@ -1,7 +1,7 @@
 use core::iter::zip;
 
 use itertools::Itertools;
-use std_shims::Vec;
+use std_shims::{String, Vec};
 
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
@@ -15,6 +15,7 @@ use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
+use crate::core::zk::{ZkCommitmentSchemeProof, ZkVerificationConfig};
 use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
@@ -131,6 +132,111 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             proof.queried_values,
             lifting_log_size,
         )?;
+
+        fri_verifier.decommit(fri_answers)?;
+
+        Ok(())
+    }
+
+    pub fn verify_values_zk(
+        &self,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        proof: ZkCommitmentSchemeProof<MC::H>,
+        zk_config: &ZkVerificationConfig,
+        channel: &mut MC::C,
+    ) -> Result<(), VerificationError> {
+        if proof.version != zk_config.metadata.version || proof.public_metadata != zk_config.metadata
+        {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK public metadata does not match verifier configuration",
+            )));
+        }
+
+        let ZkCommitmentSchemeProof {
+            randomized_pcs_proof: proof,
+            fri_batch_mask,
+            ..
+        } = proof;
+
+        channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
+        MC::mix_root(channel, fri_batch_mask.commitment);
+        let random_coeff = channel.draw_secure_felt();
+        let lifting_log_size = self.trees.last().unwrap().height;
+        let bound =
+            CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
+
+        let mut fri_verifier =
+            FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
+
+        if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
+            return Err(VerificationError::ProofOfWork);
+        }
+        channel.mix_u64(proof.proof_of_work);
+        let query_positions = fri_verifier.sample_query_positions(channel);
+        let preprocessed_query_positions = prepare_preprocessed_query_positions(
+            &query_positions,
+            lifting_log_size,
+            self.trees[0].height,
+        );
+
+        let query_positions_tree = TreeVec::new(
+            self.trees
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    if i == 0 {
+                        preprocessed_query_positions.as_slice()
+                    } else {
+                        query_positions.as_slice()
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.trees
+            .as_ref()
+            .zip_eq(proof.decommitments)
+            .zip_eq(proof.queried_values.clone())
+            .zip_eq(query_positions_tree)
+            .map(
+                |(((tree, decommitment), queried_values), query_positions)| {
+                    tree.verify(query_positions, queried_values, decommitment)
+                },
+            )
+            .0
+            .into_iter()
+            .collect::<Result<(), _>>()?;
+
+        let samples = sampled_points.zip_cols(proof.sampled_values).map_cols(
+            |(sampled_points, sampled_values)| {
+                zip(sampled_points, sampled_values)
+                    .map(|(point, value)| PointSample { point, value })
+                    .collect_vec()
+            },
+        );
+
+        let mut fri_answers = fri_answers(
+            self.column_log_sizes(),
+            samples,
+            random_coeff,
+            &query_positions,
+            proof.queried_values,
+            lifting_log_size,
+        )?;
+        let fri_batch_mask_values = fri_batch_mask
+            .verify_openings(&query_positions)
+            .map_err(|_| {
+                VerificationError::InvalidStructure(String::from(
+                    "Invalid ZK FRI batch mask openings",
+                ))
+            })?;
+        if fri_batch_mask_values.len() != fri_answers.len() {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "Unexpected ZK FRI batch mask query count",
+            )));
+        }
+        for (answer, mask_value) in fri_answers.iter_mut().zip(fri_batch_mask_values) {
+            *answer += mask_value;
+        }
 
         fri_verifier.decommit(fri_answers)?;
 
