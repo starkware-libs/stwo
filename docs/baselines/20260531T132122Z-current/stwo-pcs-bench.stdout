@@ -1,0 +1,15 @@
+simd polynomial commitment 2^20
+                        time:   [40.956 ms 41.872 ms 42.965 ms]
+                        change: [+1.3431% +6.9875% +14.068%] (p = 0.03 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+cpu polynomial commitment 2^20
+                        time:   [330.06 ms 331.45 ms 332.81 ms]
+                        change: [-0.6164% +0.1644% +0.8501%] (p = 0.70 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+

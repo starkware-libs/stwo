@@ -1,0 +1,6 @@
+fold_line               time:   [381.20 µs 381.87 µs 382.56 µs]
+                        change: [-1.3224% -1.0455% -0.7642%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+

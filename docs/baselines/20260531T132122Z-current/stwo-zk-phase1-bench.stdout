@@ -1,0 +1,81 @@
+zk phase1 r sampling and evaluation cpu 2^12
+                        time:   [62.576 µs 62.639 µs 62.671 µs]
+
+zk phase1 r sampling and evaluation cpu 2^16
+                        time:   [1.1721 ms 1.1728 ms 1.1735 ms]
+                        change: [-0.2471% -0.0701% +0.0643%] (p = 0.46 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low severe
+
+zk phase1 r sampling and evaluation cpu 2^20
+                        time:   [21.694 ms 21.840 ms 21.963 ms]
+
+zk phase1 r commitment cpu 2^12
+                        time:   [1.1091 ms 1.1170 ms 1.1230 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+
+zk phase1 r commitment cpu 2^16
+                        time:   [7.3934 ms 7.4306 ms 7.4766 ms]
+                        change: [+0.4918% +1.1442% +1.8592%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+
+zk phase1 r commitment cpu 2^20
+                        time:   [98.857 ms 98.919 ms 98.981 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low severe
+  1 (10.00%) high mild
+
+zk phase1 h_batch addition cpu 2^12
+                        time:   [2.1161 µs 2.1624 µs 2.1875 µs]
+
+zk phase1 h_batch addition cpu 2^16
+                        time:   [27.817 µs 28.001 µs 28.104 µs]
+                        change: [-0.7800% -0.1764% +0.4843%] (p = 0.64 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+
+zk phase1 h_batch addition cpu 2^20
+                        time:   [516.68 µs 517.48 µs 518.70 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+zk phase1 r opening construction cpu 2^12
+                        time:   [5.6328 µs 5.7772 µs 6.2119 µs]
+Found 3 outliers among 10 measurements (30.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+
+zk phase1 r opening construction cpu 2^16
+                        time:   [7.1208 µs 7.2258 µs 7.3577 µs]
+                        change: [+1.5747% +5.0684% +8.1475%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+
+zk phase1 r opening construction cpu 2^20
+                        time:   [11.901 µs 12.078 µs 12.280 µs]
+
+zk phase1 r opening verification cpu 2^12
+                        time:   [5.5519 µs 5.5661 µs 5.5837 µs]
+
+zk phase1 r opening verification cpu 2^16
+                        time:   [6.9172 µs 6.9620 µs 7.0006 µs]
+                        change: [+7.6903% +8.5633% +9.3508%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low severe
+  1 (10.00%) high severe
+
+zk phase1 r opening verification cpu 2^20
+                        time:   [8.9879 µs 9.1208 µs 9.2861 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+zk phase1 r answer addition 6 queries
+                        time:   [21.106 ns 21.790 ns 22.234 ns]
+                        change: [+15.002% +20.740% +25.849%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+
