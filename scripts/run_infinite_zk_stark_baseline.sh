@@ -8,6 +8,7 @@ RUN_DIR="${OUT_DIR}/${RUN_ID}-${MODE}"
 REPORT="${RUN_DIR}/report.md"
 JSONL="${RUN_DIR}/commands.jsonl"
 METRICS="${RUN_DIR}/metrics.tsv"
+REPETITIONS="${ZK_STARK_REPETITIONS:-1}"
 
 mkdir -p "${RUN_DIR}"
 
@@ -34,9 +35,10 @@ write_metadata() {
     echo "- cargo_target_dir: ${CARGO_TARGET_DIR:-unset}"
     echo "- cargo_lock_sha256: ${cargo_lock_hash:-unavailable}"
     echo "- os: $(uname -a 2>/dev/null || true)"
-    echo "- cpu_model: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
-    echo "- cpu_count: $(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || true)"
-    echo "- memory_bytes: $(sysctl -n hw.memsize 2>/dev/null || true)"
+    echo "- cpu_model: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || lscpu 2>/dev/null | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1 || true)"
+    echo "- cpu_count: $(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
+    echo "- memory_bytes: $(sysctl -n hw.memsize 2>/dev/null || awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)"
+    echo "- repetitions: ${REPETITIONS}"
     echo "- cargo_features: prover,parallel where supported"
     echo
     echo "## Commands"
@@ -47,9 +49,14 @@ write_metadata() {
 run_command() {
   local name="$1"
   local command="$2"
-  local start end elapsed status
+  local repetition start end elapsed status
+  for repetition in $(seq 1 "${REPETITIONS}"); do
+  local run_name="${name}"
+  if [ "${REPETITIONS}" -ne 1 ]; then
+    run_name="${name}-run-${repetition}"
+  fi
   start="$(date +%s)"
-  echo "### ${name}" >> "${REPORT}"
+  echo "### ${run_name}" >> "${REPORT}"
   echo >> "${REPORT}"
   echo '```sh' >> "${REPORT}"
   echo "${command}" >> "${REPORT}"
@@ -57,32 +64,33 @@ run_command() {
   echo >> "${REPORT}"
 
   set +e
-  bash -lc "${command}" > "${RUN_DIR}/${name}.stdout" 2> "${RUN_DIR}/${name}.stderr"
+  bash -lc "${command}" > "${RUN_DIR}/${run_name}.stdout" 2> "${RUN_DIR}/${run_name}.stderr"
   status="$?"
   set -e
 
   end="$(date +%s)"
   elapsed="$((end - start))"
-  printf '%s\t%s\tseconds\n' "${name}.elapsed" "${elapsed}" >> "${METRICS}"
-  printf '%s\t%s\tstatus\n' "${name}.status" "${status}" >> "${METRICS}"
+  printf '%s\t%s\tseconds\n' "${run_name}.elapsed" "${elapsed}" >> "${METRICS}"
+  printf '%s\t%s\tstatus\n' "${run_name}.status" "${status}" >> "${METRICS}"
 
   local escaped_command
   escaped_command="$(printf '%s' "${command}" | json_escape)"
-  printf '{"name":"%s","command":"%s","status":%s,"elapsed_seconds":%s}\n' \
-    "${name}" "${escaped_command}" "${status}" "${elapsed}" >> "${JSONL}"
+  printf '{"name":"%s","base_name":"%s","repetition":%s,"command":"%s","status":%s,"elapsed_seconds":%s}\n' \
+    "${run_name}" "${name}" "${repetition}" "${escaped_command}" "${status}" "${elapsed}" >> "${JSONL}"
 
   {
     echo "- status: ${status}"
     echo "- elapsed_seconds: ${elapsed}"
-    echo "- stdout: ${RUN_DIR}/${name}.stdout"
-    echo "- stderr: ${RUN_DIR}/${name}.stderr"
+    echo "- stdout: ${RUN_DIR}/${run_name}.stdout"
+    echo "- stderr: ${RUN_DIR}/${run_name}.stderr"
     echo
   } >> "${REPORT}"
 
   if [ "${status}" -ne 0 ] && [ "${ZK_STARK_ALLOW_FAILURES:-0}" != "1" ]; then
-    echo "Command failed: ${name}" >&2
+    echo "Command failed: ${run_name}" >&2
     exit "${status}"
   fi
+  done
 }
 
 parse_criterion_stdout() {
@@ -151,15 +159,47 @@ run_command "stwo-prover-tests" \
 
 run_command "stwo-pcs-bench" \
   "${ZK_STARK_CMD_PCS_BENCH:-cargo bench --locked --features prover,parallel --bench pcs}"
-parse_criterion_stdout "stwo-pcs-bench"
+for repetition in $(seq 1 "${REPETITIONS}"); do
+  if [ "${REPETITIONS}" -eq 1 ]; then
+    parse_criterion_stdout "stwo-pcs-bench"
+  else
+    parse_criterion_stdout "stwo-pcs-bench-run-${repetition}"
+  fi
+done
 
 run_command "stwo-fri-bench" \
   "${ZK_STARK_CMD_FRI_BENCH:-cargo bench --locked --features prover,parallel --bench fri}"
-parse_criterion_stdout "stwo-fri-bench"
+for repetition in $(seq 1 "${REPETITIONS}"); do
+  if [ "${REPETITIONS}" -eq 1 ]; then
+    parse_criterion_stdout "stwo-fri-bench"
+  else
+    parse_criterion_stdout "stwo-fri-bench-run-${repetition}"
+  fi
+done
 
+if [ "${ZK_STARK_INCLUDE_ZK_PHASE1_BENCH:-auto}" = "1" ] || { [ "${ZK_STARK_INCLUDE_ZK_PHASE1_BENCH:-auto}" = "auto" ] && [ -f crates/stwo/benches/zk_phase1.rs ]; }; then
 run_command "stwo-zk-phase1-bench" \
   "${ZK_STARK_CMD_ZK_PHASE1_BENCH:-cargo bench --locked --features prover,parallel --bench zk_phase1}"
-parse_criterion_stdout "stwo-zk-phase1-bench"
+for repetition in $(seq 1 "${REPETITIONS}"); do
+  if [ "${REPETITIONS}" -eq 1 ]; then
+    parse_criterion_stdout "stwo-zk-phase1-bench"
+  else
+    parse_criterion_stdout "stwo-zk-phase1-bench-run-${repetition}"
+  fi
+done
+fi
+
+if [ -n "${ZK_STARK_CMD_PROOF_BYTES:-}" ]; then
+  run_command "zk-proof-bytes" "${ZK_STARK_CMD_PROOF_BYTES}"
+fi
+
+if [ -n "${ZK_STARK_CMD_MEMORY:-}" ]; then
+  run_command "zk-memory" "${ZK_STARK_CMD_MEMORY}"
+fi
+
+if [ -n "${ZK_STARK_CMD_ALLOCATION_PROXY:-}" ]; then
+  run_command "zk-allocation-proxy" "${ZK_STARK_CMD_ALLOCATION_PROXY}"
+fi
 
 if [ -n "${ZK_STARK_CMD_SMALL_TRACE:-}" ]; then
   run_command "zk-small-trace" "${ZK_STARK_CMD_SMALL_TRACE}"
@@ -172,6 +212,14 @@ fi
 if [ -n "${ZK_STARK_CMD_LARGE_TRACE:-}" ]; then
   run_command "zk-large-trace" "${ZK_STARK_CMD_LARGE_TRACE}"
 fi
+
+for ratio in 0 25 50 100; do
+  var_name="ZK_STARK_CMD_PRIVATE_RATIO_${ratio}"
+  command="${!var_name:-}"
+  if [ -n "${command}" ]; then
+    run_command "zk-private-ratio-${ratio}" "${command}"
+  fi
+done
 
 {
   echo "## Artifacts"

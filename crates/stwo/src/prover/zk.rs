@@ -334,3 +334,189 @@ where
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::zk::{
+        ZkColumnRange, ZkDegreeProfile, ZkPrivacyMapHash, ZkProofVersion,
+        ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkWitnessRandomizationProfile,
+    };
+
+    fn zero_hash() -> [u8; 32] {
+        [0; 32]
+    }
+
+    fn hash(byte: u8) -> [u8; 32] {
+        [byte; 32]
+    }
+
+    fn degree_bound(tree_index: usize) -> ZkColumnDegreeBound {
+        ZkColumnDegreeBound {
+            range: ZkColumnRange::new(tree_index, 0, 1),
+            log_degree_bound: 15,
+        }
+    }
+
+    fn phase1_config() -> ZkProvingConfig {
+        let privacy_map_hash = ZkPrivacyMapHash(hash(1));
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash,
+            public_statement_hash: ZkPublicStatementHash(hash(2)),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: 15,
+                h_witness: 0,
+                h_batch: 1 << 15,
+                fri_first_layer_log_size: 16,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness: 0,
+                randomizer_space_hash: zero_hash(),
+                private_column_degree_bounds: Vec::new(),
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch: 1 << 15,
+                fri_first_layer_log_size: 16,
+                split_derivation_hash: zero_hash(),
+                quotient_degree_bounds: Vec::new(),
+            },
+        };
+
+        ZkProvingConfig {
+            metadata,
+            privacy_map: ZkPrivacyMap {
+                version: ZkProofVersion::V1,
+                private_columns: Vec::new(),
+                hash: privacy_map_hash,
+            },
+            column_degree_bounds: Vec::new(),
+            derivation_reviews: Vec::new(),
+        }
+    }
+
+    fn phase2_config() -> ZkProvingConfig {
+        let privacy_map_hash = ZkPrivacyMapHash(hash(3));
+        let private_bound = degree_bound(0);
+        let quotient_bound = degree_bound(1);
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash,
+            public_statement_hash: ZkPublicStatementHash(hash(4)),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: 15,
+                h_witness: 32,
+                h_batch: 1 << 15,
+                fri_first_layer_log_size: 16,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness: 32,
+                randomizer_space_hash: hash(5),
+                private_column_degree_bounds: vec![private_bound],
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch: 1 << 15,
+                fri_first_layer_log_size: 16,
+                split_derivation_hash: hash(6),
+                quotient_degree_bounds: vec![quotient_bound],
+            },
+        };
+
+        ZkProvingConfig {
+            metadata,
+            privacy_map: ZkPrivacyMap {
+                version: ZkProofVersion::V1,
+                private_columns: vec![ZkColumnRange::new(0, 0, 1)],
+                hash: privacy_map_hash,
+            },
+            column_degree_bounds: vec![private_bound, quotient_bound],
+            derivation_reviews: vec![
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::StwoSplitQueryExpansion,
+                    review_hash: hash(10),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::CircleRandomizerSpace,
+                    review_hash: hash(11),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::OodsDomainExclusion,
+                    review_hash: hash(12),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::ZkAwareDegreeMetadata,
+                    review_hash: hash(13),
+                },
+                ZkDerivationReview {
+                    gate: ZkDerivationGate::FriBatchMaskDegree,
+                    review_hash: hash(14),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn phase1_config_accepts_public_only_metadata() {
+        assert_eq!(
+            phase1_config().validate_for_phase_1_fri_batch_mask_only(16, 1),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn phase1_config_rejects_private_columns() {
+        let mut config = phase1_config();
+        config
+            .privacy_map
+            .private_columns
+            .push(ZkColumnRange::new(0, 0, 1));
+
+        assert_eq!(
+            config.validate_for_phase_1_fri_batch_mask_only(16, 1),
+            Err(ZkProvingConfigError::UnexpectedPrivateColumnsForPhase1)
+        );
+    }
+
+    #[test]
+    fn phase1_config_rejects_column_degree_bounds() {
+        let mut config = phase1_config();
+        config.column_degree_bounds.push(degree_bound(0));
+
+        assert_eq!(
+            config.validate_for_phase_1_fri_batch_mask_only(16, 1),
+            Err(ZkProvingConfigError::UnexpectedColumnDegreeBoundsForPhase1)
+        );
+    }
+
+    #[test]
+    fn config_rejects_privacy_map_mismatch() {
+        let mut config = phase1_config();
+        config.privacy_map.hash = ZkPrivacyMapHash(hash(99));
+
+        assert_eq!(
+            config.validate_for_phase_1_fri_batch_mask_only(16, 1),
+            Err(ZkProvingConfigError::PrivacyMapHashMismatch)
+        );
+    }
+
+    #[test]
+    fn phase2_and_3_remain_fail_closed_after_reviews_are_present() {
+        assert_eq!(
+            phase2_config().validate_for_phase_2_and_3(),
+            Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
+        );
+    }
+
+    #[test]
+    fn phase2_and_3_reject_missing_review_before_fail_closed_terminal() {
+        let mut config = phase2_config();
+        config.derivation_reviews.pop();
+
+        assert_eq!(
+            config.validate_for_phase_2_and_3(),
+            Err(ZkProvingConfigError::MissingDerivationReview(
+                ZkDerivationGate::FriBatchMaskDegree
+            ))
+        );
+    }
+}

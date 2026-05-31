@@ -3,7 +3,7 @@
 This document tracks the derivation required before implementing witness
 randomization and ZK degree-bound changes.
 
-Status: `IN PROGRESS`
+Status: `REVIEW_READY`
 
 ## 1. Names
 

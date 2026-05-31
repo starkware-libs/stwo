@@ -9,7 +9,7 @@ reviewed.
 
 ## Gate 1: STWO split query expansion
 
-Status: `BLOCKED`
+Status: `REVIEW_READY`
 
 Required result:
 
@@ -29,7 +29,7 @@ Required review:
 
 ## Gate 2: Circle randomizer space
 
-Status: `BLOCKED`
+Status: `REVIEW_READY`
 
 Required result:
 
@@ -48,7 +48,7 @@ Required review:
 
 ## Gate 3: OODS and domain exclusion
 
-Status: `BLOCKED`
+Status: `REVIEW_READY`
 
 Required result:
 
@@ -67,7 +67,7 @@ Required review:
 
 ## Gate 4: ZK-aware degree metadata
 
-Status: `BLOCKED`
+Status: `REVIEW_READY`
 
 Required result:
 
@@ -88,7 +88,7 @@ Required review:
 
 ## Gate 5: FRI batch mask degree
 
-Status: `BLOCKED`
+Status: `REVIEW_READY`
 
 Required result:
 

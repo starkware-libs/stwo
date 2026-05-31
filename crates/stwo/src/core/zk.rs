@@ -546,3 +546,127 @@ impl ZkPerformanceMetric {
         Self { id, value, unit }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn zero_hash() -> [u8; 32] {
+        [0; 32]
+    }
+
+    fn nonzero_hash() -> [u8; 32] {
+        [7; 32]
+    }
+
+    fn phase1_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {
+        let h_batch =
+            expected_zk_fri_batch_degree_bound(lifting_log_size, log_blowup_factor).unwrap();
+
+        ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash: ZkPrivacyMapHash(nonzero_hash()),
+            public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: lifting_log_size - log_blowup_factor,
+                h_witness: 0,
+                h_batch,
+                fri_first_layer_log_size: lifting_log_size,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness: 0,
+                randomizer_space_hash: zero_hash(),
+                private_column_degree_bounds: Vec::new(),
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch,
+                fri_first_layer_log_size: lifting_log_size,
+                split_derivation_hash: zero_hash(),
+                quotient_degree_bounds: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn phase1_metadata_accepts_public_only_profile() {
+        let metadata = phase1_metadata(16, 1);
+        assert_eq!(validate_zk_phase1_metadata(&metadata, 16, 1), Ok(()));
+    }
+
+    #[test]
+    fn phase1_metadata_rejects_wrong_first_layer_log_size() {
+        let mut metadata = phase1_metadata(16, 1);
+        metadata.degree_profile.fri_first_layer_log_size = 15;
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::FriFirstLayerLogSizeMismatch {
+                expected: 16,
+                actual: 15,
+            })
+        );
+    }
+
+    #[test]
+    fn phase1_metadata_rejects_wrong_h_batch() {
+        let mut metadata = phase1_metadata(16, 1);
+        metadata.degree_profile.h_batch += 1;
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::FriBatchDegreeMismatch {
+                expected: 1 << 15,
+                actual: (1 << 15) + 1,
+            })
+        );
+    }
+
+    #[test]
+    fn phase1_metadata_rejects_witness_randomization_fields() {
+        let mut metadata = phase1_metadata(16, 1);
+        metadata.witness_randomization.h_witness = 1;
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnexpectedWitnessRandomizationForPhase1)
+        );
+
+        let mut metadata = phase1_metadata(16, 1);
+        metadata.witness_randomization.randomizer_space_hash = nonzero_hash();
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnexpectedRandomizerSpaceHashForPhase1)
+        );
+    }
+
+    #[test]
+    fn phase1_metadata_rejects_private_and_quotient_degree_bounds() {
+        let degree_bound = ZkColumnDegreeBound {
+            range: ZkColumnRange::new(0, 0, 1),
+            log_degree_bound: 15,
+        };
+
+        let mut metadata = phase1_metadata(16, 1);
+        metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .push(degree_bound);
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnexpectedPrivateColumnDegreeBoundsForPhase1)
+        );
+
+        let mut metadata = phase1_metadata(16, 1);
+        metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .push(degree_bound);
+
+        assert_eq!(
+            validate_zk_phase1_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnexpectedQuotientDegreeBoundsForPhase1)
+        );
+    }
+}

@@ -1,11 +1,14 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use rand::rngs::SmallRng;
 use rand::{CryptoRng, RngCore, SeedableRng};
+use stwo::core::fields::m31::{BaseField, P as M31_MODULUS};
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
-use stwo::prover::backend::{BackendForChannel, CpuBackend};
-use stwo::prover::poly::circle::{PolyOps, SecureEvaluation};
+use stwo::prover::backend::{BackendForChannel, Col, CpuBackend};
+use stwo::prover::poly::circle::{
+    CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation,
+};
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::zk::{
@@ -45,6 +48,29 @@ impl RngCore for DeterministicBenchCryptoRng {
 
 impl CryptoRng for DeterministicBenchCryptoRng {}
 
+fn sample_base_field<R: RngCore + ?Sized>(rng: &mut R) -> BaseField {
+    loop {
+        let candidate = rng.next_u32() & 0x7fff_ffff;
+        if candidate < M31_MODULUS {
+            return BaseField::from_u32_unchecked(candidate);
+        }
+    }
+}
+
+fn sample_mask_polynomial<B: BackendForChannel<Blake2sMerkleChannel>>(
+    log_size: u32,
+    seed: u64,
+) -> SecureCirclePoly<B> {
+    let coefficient_count = 1usize << (log_size - LOG_BLOWUP_FACTOR);
+    let mut rng = DeterministicBenchCryptoRng::seed_from_u64(seed);
+    SecureCirclePoly(core::array::from_fn(|_| {
+        let coeffs: Col<B, BaseField> = (0..coefficient_count)
+            .map(|_| sample_base_field(&mut rng))
+            .collect();
+        CircleCoefficients::<B>::new(coeffs)
+    }))
+}
+
 fn sample_mask<B: BackendForChannel<Blake2sMerkleChannel>>(
     log_size: u32,
     twiddles: &TwiddleTree<B>,
@@ -67,8 +93,38 @@ fn query_positions(log_size: u32) -> Vec<usize> {
 
 fn bench_zk_phase1_r_sampling(c: &mut Criterion) {
     for log_size in LOG_SIZES {
+        c.bench_function(
+            &format!("zk phase1 r coefficient sampling cpu 2^{log_size}"),
+            |b| {
+                b.iter_batched(
+                    || DeterministicBenchCryptoRng::seed_from_u64(1),
+                    |mut rng| {
+                        let coefficient_count = 1usize << (log_size - LOG_BLOWUP_FACTOR);
+                        let coordinates: [Col<CpuBackend, BaseField>; 4] =
+                            core::array::from_fn(|_| {
+                                (0..coefficient_count)
+                                    .map(|_| sample_base_field(&mut rng))
+                                    .collect()
+                            });
+                        black_box(coordinates);
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+
+        c.bench_function(&format!("zk phase1 r evaluation cpu 2^{log_size}"), |b| {
+            b.iter_batched(
+                || sample_mask_polynomial::<CpuBackend>(log_size, 101),
+                |poly| {
+                    black_box(poly.evaluate_with_twiddles(domain, black_box(&twiddles)));
+                },
+                BatchSize::LargeInput,
+            );
+        });
 
         c.bench_function(
             &format!("zk phase1 r sampling and evaluation cpu 2^{log_size}"),
