@@ -16,7 +16,7 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
-    mix_zk_public_metadata, validate_zk_phase1_metadata, ZkCommitmentSchemeProof,
+    mix_zk_public_metadata, validate_zk_public_only_metadata, ZkCommitmentSchemeProof,
     ZkVerificationConfig,
 };
 use crate::core::ColumnVec;
@@ -148,7 +148,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         zk_config: &ZkVerificationConfig,
         channel: &mut MC::C,
     ) -> Result<(), VerificationError> {
-        if proof.version != zk_config.metadata.version || proof.public_metadata != zk_config.metadata
+        if proof.version != zk_config.metadata.version
+            || proof.public_metadata != zk_config.metadata
         {
             return Err(VerificationError::InvalidStructure(String::from(
                 "ZK public metadata does not match verifier configuration",
@@ -156,15 +157,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         }
 
         let lifting_log_size = self.trees.last().unwrap().height;
-        validate_zk_phase1_metadata(
+        validate_zk_public_only_metadata(
             &zk_config.metadata,
             lifting_log_size,
             self.config.fri_config.log_blowup_factor,
         )
         .map_err(|_| {
-            VerificationError::InvalidStructure(String::from(
-                "Invalid ZK phase 1 public metadata",
-            ))
+            VerificationError::InvalidStructure(String::from("Invalid ZK phase 1 public metadata"))
         })?;
         if !zk_config.column_degree_bounds.is_empty() {
             return Err(VerificationError::InvalidStructure(String::from(

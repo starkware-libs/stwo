@@ -1,5 +1,6 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
+use rand::{CryptoRng, RngCore};
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::{info, span, Level};
@@ -35,7 +36,6 @@ use crate::prover::zk::{
     add_fri_batch_mask, sample_fri_batch_mask_evaluation, ZkFriBatchMaskOracleProver,
     ZkProvingConfig, ZkProvingConfigError,
 };
-use rand::{CryptoRng, RngCore};
 
 pub mod quotient_ops;
 
@@ -337,7 +337,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         .entered();
 
         let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
-        zk_config.validate_for_phase_1_fri_batch_mask_only(
+        zk_config.validate_for_fri_batch_mask_only(
             lifting_log_size,
             self.config.fri_config.log_blowup_factor,
         )?;

@@ -6,9 +6,7 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::backend::{BackendForChannel, Col, CpuBackend};
-use stwo::prover::poly::circle::{
-    CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation,
-};
+use stwo::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation};
 use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::zk::{
@@ -78,12 +76,7 @@ fn sample_mask<B: BackendForChannel<Blake2sMerkleChannel>>(
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let domain = CanonicCoset::new(log_size).circle_domain();
     let mut rng = DeterministicBenchCryptoRng::seed_from_u64(seed);
-    sample_fri_batch_mask_evaluation(
-        domain,
-        log_size - LOG_BLOWUP_FACTOR,
-        twiddles,
-        &mut rng,
-    )
+    sample_fri_batch_mask_evaluation(domain, log_size - LOG_BLOWUP_FACTOR, twiddles, &mut rng)
 }
 
 fn query_positions(log_size: u32) -> Vec<usize> {
@@ -91,7 +84,7 @@ fn query_positions(log_size: u32) -> Vec<usize> {
     vec![0, 3, 17, domain_size / 4, domain_size / 2, domain_size - 1]
 }
 
-fn bench_zk_phase1_r_sampling(c: &mut Criterion) {
+fn bench_zk_r_sampling(c: &mut Criterion) {
     for log_size in LOG_SIZES {
         c.bench_function(
             &format!("zk phase1 r coefficient sampling cpu 2^{log_size}"),
@@ -146,31 +139,28 @@ fn bench_zk_phase1_r_sampling(c: &mut Criterion) {
     }
 }
 
-fn bench_zk_phase1_r_commitment(c: &mut Criterion) {
+fn bench_zk_r_commitment(c: &mut Criterion) {
     for log_size in LOG_SIZES {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let mask = sample_mask::<CpuBackend>(log_size, &twiddles, 2);
 
-        c.bench_function(
-            &format!("zk phase1 r commitment cpu 2^{log_size}"),
-            |b| {
-                b.iter_batched(
-                    || mask.clone(),
-                    |mask| {
-                        black_box(ZkFriBatchMaskOracleProver::<
-                            CpuBackend,
-                            <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
-                        >::new(black_box(mask)));
-                    },
-                    BatchSize::LargeInput,
-                );
-            },
-        );
+        c.bench_function(&format!("zk phase1 r commitment cpu 2^{log_size}"), |b| {
+            b.iter_batched(
+                || mask.clone(),
+                |mask| {
+                    black_box(ZkFriBatchMaskOracleProver::<
+                        CpuBackend,
+                        <Blake2sMerkleChannel as stwo::core::channel::MerkleChannel>::H,
+                    >::new(black_box(mask)));
+                },
+                BatchSize::LargeInput,
+            );
+        });
     }
 }
 
-fn bench_zk_phase1_h_batch_addition(c: &mut Criterion) {
+fn bench_zk_h_batch_addition(c: &mut Criterion) {
     for log_size in LOG_SIZES {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
@@ -195,7 +185,7 @@ fn bench_zk_phase1_h_batch_addition(c: &mut Criterion) {
     }
 }
 
-fn bench_zk_phase1_r_opening(c: &mut Criterion) {
+fn bench_zk_r_opening(c: &mut Criterion) {
     for log_size in LOG_SIZES {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
@@ -222,7 +212,7 @@ fn bench_zk_phase1_r_opening(c: &mut Criterion) {
     }
 }
 
-fn bench_zk_phase1_r_verification(c: &mut Criterion) {
+fn bench_zk_r_verification(c: &mut Criterion) {
     for log_size in LOG_SIZES {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
@@ -254,7 +244,7 @@ fn bench_zk_phase1_r_verification(c: &mut Criterion) {
     }
 }
 
-fn bench_zk_phase1_answer_addition(c: &mut Criterion) {
+fn bench_zk_answer_addition(c: &mut Criterion) {
     let queries = query_positions(LOG_SIZE);
     let mut answers = vec![SecureField::from_u32_unchecked(1, 2, 3, 4); queries.len()];
     let masks = vec![SecureField::from_u32_unchecked(5, 6, 7, 8); queries.len()];
@@ -279,11 +269,11 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
     targets =
-        bench_zk_phase1_r_sampling,
-        bench_zk_phase1_r_commitment,
-        bench_zk_phase1_h_batch_addition,
-        bench_zk_phase1_r_opening,
-        bench_zk_phase1_r_verification,
-        bench_zk_phase1_answer_addition
+        bench_zk_r_sampling,
+        bench_zk_r_commitment,
+        bench_zk_h_batch_addition,
+        bench_zk_r_opening,
+        bench_zk_r_verification,
+        bench_zk_answer_addition
 );
 criterion_main!(benches);

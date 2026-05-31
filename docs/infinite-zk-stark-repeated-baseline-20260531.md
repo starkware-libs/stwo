@@ -6,10 +6,20 @@ This report records the repeated performance evidence used before starting Phase
 
 - Original STWO baseline: `cca98119f49ec36f2c8e13e99fdce351d5061dfee`.
 - Current branch measurement: `24be57be9f8c7ccd4d954a531efb9a566bad764e`.
+- Evidence commit: `43fa7565`.
 - Current branch status during measurement: clean, `0 dirty entries`.
 - Repetitions: `3`.
 - Baseline artifact: `docs/baselines/20260531T135020Z-baseline-repeated/report.md`.
 - Current artifact: `docs/baselines/20260531T135231Z-current-repeated/report.md`.
+
+The evidence commit `43fa7565` only copied benchmark artifacts and added this
+report. It did not change executable Rust code relative to measured commit
+`24be57be`.
+
+Later pre-Phase 2 guardrail changes are limited to metadata validation, review
+gates, and tests. They are outside the measured default PCS/FRI prover hot
+paths. Any semantic witness-randomization, quotient, FRI, or prover hot-path
+change requires a fresh matched run before performance sign-off.
 
 ## Default-path regression check
 

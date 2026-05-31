@@ -1,19 +1,24 @@
+use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, Vec};
 
 use crate::core::channel::Channel;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::coset_vanishing;
-use crate::core::fields::ComplexConjugate;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::ComplexConjugate;
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
+use crate::core::pcs::utils::TreeVec;
+use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::utils::get_folding_alphas;
+use crate::core::utils::bit_reverse_index;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{
     MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
     MerkleVerifierLifted,
 };
-use num_traits::Zero;
+use crate::core::ColumnVec;
 
 /// Version marker for the explicit ZK proof format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,7 +37,7 @@ pub struct ZkPrivacyMapHash(pub [u8; 32]);
 pub struct ZkPublicStatementHash(pub [u8; 32]);
 
 /// Stable tree/column range for verifier-owned privacy metadata.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ZkColumnRange {
     pub tree_index: usize,
     pub column_start: usize,
@@ -48,6 +53,11 @@ impl ZkColumnRange {
             column_end,
         }
     }
+
+    #[must_use]
+    pub fn is_singleton(self) -> bool {
+        self.column_start.checked_add(1) == Some(self.column_end)
+    }
 }
 
 /// Verifier-owned privacy map. Proof metadata may echo its hash, but must not
@@ -57,6 +67,815 @@ pub struct ZkPrivacyMap {
     pub version: ZkProofVersion,
     pub private_columns: Vec<ZkColumnRange>,
     pub hash: ZkPrivacyMapHash,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkPrivateColumnUsage {
+    OrdinaryWitness,
+    Lookup,
+    Permutation,
+    Fractional,
+    LogUp,
+    Memory,
+    GrandProduct,
+    Multiset,
+}
+
+impl ZkPrivateColumnUsage {
+    #[must_use]
+    pub const fn eligible_for_witness_randomization(self) -> bool {
+        matches!(self, Self::OrdinaryWitness)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkPrivateColumnScopeEntry {
+    pub range: ZkColumnRange,
+    pub usage: ZkPrivateColumnUsage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkPrivateColumnScope {
+    pub version: ZkProofVersion,
+    pub hash: [u8; 32],
+    pub entries: Vec<ZkPrivateColumnScopeEntry>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkPrivateColumnScopeValidationError {
+    UnsupportedProofVersion {
+        actual: u32,
+    },
+    VersionMismatch,
+    ScopeHashMismatch,
+    NonCanonicalEntries,
+    MissingPrivateColumn {
+        range: ZkColumnRange,
+    },
+    NonSingletonPrivateRange {
+        range: ZkColumnRange,
+    },
+    EntryForNonPrivateColumn {
+        range: ZkColumnRange,
+    },
+    IneligiblePrivateColumn {
+        range: ZkColumnRange,
+        usage: ZkPrivateColumnUsage,
+    },
+}
+
+impl ZkPrivateColumnScope {
+    pub fn canonicalize(&mut self) {
+        self.entries.sort_unstable();
+        self.entries.dedup();
+    }
+
+    #[must_use]
+    pub fn canonicalized(mut self) -> Self {
+        self.canonicalize();
+        self
+    }
+}
+
+pub fn validate_zk_private_column_scope_for_witness_randomization(
+    privacy_map: &ZkPrivacyMap,
+    expected_scope_hash: [u8; 32],
+    scope: &ZkPrivateColumnScope,
+) -> Result<(), ZkPrivateColumnScopeValidationError> {
+    if scope.version != ZkProofVersion::V1 {
+        return Err(
+            ZkPrivateColumnScopeValidationError::UnsupportedProofVersion {
+                actual: scope.version.0,
+            },
+        );
+    }
+    if scope.version != privacy_map.version {
+        return Err(ZkPrivateColumnScopeValidationError::VersionMismatch);
+    }
+    if scope.hash != expected_scope_hash {
+        return Err(ZkPrivateColumnScopeValidationError::ScopeHashMismatch);
+    }
+    if scope.entries != scope.clone().canonicalized().entries {
+        return Err(ZkPrivateColumnScopeValidationError::NonCanonicalEntries);
+    }
+
+    for &range in &privacy_map.private_columns {
+        if !range.is_singleton() {
+            return Err(ZkPrivateColumnScopeValidationError::NonSingletonPrivateRange { range });
+        }
+    }
+
+    for entry in &scope.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            return Err(
+                ZkPrivateColumnScopeValidationError::EntryForNonPrivateColumn {
+                    range: entry.range,
+                },
+            );
+        }
+        if !entry.usage.eligible_for_witness_randomization() {
+            return Err(
+                ZkPrivateColumnScopeValidationError::IneligiblePrivateColumn {
+                    range: entry.range,
+                    usage: entry.usage,
+                },
+            );
+        }
+    }
+
+    for &range in &privacy_map.private_columns {
+        if !scope.entries.iter().any(|entry| entry.range == range) {
+            return Err(ZkPrivateColumnScopeValidationError::MissingPrivateColumn { range });
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkQueryClosureKind {
+    OodsExtension,
+    TranslatedBase,
+    FriPosition,
+    FutureQuotientComponent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkQueryClosureEntry {
+    pub range: ZkColumnRange,
+    pub kind: ZkQueryClosureKind,
+    pub domain_id: u64,
+    pub point_or_position: [u64; 8],
+    pub coordinate_index: u8,
+}
+
+impl ZkQueryClosureEntry {
+    #[must_use]
+    pub const fn new(
+        range: ZkColumnRange,
+        kind: ZkQueryClosureKind,
+        domain_id: u64,
+        point_or_position: [u64; 8],
+        coordinate_index: u8,
+    ) -> Self {
+        Self {
+            range,
+            kind,
+            domain_id,
+            point_or_position,
+            coordinate_index,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkQueryClosure {
+    pub entries: Vec<ZkQueryClosureEntry>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkQueryClosureValidationError {
+    NonCanonicalEntries,
+    EntryForNonPrivateColumn {
+        range: ZkColumnRange,
+    },
+    InvalidCoordinateIndex {
+        entry: ZkQueryClosureEntry,
+        max_exclusive: u8,
+    },
+    QueryDomainTooLarge {
+        entry: ZkQueryClosureEntry,
+        log_size: u64,
+    },
+    QueryDomainMismatch {
+        entry: ZkQueryClosureEntry,
+        expected: u64,
+        actual: u64,
+    },
+    QueryPositionOutOfDomain {
+        entry: ZkQueryClosureEntry,
+        position: u64,
+        domain_size: u64,
+    },
+    InsufficientRandomizerDimension {
+        range: ZkColumnRange,
+        required: u64,
+        actual: u64,
+    },
+}
+
+impl ZkQueryClosure {
+    pub fn canonicalize(&mut self) {
+        self.entries.sort_unstable();
+        self.entries.dedup();
+    }
+
+    #[must_use]
+    pub fn canonicalized(mut self) -> Self {
+        self.canonicalize();
+        self
+    }
+
+    #[must_use]
+    pub fn query_count_for_range(&self, range: ZkColumnRange) -> u64 {
+        self.entries
+            .iter()
+            .filter(|entry| entry.range == range)
+            .count() as u64
+    }
+}
+
+fn zk_query_closure_max_coordinate_index(kind: ZkQueryClosureKind) -> u8 {
+    match kind {
+        ZkQueryClosureKind::OodsExtension => 4,
+        ZkQueryClosureKind::TranslatedBase
+        | ZkQueryClosureKind::FriPosition
+        | ZkQueryClosureKind::FutureQuotientComponent => 1,
+    }
+}
+
+pub fn validate_zk_query_closure_for_witness_randomization(
+    privacy_map: &ZkPrivacyMap,
+    metadata: &ZkPublicMetadata,
+    closure: &ZkQueryClosure,
+) -> Result<(), ZkQueryClosureValidationError> {
+    if closure.entries != closure.clone().canonicalized().entries {
+        return Err(ZkQueryClosureValidationError::NonCanonicalEntries);
+    }
+
+    for &entry in &closure.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            return Err(ZkQueryClosureValidationError::EntryForNonPrivateColumn {
+                range: entry.range,
+            });
+        }
+
+        let max_exclusive = zk_query_closure_max_coordinate_index(entry.kind);
+        if entry.coordinate_index >= max_exclusive {
+            return Err(ZkQueryClosureValidationError::InvalidCoordinateIndex {
+                entry,
+                max_exclusive,
+            });
+        }
+
+        if entry.kind == ZkQueryClosureKind::FriPosition {
+            let expected_domain_id = metadata.degree_profile.fri_first_layer_log_size as u64;
+            if entry.domain_id != expected_domain_id {
+                return Err(ZkQueryClosureValidationError::QueryDomainMismatch {
+                    entry,
+                    expected: expected_domain_id,
+                    actual: entry.domain_id,
+                });
+            }
+            if expected_domain_id >= u64::BITS as u64 {
+                return Err(ZkQueryClosureValidationError::QueryDomainTooLarge {
+                    entry,
+                    log_size: expected_domain_id,
+                });
+            }
+            let domain_size = 1u64 << expected_domain_id;
+            let position = entry.point_or_position[0];
+            if position >= domain_size {
+                return Err(ZkQueryClosureValidationError::QueryPositionOutOfDomain {
+                    entry,
+                    position,
+                    domain_size,
+                });
+            }
+        }
+    }
+
+    for &range in &privacy_map.private_columns {
+        let required = closure.query_count_for_range(range);
+        let actual = metadata.witness_randomization.h_witness;
+        if actual < required {
+            return Err(
+                ZkQueryClosureValidationError::InsufficientRandomizerDimension {
+                    range,
+                    required,
+                    actual,
+                },
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkRandomizerRankEntry {
+    pub range: ZkColumnRange,
+    pub query_count: u64,
+    pub randomizer_dimension: u64,
+    pub rank: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkRandomizerRankProfile {
+    pub entries: Vec<ZkRandomizerRankEntry>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkRandomizerRankValidationError {
+    NonCanonicalEntries,
+    EntryForNonPrivateColumn {
+        range: ZkColumnRange,
+    },
+    DuplicatePrivateColumn {
+        range: ZkColumnRange,
+    },
+    MissingPrivateColumn {
+        range: ZkColumnRange,
+    },
+    QueryCountMismatch {
+        range: ZkColumnRange,
+        expected: u64,
+        actual: u64,
+    },
+    RandomizerDimensionMismatch {
+        range: ZkColumnRange,
+        expected: u64,
+        actual: u64,
+    },
+    InsufficientRandomizerDimension {
+        range: ZkColumnRange,
+        required: u64,
+        actual: u64,
+    },
+    RankDeficient {
+        range: ZkColumnRange,
+        required: u64,
+        actual: u64,
+    },
+}
+
+impl ZkRandomizerRankProfile {
+    pub fn canonicalize(&mut self) {
+        self.entries.sort_unstable();
+        self.entries.dedup();
+    }
+
+    #[must_use]
+    pub fn canonicalized(mut self) -> Self {
+        self.canonicalize();
+        self
+    }
+
+    #[must_use]
+    pub fn entry_for_range(&self, range: ZkColumnRange) -> Option<ZkRandomizerRankEntry> {
+        self.entries
+            .iter()
+            .copied()
+            .find(|entry| entry.range == range)
+    }
+}
+
+pub fn validate_zk_randomizer_rank_profile_for_witness_randomization(
+    privacy_map: &ZkPrivacyMap,
+    metadata: &ZkPublicMetadata,
+    closure: &ZkQueryClosure,
+    profile: &ZkRandomizerRankProfile,
+) -> Result<(), ZkRandomizerRankValidationError> {
+    if profile.entries != profile.clone().canonicalized().entries {
+        return Err(ZkRandomizerRankValidationError::NonCanonicalEntries);
+    }
+
+    for entries in profile.entries.windows(2) {
+        if entries[0].range == entries[1].range {
+            return Err(ZkRandomizerRankValidationError::DuplicatePrivateColumn {
+                range: entries[0].range,
+            });
+        }
+    }
+
+    for &entry in &profile.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            return Err(ZkRandomizerRankValidationError::EntryForNonPrivateColumn {
+                range: entry.range,
+            });
+        }
+    }
+
+    for &range in &privacy_map.private_columns {
+        let Some(entry) = profile.entry_for_range(range) else {
+            return Err(ZkRandomizerRankValidationError::MissingPrivateColumn { range });
+        };
+        let expected_query_count = closure.query_count_for_range(range);
+        if entry.query_count != expected_query_count {
+            return Err(ZkRandomizerRankValidationError::QueryCountMismatch {
+                range,
+                expected: expected_query_count,
+                actual: entry.query_count,
+            });
+        }
+
+        let expected_dimension = metadata.witness_randomization.h_witness;
+        if entry.randomizer_dimension != expected_dimension {
+            return Err(
+                ZkRandomizerRankValidationError::RandomizerDimensionMismatch {
+                    range,
+                    expected: expected_dimension,
+                    actual: entry.randomizer_dimension,
+                },
+            );
+        }
+        if entry.randomizer_dimension < expected_query_count {
+            return Err(
+                ZkRandomizerRankValidationError::InsufficientRandomizerDimension {
+                    range,
+                    required: expected_query_count,
+                    actual: entry.randomizer_dimension,
+                },
+            );
+        }
+        if entry.rank != expected_query_count {
+            return Err(ZkRandomizerRankValidationError::RankDeficient {
+                range,
+                required: expected_query_count,
+                actual: entry.rank,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZkRandomizerQueryFunctional {
+    pub range: ZkColumnRange,
+    pub kind: ZkQueryClosureKind,
+    pub domain_id: u64,
+    pub point_or_position: [u64; 8],
+    pub point: CirclePoint<SecureField>,
+    pub coordinate_index: u8,
+}
+
+impl ZkRandomizerQueryFunctional {
+    #[must_use]
+    pub const fn closure_entry(self) -> ZkQueryClosureEntry {
+        ZkQueryClosureEntry::new(
+            self.range,
+            self.kind,
+            self.domain_id,
+            self.point_or_position,
+            self.coordinate_index,
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZkRandomizerMatrix {
+    pub range: ZkColumnRange,
+    pub query_count: u64,
+    pub randomizer_dimension: u64,
+    pub rows: Vec<Vec<BaseField>>,
+}
+
+impl ZkRandomizerMatrix {
+    #[must_use]
+    pub fn rank(&self) -> u64 {
+        base_field_matrix_rank(self.rows.clone()) as u64
+    }
+
+    #[must_use]
+    pub fn rank_entry(&self) -> ZkRandomizerRankEntry {
+        ZkRandomizerRankEntry {
+            range: self.range,
+            query_count: self.query_count,
+            randomizer_dimension: self.randomizer_dimension,
+            rank: self.rank(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZkRandomizerMatrixBuild {
+    pub closure: ZkQueryClosure,
+    pub matrices: Vec<ZkRandomizerMatrix>,
+    pub rank_profile: ZkRandomizerRankProfile,
+}
+
+pub const ZK_RANDOMIZER_MATRIX_MAX_DIMENSION: u64 = 1 << 20;
+pub const ZK_RANDOMIZER_MATRIX_MAX_ROWS_PER_RANGE: usize = 1 << 16;
+pub const ZK_RANDOMIZER_MATRIX_MAX_CELLS_PER_RANGE: u64 = 1 << 24;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkRandomizerMatrixBuildError {
+    FunctionalForNonPrivateColumn {
+        range: ZkColumnRange,
+    },
+    InvalidCoordinateIndex {
+        functional: ZkRandomizerQueryFunctional,
+        max_exclusive: u8,
+    },
+    RandomizerDimensionTooLarge {
+        actual: u64,
+        max: u64,
+    },
+    RowCountTooLarge {
+        range: ZkColumnRange,
+        actual: usize,
+        max: usize,
+    },
+    MatrixCellCountTooLarge {
+        range: ZkColumnRange,
+        rows: usize,
+        columns: u64,
+        max: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkSampleMetadataBuildError {
+    NonSingletonPrivateRange { range: ZkColumnRange },
+    MissingTree { tree_index: usize },
+    MissingColumn { range: ZkColumnRange },
+    QueryPositionOutOfDomain { position: usize, domain_size: usize },
+    LiftingDomainTooLarge { log_size: u32 },
+    RandomizerMatrix(ZkRandomizerMatrixBuildError),
+}
+
+pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata(
+    trace_domain: Coset,
+    privacy_map: &ZkPrivacyMap,
+    randomizer_dimension: u64,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+) -> Result<ZkRandomizerMatrixBuild, ZkSampleMetadataBuildError> {
+    let domain_size = 1usize.checked_shl(lifting_log_size).ok_or(
+        ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: lifting_log_size,
+        },
+    )?;
+    if let Some(&position) = fri_query_positions
+        .iter()
+        .find(|&&position| position >= domain_size)
+    {
+        return Err(ZkSampleMetadataBuildError::QueryPositionOutOfDomain {
+            position,
+            domain_size,
+        });
+    }
+
+    let lifting_domain = CanonicCoset::new(lifting_log_size).circle_domain();
+    let mut functionals = Vec::new();
+
+    for &range in &privacy_map.private_columns {
+        if !range.is_singleton() {
+            return Err(ZkSampleMetadataBuildError::NonSingletonPrivateRange { range });
+        }
+        let tree = sampled_points.get(range.tree_index).ok_or(
+            ZkSampleMetadataBuildError::MissingTree {
+                tree_index: range.tree_index,
+            },
+        )?;
+        let column_points = tree
+            .get(range.column_start)
+            .ok_or(ZkSampleMetadataBuildError::MissingColumn { range })?;
+
+        for &point in column_points {
+            let point_encoding = encode_zk_query_point(point);
+            for coordinate_index in 0..4 {
+                functionals.push(ZkRandomizerQueryFunctional {
+                    range,
+                    kind: ZkQueryClosureKind::OodsExtension,
+                    domain_id: range.tree_index as u64,
+                    point_or_position: point_encoding,
+                    point,
+                    coordinate_index,
+                });
+            }
+        }
+
+        for &position in fri_query_positions {
+            let domain_index = bit_reverse_index(position, lifting_log_size);
+            let point = lifting_domain.at(domain_index).into_ef::<SecureField>();
+            functionals.push(ZkRandomizerQueryFunctional {
+                range,
+                kind: ZkQueryClosureKind::FriPosition,
+                domain_id: lifting_log_size as u64,
+                point_or_position: encode_zk_query_position(position),
+                point,
+                coordinate_index: 0,
+            });
+        }
+    }
+
+    build_zk_randomizer_matrices_for_witness_randomization(
+        trace_domain,
+        privacy_map,
+        randomizer_dimension,
+        &functionals,
+    )
+    .map_err(ZkSampleMetadataBuildError::RandomizerMatrix)
+}
+
+pub fn build_zk_randomizer_matrices_for_witness_randomization(
+    trace_domain: Coset,
+    privacy_map: &ZkPrivacyMap,
+    randomizer_dimension: u64,
+    functionals: &[ZkRandomizerQueryFunctional],
+) -> Result<ZkRandomizerMatrixBuild, ZkRandomizerMatrixBuildError> {
+    if randomizer_dimension > ZK_RANDOMIZER_MATRIX_MAX_DIMENSION {
+        return Err(ZkRandomizerMatrixBuildError::RandomizerDimensionTooLarge {
+            actual: randomizer_dimension,
+            max: ZK_RANDOMIZER_MATRIX_MAX_DIMENSION,
+        });
+    }
+    for &functional in functionals {
+        if !privacy_map.private_columns.contains(&functional.range) {
+            return Err(
+                ZkRandomizerMatrixBuildError::FunctionalForNonPrivateColumn {
+                    range: functional.range,
+                },
+            );
+        }
+        let max_exclusive = zk_query_closure_max_coordinate_index(functional.kind);
+        if functional.coordinate_index >= max_exclusive {
+            return Err(ZkRandomizerMatrixBuildError::InvalidCoordinateIndex {
+                functional,
+                max_exclusive,
+            });
+        }
+    }
+
+    let mut canonical_functionals: Vec<(ZkQueryClosureEntry, ZkRandomizerQueryFunctional)> =
+        functionals
+            .iter()
+            .copied()
+            .map(|functional| (functional.closure_entry(), functional))
+            .collect();
+    canonical_functionals.sort_unstable_by_key(|(entry, _)| *entry);
+    canonical_functionals.dedup_by_key(|(entry, _)| *entry);
+
+    let closure = ZkQueryClosure {
+        entries: canonical_functionals
+            .iter()
+            .map(|(entry, _)| *entry)
+            .collect(),
+    };
+
+    let ambient_log_dimension = log2_ceil_u64(randomizer_dimension);
+    let mut matrices = Vec::with_capacity(privacy_map.private_columns.len());
+
+    for &range in &privacy_map.private_columns {
+        let row_count = canonical_functionals
+            .iter()
+            .filter(|(_, functional)| functional.range == range)
+            .count();
+        if row_count > ZK_RANDOMIZER_MATRIX_MAX_ROWS_PER_RANGE {
+            return Err(ZkRandomizerMatrixBuildError::RowCountTooLarge {
+                range,
+                actual: row_count,
+                max: ZK_RANDOMIZER_MATRIX_MAX_ROWS_PER_RANGE,
+            });
+        }
+        let cell_count = (row_count as u128) * (randomizer_dimension as u128);
+        if cell_count > ZK_RANDOMIZER_MATRIX_MAX_CELLS_PER_RANGE as u128 {
+            return Err(ZkRandomizerMatrixBuildError::MatrixCellCountTooLarge {
+                range,
+                rows: row_count,
+                columns: randomizer_dimension,
+                max: ZK_RANDOMIZER_MATRIX_MAX_CELLS_PER_RANGE,
+            });
+        }
+
+        let rows: Vec<Vec<BaseField>> = canonical_functionals
+            .iter()
+            .filter_map(|(_, functional)| (functional.range == range).then_some(*functional))
+            .map(|functional| {
+                build_zk_randomizer_matrix_row(
+                    trace_domain,
+                    randomizer_dimension,
+                    ambient_log_dimension,
+                    functional,
+                )
+            })
+            .collect();
+        matrices.push(ZkRandomizerMatrix {
+            range,
+            query_count: rows.len() as u64,
+            randomizer_dimension,
+            rows,
+        });
+    }
+
+    let mut rank_profile = ZkRandomizerRankProfile {
+        entries: matrices
+            .iter()
+            .map(ZkRandomizerMatrix::rank_entry)
+            .collect(),
+    };
+    rank_profile.canonicalize();
+
+    Ok(ZkRandomizerMatrixBuild {
+        closure,
+        matrices,
+        rank_profile,
+    })
+}
+
+#[must_use]
+pub fn encode_zk_query_point(point: CirclePoint<SecureField>) -> [u64; 8] {
+    let x = point.x.to_m31_array();
+    let y = point.y.to_m31_array();
+    [
+        x[0].0 as u64,
+        x[1].0 as u64,
+        x[2].0 as u64,
+        x[3].0 as u64,
+        y[0].0 as u64,
+        y[1].0 as u64,
+        y[2].0 as u64,
+        y[3].0 as u64,
+    ]
+}
+
+#[must_use]
+pub fn encode_zk_query_position(position: usize) -> [u64; 8] {
+    [position as u64, 0, 0, 0, 0, 0, 0, 0]
+}
+
+fn build_zk_randomizer_matrix_row(
+    trace_domain: Coset,
+    randomizer_dimension: u64,
+    ambient_log_dimension: usize,
+    functional: ZkRandomizerQueryFunctional,
+) -> Vec<BaseField> {
+    let vanishing = coset_vanishing(trace_domain, functional.point);
+    let folding_alphas = get_folding_alphas(functional.point, ambient_log_dimension);
+    let coordinate_index = functional.coordinate_index as usize;
+
+    (0..randomizer_dimension)
+        .map(|basis_index| {
+            let basis_eval =
+                fft_basis_element_evaluation(basis_index, ambient_log_dimension, &folding_alphas);
+            (vanishing * basis_eval).to_m31_array()[coordinate_index]
+        })
+        .collect()
+}
+
+fn fft_basis_element_evaluation(
+    basis_index: u64,
+    log_dimension: usize,
+    folding_alphas: &[SecureField],
+) -> SecureField {
+    let mut evaluation = SecureField::one();
+    for (level, &alpha) in folding_alphas.iter().enumerate() {
+        let bit_index = log_dimension - 1 - level;
+        if ((basis_index >> bit_index) & 1) == 1 {
+            evaluation *= alpha;
+        }
+    }
+    evaluation
+}
+
+fn log2_ceil_u64(value: u64) -> usize {
+    if value <= 1 {
+        return 0;
+    }
+    (u64::BITS - (value - 1).leading_zeros()) as usize
+}
+
+#[must_use]
+pub fn base_field_matrix_rank(mut rows: Vec<Vec<BaseField>>) -> usize {
+    if rows.is_empty() {
+        return 0;
+    }
+    let column_count = rows.iter().map(Vec::len).min().unwrap_or(0);
+    let mut rank = 0;
+
+    for column in 0..column_count {
+        let Some(pivot_offset) = rows[rank..].iter().position(|row| !row[column].is_zero()) else {
+            continue;
+        };
+        let pivot = rank + pivot_offset;
+        rows.swap(rank, pivot);
+
+        let pivot_inverse = rows[rank][column].inverse();
+        for value in &mut rows[rank][column..] {
+            *value *= pivot_inverse;
+        }
+
+        let pivot_row = rows[rank].clone();
+        for (row_index, row) in rows.iter_mut().enumerate() {
+            if row_index == rank || row[column].is_zero() {
+                continue;
+            }
+            let factor = row[column];
+            for col in column..column_count {
+                row[col] -= factor * pivot_row[col];
+            }
+        }
+
+        rank += 1;
+        if rank == rows.len() {
+            break;
+        }
+    }
+
+    rank
 }
 
 /// Public degree profile for a ZK proof.
@@ -89,6 +908,7 @@ pub struct ZkColumnDegreeBound {
 pub struct ZkWitnessRandomizationProfile {
     pub h_witness: u64,
     pub randomizer_space_hash: [u8; 32],
+    pub private_column_scope_hash: [u8; 32],
     pub private_column_degree_bounds: Vec<ZkColumnDegreeBound>,
 }
 
@@ -127,6 +947,7 @@ pub struct ZkVerificationConfig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkMetadataValidationError {
+    UnsupportedProofVersion { actual: u32 },
     InvalidFriBatchDegreeBound,
     FriFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
     QuotientFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
@@ -136,7 +957,67 @@ pub enum ZkMetadataValidationError {
     UnexpectedPrivateColumnDegreeBoundsForPhase1,
     UnexpectedQuotientDegreeBoundsForPhase1,
     UnexpectedRandomizerSpaceHashForPhase1,
+    UnexpectedPrivateColumnScopeHashForPhase1,
     UnexpectedSplitDerivationHashForPhase1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkVerificationConfigValidationError {
+    PublicMetadataMismatch,
+    ColumnDegreeBoundsMismatch,
+    UnexpectedColumnDegreeBoundsForPhase1,
+    Metadata(ZkMetadataValidationError),
+}
+
+impl From<ZkMetadataValidationError> for ZkVerificationConfigValidationError {
+    fn from(error: ZkMetadataValidationError) -> Self {
+        Self::Metadata(error)
+    }
+}
+
+#[must_use]
+pub fn expected_zk_column_degree_bounds(metadata: &ZkPublicMetadata) -> Vec<ZkColumnDegreeBound> {
+    let mut expected = metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .clone();
+    expected.extend(metadata.quotient_integration.quotient_degree_bounds.clone());
+    expected
+}
+
+pub fn validate_zk_public_metadata_against_verifier_config(
+    proof_metadata: &ZkPublicMetadata,
+    verifier_config: &ZkVerificationConfig,
+) -> Result<(), ZkVerificationConfigValidationError> {
+    if proof_metadata != &verifier_config.metadata {
+        return Err(ZkVerificationConfigValidationError::PublicMetadataMismatch);
+    }
+    if verifier_config.column_degree_bounds
+        != expected_zk_column_degree_bounds(&verifier_config.metadata)
+    {
+        return Err(ZkVerificationConfigValidationError::ColumnDegreeBoundsMismatch);
+    }
+
+    Ok(())
+}
+
+pub fn validate_zk_public_only_metadata_against_verifier_config(
+    proof_metadata: &ZkPublicMetadata,
+    verifier_config: &ZkVerificationConfig,
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Result<(), ZkVerificationConfigValidationError> {
+    validate_zk_public_metadata_against_verifier_config(proof_metadata, verifier_config)?;
+    validate_zk_public_only_metadata(
+        &verifier_config.metadata,
+        lifting_log_size,
+        log_blowup_factor,
+    )?;
+    if !verifier_config.column_degree_bounds.is_empty() {
+        return Err(ZkVerificationConfigValidationError::UnexpectedColumnDegreeBoundsForPhase1);
+    }
+
+    Ok(())
 }
 
 #[must_use]
@@ -149,16 +1030,19 @@ pub fn expected_zk_fri_batch_degree_bound(
         .and_then(|log_degree_bound| 1u64.checked_shl(log_degree_bound))
 }
 
-pub fn validate_zk_phase1_metadata(
+pub fn validate_zk_public_only_metadata(
     metadata: &ZkPublicMetadata,
     lifting_log_size: u32,
     log_blowup_factor: u32,
 ) -> Result<(), ZkMetadataValidationError> {
-    let expected_h_batch = expected_zk_fri_batch_degree_bound(
-        lifting_log_size,
-        log_blowup_factor,
-    )
-    .ok_or(ZkMetadataValidationError::InvalidFriBatchDegreeBound)?;
+    if metadata.version != ZkProofVersion::V1 {
+        return Err(ZkMetadataValidationError::UnsupportedProofVersion {
+            actual: metadata.version.0,
+        });
+    }
+
+    let expected_h_batch = expected_zk_fri_batch_degree_bound(lifting_log_size, log_blowup_factor)
+        .ok_or(ZkMetadataValidationError::InvalidFriBatchDegreeBound)?;
 
     if metadata.degree_profile.fri_first_layer_log_size != lifting_log_size {
         return Err(ZkMetadataValidationError::FriFirstLayerLogSizeMismatch {
@@ -167,10 +1051,12 @@ pub fn validate_zk_phase1_metadata(
         });
     }
     if metadata.quotient_integration.fri_first_layer_log_size != lifting_log_size {
-        return Err(ZkMetadataValidationError::QuotientFirstLayerLogSizeMismatch {
-            expected: lifting_log_size,
-            actual: metadata.quotient_integration.fri_first_layer_log_size,
-        });
+        return Err(
+            ZkMetadataValidationError::QuotientFirstLayerLogSizeMismatch {
+                expected: lifting_log_size,
+                actual: metadata.quotient_integration.fri_first_layer_log_size,
+            },
+        );
     }
     if metadata.degree_profile.h_batch != expected_h_batch {
         return Err(ZkMetadataValidationError::FriBatchDegreeMismatch {
@@ -192,9 +1078,7 @@ pub fn validate_zk_phase1_metadata(
         .private_column_degree_bounds
         .is_empty()
     {
-        return Err(
-            ZkMetadataValidationError::UnexpectedPrivateColumnDegreeBoundsForPhase1,
-        );
+        return Err(ZkMetadataValidationError::UnexpectedPrivateColumnDegreeBoundsForPhase1);
     }
     if !metadata
         .quotient_integration
@@ -210,6 +1094,14 @@ pub fn validate_zk_phase1_metadata(
         .any(|&byte| byte != 0)
     {
         return Err(ZkMetadataValidationError::UnexpectedRandomizerSpaceHashForPhase1);
+    }
+    if metadata
+        .witness_randomization
+        .private_column_scope_hash
+        .iter()
+        .any(|&byte| byte != 0)
+    {
+        return Err(ZkMetadataValidationError::UnexpectedPrivateColumnScopeHashForPhase1);
     }
     if metadata
         .quotient_integration
@@ -247,16 +1139,21 @@ pub fn mix_zk_public_metadata<C: Channel>(
         channel,
         &metadata.witness_randomization.randomizer_space_hash,
     );
+    mix_hash_bytes(
+        channel,
+        &metadata.witness_randomization.private_column_scope_hash,
+    );
     mix_column_degree_bounds(
         channel,
         &metadata.witness_randomization.private_column_degree_bounds,
     );
 
     channel.mix_u64(metadata.quotient_integration.h_batch);
-    channel.mix_u32s(&[metadata
-        .quotient_integration
-        .fri_first_layer_log_size]);
-    mix_hash_bytes(channel, &metadata.quotient_integration.split_derivation_hash);
+    channel.mix_u32s(&[metadata.quotient_integration.fri_first_layer_log_size]);
+    mix_hash_bytes(
+        channel,
+        &metadata.quotient_integration.split_derivation_hash,
+    );
     mix_column_degree_bounds(
         channel,
         &metadata.quotient_integration.quotient_degree_bounds,
@@ -429,11 +1326,11 @@ impl<H: MerkleHasherLifted> ZkFriBatchMaskProof<H> {
                 log_size: self.log_size,
             });
         }
-        let domain_size = 1usize
-            .checked_shl(self.log_size)
-            .ok_or(ZkFriBatchMaskVerificationError::QueryDomainTooLarge {
+        let domain_size = 1usize.checked_shl(self.log_size).ok_or(
+            ZkFriBatchMaskVerificationError::QueryDomainTooLarge {
                 log_size: self.log_size,
-            })?;
+            },
+        )?;
         if let Some(&position) = query_positions
             .iter()
             .find(|&&position| position >= domain_size)
@@ -550,6 +1447,7 @@ impl ZkPerformanceMetric {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::poly::circle::CanonicCoset;
 
     fn zero_hash() -> [u8; 32] {
         [0; 32]
@@ -559,7 +1457,7 @@ mod tests {
         [7; 32]
     }
 
-    fn phase1_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {
+    fn public_only_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {
         let h_batch =
             expected_zk_fri_batch_degree_bound(lifting_log_size, log_blowup_factor).unwrap();
 
@@ -576,6 +1474,7 @@ mod tests {
             witness_randomization: ZkWitnessRandomizationProfile {
                 h_witness: 0,
                 randomizer_space_hash: zero_hash(),
+                private_column_scope_hash: zero_hash(),
                 private_column_degree_bounds: Vec::new(),
             },
             quotient_integration: ZkQuotientIntegrationProfile {
@@ -588,18 +1487,29 @@ mod tests {
     }
 
     #[test]
-    fn phase1_metadata_accepts_public_only_profile() {
-        let metadata = phase1_metadata(16, 1);
-        assert_eq!(validate_zk_phase1_metadata(&metadata, 16, 1), Ok(()));
+    fn public_only_metadata_accepts_public_only_profile() {
+        let metadata = public_only_metadata(16, 1);
+        assert_eq!(validate_zk_public_only_metadata(&metadata, 16, 1), Ok(()));
     }
 
     #[test]
-    fn phase1_metadata_rejects_wrong_first_layer_log_size() {
-        let mut metadata = phase1_metadata(16, 1);
+    fn public_only_metadata_rejects_unsupported_version() {
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.version = ZkProofVersion(2);
+
+        assert_eq!(
+            validate_zk_public_only_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnsupportedProofVersion { actual: 2 })
+        );
+    }
+
+    #[test]
+    fn public_only_metadata_rejects_wrong_first_layer_log_size() {
+        let mut metadata = public_only_metadata(16, 1);
         metadata.degree_profile.fri_first_layer_log_size = 15;
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::FriFirstLayerLogSizeMismatch {
                 expected: 16,
                 actual: 15,
@@ -608,12 +1518,12 @@ mod tests {
     }
 
     #[test]
-    fn phase1_metadata_rejects_wrong_h_batch() {
-        let mut metadata = phase1_metadata(16, 1);
+    fn public_only_metadata_rejects_wrong_h_batch() {
+        let mut metadata = public_only_metadata(16, 1);
         metadata.degree_profile.h_batch += 1;
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::FriBatchDegreeMismatch {
                 expected: 1 << 15,
                 actual: (1 << 15) + 1,
@@ -622,51 +1532,329 @@ mod tests {
     }
 
     #[test]
-    fn phase1_metadata_rejects_witness_randomization_fields() {
-        let mut metadata = phase1_metadata(16, 1);
+    fn public_only_metadata_rejects_witness_randomization_fields() {
+        let mut metadata = public_only_metadata(16, 1);
         metadata.witness_randomization.h_witness = 1;
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedWitnessRandomizationForPhase1)
         );
 
-        let mut metadata = phase1_metadata(16, 1);
+        let mut metadata = public_only_metadata(16, 1);
         metadata.witness_randomization.randomizer_space_hash = nonzero_hash();
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedRandomizerSpaceHashForPhase1)
+        );
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.witness_randomization.private_column_scope_hash = nonzero_hash();
+
+        assert_eq!(
+            validate_zk_public_only_metadata(&metadata, 16, 1),
+            Err(ZkMetadataValidationError::UnexpectedPrivateColumnScopeHashForPhase1)
         );
     }
 
     #[test]
-    fn phase1_metadata_rejects_private_and_quotient_degree_bounds() {
+    fn public_only_metadata_rejects_private_and_quotient_degree_bounds() {
         let degree_bound = ZkColumnDegreeBound {
             range: ZkColumnRange::new(0, 0, 1),
             log_degree_bound: 15,
         };
 
-        let mut metadata = phase1_metadata(16, 1);
+        let mut metadata = public_only_metadata(16, 1);
         metadata
             .witness_randomization
             .private_column_degree_bounds
             .push(degree_bound);
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedPrivateColumnDegreeBoundsForPhase1)
         );
 
-        let mut metadata = phase1_metadata(16, 1);
+        let mut metadata = public_only_metadata(16, 1);
         metadata
             .quotient_integration
             .quotient_degree_bounds
             .push(degree_bound);
 
         assert_eq!(
-            validate_zk_phase1_metadata(&metadata, 16, 1),
+            validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedQuotientDegreeBoundsForPhase1)
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_proof_metadata_mismatch() {
+        let metadata = public_only_metadata(16, 1);
+        let mut proof_metadata = metadata.clone();
+        proof_metadata.public_statement_hash = ZkPublicStatementHash([9; 32]);
+        let verifier_config = ZkVerificationConfig {
+            metadata,
+            column_degree_bounds: Vec::new(),
+        };
+
+        assert_eq!(
+            validate_zk_public_only_metadata_against_verifier_config(
+                &proof_metadata,
+                &verifier_config,
+                16,
+                1,
+            ),
+            Err(ZkVerificationConfigValidationError::PublicMetadataMismatch)
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_public_only_column_degree_bounds() {
+        let metadata = public_only_metadata(16, 1);
+        let verifier_config = ZkVerificationConfig {
+            metadata: metadata.clone(),
+            column_degree_bounds: vec![ZkColumnDegreeBound {
+                range: ZkColumnRange::new(0, 0, 1),
+                log_degree_bound: 15,
+            }],
+        };
+
+        assert_eq!(
+            validate_zk_public_only_metadata_against_verifier_config(
+                &metadata,
+                &verifier_config,
+                16,
+                1,
+            ),
+            Err(ZkVerificationConfigValidationError::ColumnDegreeBoundsMismatch)
+        );
+    }
+
+    #[test]
+    fn base_field_matrix_rank_computes_row_rank() {
+        let rows = vec![
+            vec![BaseField::from(1), BaseField::from(2), BaseField::from(3)],
+            vec![BaseField::from(2), BaseField::from(4), BaseField::from(6)],
+            vec![BaseField::from(0), BaseField::from(1), BaseField::from(1)],
+        ];
+
+        assert_eq!(base_field_matrix_rank(rows), 2);
+    }
+
+    #[test]
+    fn private_column_scope_rejects_non_singleton_private_range() {
+        let range = ZkColumnRange::new(0, 0, 2);
+        let scope_hash = nonzero_hash();
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: scope_hash,
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+            }],
+        };
+
+        assert_eq!(
+            validate_zk_private_column_scope_for_witness_randomization(
+                &privacy_map,
+                scope_hash,
+                &scope,
+            ),
+            Err(ZkPrivateColumnScopeValidationError::NonSingletonPrivateRange { range })
+        );
+    }
+
+    #[test]
+    fn randomizer_matrix_builder_constructs_rank_profile() {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let trace_domain = CanonicCoset::new(3).coset;
+        let query_point = CirclePoint::<SecureField>::get_point(9834759221);
+        let build = build_zk_randomizer_matrices_for_witness_randomization(
+            trace_domain,
+            &privacy_map,
+            2,
+            &[ZkRandomizerQueryFunctional {
+                range,
+                kind: ZkQueryClosureKind::OodsExtension,
+                domain_id: 0,
+                point_or_position: [1, 0, 0, 0, 0, 0, 0, 0],
+                point: query_point,
+                coordinate_index: 0,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(build.closure.query_count_for_range(range), 1);
+        assert_eq!(build.matrices.len(), 1);
+        assert_eq!(build.matrices[0].query_count, 1);
+        assert_eq!(build.matrices[0].randomizer_dimension, 2);
+        assert_eq!(build.rank_profile.entries.len(), 1);
+        assert_eq!(build.rank_profile.entries[0].range, range);
+        assert_eq!(build.rank_profile.entries[0].query_count, 1);
+        assert_eq!(build.rank_profile.entries[0].randomizer_dimension, 2);
+        assert_eq!(build.rank_profile.entries[0].rank, 1);
+    }
+
+    #[test]
+    fn randomizer_matrix_builder_rejects_invalid_coordinate_index() {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let query_point = CirclePoint::<SecureField>::get_point(9834759221);
+        let functional = ZkRandomizerQueryFunctional {
+            range,
+            kind: ZkQueryClosureKind::FriPosition,
+            domain_id: 4,
+            point_or_position: encode_zk_query_position(1),
+            point: query_point,
+            coordinate_index: 1,
+        };
+
+        assert_eq!(
+            build_zk_randomizer_matrices_for_witness_randomization(
+                CanonicCoset::new(3).coset,
+                &privacy_map,
+                2,
+                &[functional],
+            ),
+            Err(ZkRandomizerMatrixBuildError::InvalidCoordinateIndex {
+                functional,
+                max_exclusive: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn randomizer_rank_profile_rejects_duplicate_private_range() {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash: privacy_map.hash,
+            public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: 3,
+                h_witness: 2,
+                h_batch: 0,
+                fri_first_layer_log_size: 4,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness: 2,
+                randomizer_space_hash: nonzero_hash(),
+                private_column_scope_hash: nonzero_hash(),
+                private_column_degree_bounds: Vec::new(),
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch: 0,
+                fri_first_layer_log_size: 4,
+                split_derivation_hash: nonzero_hash(),
+                quotient_degree_bounds: Vec::new(),
+            },
+        };
+        let closure = ZkQueryClosure {
+            entries: vec![ZkQueryClosureEntry::new(
+                range,
+                ZkQueryClosureKind::FriPosition,
+                4,
+                encode_zk_query_position(1),
+                0,
+            )],
+        };
+        let profile = ZkRandomizerRankProfile {
+            entries: vec![
+                ZkRandomizerRankEntry {
+                    range,
+                    query_count: 1,
+                    randomizer_dimension: 2,
+                    rank: 1,
+                },
+                ZkRandomizerRankEntry {
+                    range,
+                    query_count: 2,
+                    randomizer_dimension: 2,
+                    rank: 2,
+                },
+            ],
+        };
+
+        assert_eq!(
+            validate_zk_randomizer_rank_profile_for_witness_randomization(
+                &privacy_map,
+                &metadata,
+                &closure,
+                &profile,
+            ),
+            Err(ZkRandomizerRankValidationError::DuplicatePrivateColumn { range })
+        );
+    }
+
+    #[test]
+    fn stwo_sample_metadata_builder_adds_sampled_points_and_fri_queries() {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let trace_domain = CanonicCoset::new(3).coset;
+        let sampled_point = CirclePoint::<SecureField>::get_point(9834759221);
+        let sampled_points = TreeVec(vec![vec![vec![sampled_point]]]);
+        let build = build_zk_randomizer_matrices_from_stwo_sample_metadata(
+            trace_domain,
+            &privacy_map,
+            8,
+            &sampled_points,
+            &[1],
+            4,
+        )
+        .unwrap();
+
+        assert_eq!(build.closure.query_count_for_range(range), 5);
+        assert_eq!(build.matrices.len(), 1);
+        assert_eq!(build.matrices[0].query_count, 5);
+        assert_eq!(build.matrices[0].randomizer_dimension, 8);
+        assert_eq!(build.rank_profile.entries[0].query_count, 5);
+        assert_eq!(build.rank_profile.entries[0].randomizer_dimension, 8);
+    }
+
+    #[test]
+    fn stwo_sample_metadata_builder_rejects_range_spanning_multiple_columns() {
+        let range = ZkColumnRange::new(0, 0, 2);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let sampled_points = TreeVec(vec![vec![Vec::new(), Vec::new()]]);
+
+        assert_eq!(
+            build_zk_randomizer_matrices_from_stwo_sample_metadata(
+                CanonicCoset::new(3).coset,
+                &privacy_map,
+                8,
+                &sampled_points,
+                &[],
+                4,
+            ),
+            Err(ZkSampleMetadataBuildError::NonSingletonPrivateRange { range })
         );
     }
 }

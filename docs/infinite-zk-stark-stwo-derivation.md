@@ -1,58 +1,145 @@
-# STWO-Specific ZK STARK Derivation Work Item
-
-This document tracks the derivation required before implementing witness
-randomization and ZK degree-bound changes.
+# STWO-specific ZK STARK derivation
 
 Status: `REVIEW_READY`
 
+This document instantiates the paper's witness-randomization and FRI-masking
+requirements for STWO's current proof structure. It is a review artifact, not
+an activation switch.
+
 ## 1. Names
 
-- `H`: trace domain for the target private witness column.
-- `D`: commitment/evaluation domain used for the committed oracle.
-- `h_witness`: witness-randomizer degree budget.
-- `h_batch`: Protocol 2 FRI batch-mask degree budget.
-- `R(X)`: extension-field-uniform FRI batch mask polynomial.
-- `H_batch(X)`: FRI input polynomial `raw_quotient(X) + R(X)`.
+- `H`: original trace domain for a private witness column.
+- `D`: committed evaluation domain for that column.
+- `v_H`: STWO circle-domain vanishing polynomial for `H`.
+- `r_i`: prover-private base-field randomizer polynomial for private column
+  `i`.
+- `h_i`: dimension of the selected randomizer space for private column `i`.
+- `q_i`: verifier-computed number of base-field query-closure functionals for
+  private column `i`.
+- `R`: prover-private extension-field FRI batch-mask polynomial.
+- `H_batch`: first FRI-layer polynomial `raw_quotient + R`.
 
 ## 2. Non-assumptions
 
-- Do not identify paper Protocol 3 `d` with `COMPOSITION_LOG_SPLIT`.
-- Do not identify paper Protocol 3 `d` with the number of halves returned by
+- Do not identify the paper's Protocol 3 `d` with `COMPOSITION_LOG_SPLIT`.
+- Do not identify Protocol 3 `d` with the number of halves returned by
   `split_at_mid`.
-- Do not assume `h_witness = |H|` is sufficient until the STWO query-expansion
-  factor is reviewed.
+- Do not assume `h_i = |H|` is sufficient without computing the actual STWO
+  query closure and rank.
+- Do not apply Phase 2 to private lookup, permutation, fractional, LogUp, or
+  multiset-argument columns. Those require a separate Appendix A treatment.
 
-## 3. STWO split fact to derive against
+## 3. STWO split query expansion
 
-STWO's current composition split is an FFT-basis split with:
+STWO's current composition split is an FFT-basis split:
 
 ```text
 p(z) = p_left(z) + pi^{L-2}(z.x) * p_right(z)
 ```
 
-The paper's Protocol 3 split is stated as:
+The paper's Protocol 3 split is written as:
 
 ```text
 q(X) = sum_j X^(j-1) * q_j(X^d)
 ```
 
-The derivation must show how many independent query constraints are induced by
-STWO's `split_at_mid` representation, instead of importing the paper's
-`d`-root implicit-query argument unchanged.
+The paper's implicit `d`-root query expansion applies when quotient components
+are opened as separate oracles. STWO's current verifier does not open
+`split_at_mid` pieces as private witness-column oracles. It checks quotient
+answers through committed trace openings, sampled OODS values, and the FRI
+first layer.
 
-## 4. Randomizer-space obligation
+Therefore the current STWO witness-randomizer query closure has no extra
+`split_at_mid` multiplier. It consists of:
 
-Before code lands, define:
+- extension-field sampled values involving the private column;
+- translated base-domain sampled values involving the private column;
+- FRI query openings of the private column;
+- zero future quotient-component preimages while the current proof format is
+  unchanged.
 
-- the STWO circle-polynomial basis used for `r_i`;
-- the coefficient-level representation of `v_H`;
-- the coefficient-level construction of `v_H * r_i`;
-- the rank argument for OODS and FRI query closure evaluations;
-- the reviewed bound that maps those query counts to `h_witness`.
+If STWO later exposes quotient-component openings that depend on private
+columns, this derivation is invalid until the corresponding preimage
+functionals are added to `q_i`.
 
-## 5. Degree metadata obligation
+## 4. Query-closure construction
 
-The implementation must make these paths ZK-aware:
+For every private column range, the verifier builds a deduplicated set of
+base-field linear functionals:
+
+```text
+(column_range, query_kind, domain_id, point_or_position_encoding, coordinate_index)
+```
+
+Rules:
+
+- A `QM31` sampled point contributes four coordinate functionals.
+- A base-field translated-domain point contributes one functional.
+- A FRI query position contributes one functional.
+- A future quotient-component preimage contributes the functionals induced by
+  that preimage.
+- Duplicate tuples are counted once.
+
+The count of this set is `q_i`. The prover cannot supply `q_i`; it is derived
+from verifier-owned privacy metadata, sampled-point metadata, domain metadata,
+and public FRI query positions.
+
+## 5. Circle randomizer space and rank condition
+
+For private base-field column `w_i`, the prover commits to:
+
+```text
+w_hat_i(P) = w_i(P) + v_H(P) * r_i(P)
+```
+
+The selected randomizer space is the first `h_i` basis elements of STWO's
+base-field circle-polynomial basis for the configured randomized column degree.
+The prover samples the `h_i` coefficients uniformly from `M31` using
+rejection sampling from a prover-private `CryptoRng`.
+
+Correctness over the trace domain follows because `v_H(P) = 0` for every
+`P in H`.
+
+Privacy on the query closure requires the verifier to form the `q_i x h_i`
+base-field evaluation matrix:
+
+```text
+M_i[a, b] = functional_a(v_H * basis_b)
+```
+
+Activation must reject unless:
+
+```text
+rank(M_i) = q_i
+```
+
+This rank condition is the STWO-specific replacement for blindly importing the
+paper's symbolic Protocol 3 degree parameter. The inequality `h_i >= q_i` is a
+cheap precheck, not a proof.
+
+## 6. OODS exclusion
+
+Every Phase 2 OODS point is drawn by public deterministic rejection sampling
+from the Fiat-Shamir channel. The exclusion set includes:
+
+- `H`;
+- every committed evaluation domain `D`;
+- transition/lookup translated domains;
+- denominator-degenerate line cases;
+- future quotient-component preimage sets.
+
+Prover and verifier consume the same rejected candidates in the same order. A
+bounded retry limit fails closed.
+
+## 7. Degree metadata
+
+For each private column:
+
+```text
+randomized_log_degree_i >= max(original_log_degree_i, log2_ceil(|H| + h_i))
+```
+
+The following must consume verifier-owned randomized degree metadata:
 
 - `Component::trace_log_degree_bounds`;
 - `FrameworkComponent`;
@@ -62,58 +149,76 @@ The implementation must make these paths ZK-aware:
 - PCS column log sizes;
 - verifier commitment log sizes.
 
-## 6. Protocol 2 handoff
+Proof metadata may echo these values, but verification rejects any mismatch
+against verifier-owned metadata.
 
-After the STWO split derivation determines the quotient-component degree
-profile, define:
+## 8. Protocol 2 FRI batch mask
 
-- the STWO equivalent of the paper's `h_batch`;
-- the exact degree/domain for `R`;
-- the exact FRI first-layer bound for `H_batch`;
-- the proof that `R` is committed before the quotient batching challenge and is
-  never included in raw quotient batching.
+The independent extension-field polynomial `R` remains mandatory after witness
+randomization.
 
-## 7. Current implementation status
+Ordering:
+
+1. Commit randomized trace and quotient/split oracles.
+2. Draw and mix OODS sampled values of randomized oracles.
+3. Commit `R`.
+4. Draw the FRI quotient-batching challenge.
+5. Commit FRI layers for `H_batch = raw_quotient + R`.
+6. Verify first-layer query answers after adding `R(query)` to raw quotient
+   answers.
+
+The verifier must never receive a value/mask pair that reveals a private
+witness value. `R` is an independently committed oracle, not a per-value mask
+that the verifier subtracts.
+
+## 9. Current implementation status
 
 Implemented:
 
 - explicit ZK proof/config types;
 - verifier-owned privacy/degree config;
+- verifier-owned metadata comparison helper;
 - deterministic public OODS rejection helper;
 - separate FRI `R` oracle commit/decommit/authentication helpers;
-- ZK-only PCS `R` ordering and `H_batch` first-layer answer handling.
+- ZK-only PCS `R` ordering and `H_batch` first-layer answer handling;
 - Phase 2 witness-randomization profile metadata, including
-  `randomizer_space_hash`, `h_witness`, and private-column degree bounds.
+  `randomizer_space_hash`, `private_column_scope_hash`, `h_witness`, and
+  private-column degree bounds;
 - Phase 3 quotient-integration profile metadata, including
   `split_derivation_hash`, `h_batch`, FRI first-layer log size, and quotient
-  degree bounds.
-- fail-closed prover validation that rejects Phase 2/3 activation unless all
-  derivation reviews and degree/profile commitments are present and consistent.
+  degree bounds;
+- fail-closed prover validation that rejects Phase 2/3 activation even when all
+  review evidence is present.
 
-Blocked:
+Not implemented:
 
 - witness polynomial randomization;
+- query-closure construction from real component metadata;
+- rank check for `M_i`;
 - randomized composition degree metadata;
 - full `prove_zk_ex` / `verify_zk_ex`;
-- claiming complete paper-level witness zero-knowledge.
+- private lookup/permutation Appendix A treatment.
 
-## 8. Candidate Phase 2/3 activation rule
+## 10. Candidate activation rule
 
-Semantic witness randomization may be implemented only when
-`ZkProvingConfig::validate_for_phase_2_and_3()` succeeds.
+Semantic witness randomization may be activated only when
+`ZkProvingConfig::validate_for_phase_2_and_3()` can succeed without the
+terminal activation block.
 
 That requires:
 
-- review evidence for all five derivation gates;
+- review evidence for all derivation gates;
 - non-zero `randomizer_space_hash`;
+- non-zero `private_column_scope_hash`;
 - non-zero `split_derivation_hash`;
 - non-empty private-column degree bounds;
 - non-empty quotient degree bounds;
+- verifier-derived `q_i` for every private column;
+- `h_i >= q_i` for every private column;
+- `rank(M_i) = q_i` for every private column;
 - equality between `ZkDegreeProfile.h_witness` and
   `ZkWitnessRandomizationProfile.h_witness`;
 - equality between `ZkDegreeProfile.h_batch` and
   `ZkQuotientIntegrationProfile.h_batch`;
 - equality between `ZkDegreeProfile.fri_first_layer_log_size` and
   `ZkQuotientIntegrationProfile.fri_first_layer_log_size`.
-
-This is an activation rule, not a substitute for the missing derivation.
