@@ -1,0 +1,287 @@
+
+running 268 tests
+test core::channel::blake2s::tests::test_draw_u32s ... ok
+test core::channel::blake2s::tests::test_draw_secure_felt ... ok
+test core::air::accumulation::tests::test_point_evaluation_accumulator ... ok
+test core::channel::blake2s::tests::test_channel_draws ... ok
+test core::channel::blake2s::tests::test_mix_felts ... ok
+test core::channel::blake2s::tests::test_mix_u32s ... ok
+test core::channel::blake2s::tests::test_mix_u64 ... ok
+test core::channel::blake2s::tests::test_draw_secure_felts ... ok
+test core::channel::keccak256::tests::test_channel_draws ... ok
+test core::channel::keccak256::tests::test_mix_felts ... ok
+test core::channel::keccak256::tests::test_mix_u32s_solidity_equivalence ... ok
+test core::channel::keccak256::tests::test_draw_u32s ... ok
+test core::channel::keccak256::tests::test_draw_secure_felt ... ok
+test core::channel::keccak256::tests::test_mix_u64_solidity_equivalence ... ok
+test core::channel::keccak256::tests::test_draw_secure_felts ... ok
+test core::channel::poseidon252::tests::test_mix_felts ... ok
+test core::channel::poseidon252::tests::test_mix_u32s ... ok
+test core::channel::poseidon252::tests::test_mix_u64 ... ok
+test core::circle::tests::test_get_random_circle_point ... ok
+test core::circle::tests::test_iterator ... ok
+test core::channel::poseidon252::tests::test_draw_u32s ... ok
+test core::circle::tests::test_coset_is_half_coset_with_conjugate ... ok
+test core::constraints::tests::test_pair_excluder ... ok
+test core::constraints::tests::test_point_excluder ... ok
+test core::channel::poseidon252::tests::test_draw_secure_felt ... ok
+test core::constraints::tests::test_point_vanishing_success ... ok
+test core::constraints::tests::test_point_vanishing_failure - should panic ... ok
+test core::constraints::tests_using_prover::test_complex_conjugate_symmetry ... ok
+test core::fields::cm31::tests::test_inverse ... ok
+test core::fields::cm31::tests::test_ops ... ok
+test core::fields::qm31::tests::test_ops ... ok
+test core::fields::tests::test_batch_inverse ... ok
+test core::fields::m31::tests::test_m31_from_i32 ... ok
+test core::fields::tests::test_slice_batch_inverse_wrong_dst_size - should panic ... ok
+test core::fields::tests::test_batch_inverse_chunked ... ok
+test core::fields::qm31::tests::test_inverse ... ok
+test core::fri::tests::fold_line_works ... ok
+test core::fri::tests::fold_circle_to_line_works ... ok
+test core::fields::m31::tests::test_basic_ops ... ok
+test core::constraints::tests::test_coset_vanishing ... ok
+test core::fri::tests::test_fold_coset ... ok
+test core::circle::tests::test_secure_field_circle_gen ... ok
+test core::fri::tests::decommit_queries_on_invalid_domain_fails_verification - should panic ... ok
+test core::pcs::tests::test_security_bits ... ok
+test core::poly::circle::domain::tests::is_canonic_invalid_domain ... ok
+test core::channel::poseidon252::tests::test_draw_secure_felts ... ok
+test core::channel::poseidon252::tests::test_channel_draws ... ok
+test core::poly::circle::domain::tests::test_circle_domain_iterator ... ok
+test core::fri::tests::valid_proof_with_constant_last_layer_passes_verification ... ok
+test core::poly::circle::domain::tests::test_domain_split ... ok
+test core::poly::circle::tests::is_canonic_valid_domain ... ok
+test core::poly::line::tests::line_domain_coset_returns_the_coset ... ok
+test core::poly::line::tests::line_domain_double_works ... ok
+test core::poly::line::tests::bad_line_domain - should panic ... ok
+test core::poly::circle::domain::tests::test_at_circle_domain ... ok
+test core::poly::line::tests::line_domain_of_size_one_works ... ok
+test core::poly::line::tests::line_domain_of_size_two_works ... ok
+test core::poly::line::tests::line_domain_size_is_correct ... ok
+test core::fri::tests::valid_proof_passes_verification ... ok
+test core::poly::utils::tests::repeat_value_0_times_works ... ok
+test core::poly::utils::tests::repeat_value_2_times_works ... ok
+test core::poly::utils::tests::repeat_value_3_times_works ... ok
+test core::poly::line::tests::line_domain_iter_works ... ok
+test core::poly::utils::tests::test_domain_line_twiddles_fails - should panic ... ok
+test core::proof::tests::test_base_field_size_estimate ... ok
+test core::poly::utils::tests::test_domain_line_twiddles_works ... ok
+test core::proof::tests::test_secure_field_size_estimate ... ok
+test core::poly::circle::tests::test_bit_reverse_indices ... ok
+test core::utils::tests::test_circle_domain_and_coset_index_conversion ... ok
+test core::queries::tests::test_folded_queries ... ok
+test core::utils::tests::test_offset_bit_reversed_circle_domain_index ... ok
+test core::utils::tests::test_previous_bit_reversed_circle_domain_index ... ok
+test core::vcs::blake2_hash::tests::single_hash_test ... ok
+test core::vcs::blake2_hash::tests::hash_state_test ... ok
+test core::queries::tests::test_generate_queries ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_column_values_too_short ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_invalid_value ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_column_values_too_long ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_success ... ok
+test core::vcs::blake3_hash::tests::hash_state_test ... ok
+test core::vcs::blake3_hash::tests::single_hash_test ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_witness_too_long ... ok
+test core::vcs::keccak256_hash::tests::single_hash_test ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_invalid_witness ... ok
+test core::vcs::keccak256_hash::tests::hash_state_test ... ok
+test core::vcs::blake2_merkle::tests::test_merkle_witness_too_short ... ok
+test core::fri::tests::valid_proof_passes_verification_keccak256 ... ok
+test core::fri::tests::proof_with_added_layer_fails_verification ... ok
+test core::fri::tests::proof_with_invalid_last_layer_degree_fails_verification ... ok
+test core::fri::tests::proof_with_invalid_inner_layer_evaluation_fails_verification ... ok
+test core::fri::tests::proof_with_invalid_inner_layer_decommitment_fails_verification ... ok
+test core::fri::tests::proof_with_removed_layer_fails_verification ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_duplicate_query_positions ... ok
+test core::fri::tests::proof_with_invalid_last_layer_fails_verification ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_invalid_value ... ok
+test core::vcs::poseidon252_merkle::tests::test_vector ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_invalid_witness ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_invalid_witness_poseidon ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_success ... ok
+test prover::backend::cpu::accumulation::tests::generate_empty_secure_powers_works ... ok
+test prover::backend::cpu::accumulation::tests::generate_secure_powers_works ... ok
+test core::constraints::tests_using_prover::test_point_vanishing_degree ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_witness_too_short ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_witness_too_long ... ok
+test prover::backend::cpu::circle::tests::test_circle_poly_split_at_mid ... ok
+test prover::backend::cpu::circle::tests::test_eval_at_point_with_1_coeff ... ok
+test prover::backend::cpu::circle::tests::test_eval_at_point_with_2_coeffs ... ok
+test prover::backend::cpu::circle::tests::test_eval_at_point_with_4_coeffs ... ok
+test prover::backend::cpu::circle::tests::test_evaluate_2_coeffs ... ok
+test prover::backend::cpu::circle::tests::test_evaluate_4_coeffs ... ok
+test prover::backend::cpu::circle::tests::test_evaluate_8_coeffs ... ok
+test prover::backend::cpu::circle::tests::test_interpolate_2_evals ... ok
+test prover::backend::cpu::circle::tests::test_interpolate_4_evals ... ok
+test prover::backend::cpu::circle::tests::test_interpolate_8_evals ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_invalid_witness ... ok
+test prover::backend::cpu::lookups::gkr::tests::gen_eq_evals ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_values_too_long ... ok
+test prover::backend::cpu::lookups::gkr::tests::grand_product_works ... ok
+test prover::backend::cpu::lookups::gkr::tests::logup_with_generic_trace_works ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_values_too_short ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_witness_too_long ... ok
+test prover::backend::cpu::tests::batch_inverse_in_place_test ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_invalid_value ... ok
+test prover::backend::cpu::tests::bit_reverse_non_power_of_two_size_fails - should panic ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_success ... ok
+test prover::backend::cpu::tests::bit_reverse_works ... ok
+test prover::backend::cpu::tests::test_split_at_mid_cpu_column ... ok
+test core::vcs::poseidon252_merkle::tests::test_merkle_witness_too_short ... ok
+test prover::backend::simd::accumulation::tests::test_lift_accumulate_simd ... ok
+test prover::backend::simd::bit_reverse::tests::bit_reverse_large_column_works ... ok
+test prover::backend::simd::bit_reverse::tests::bit_reverse_small_column_works ... ok
+test prover::backend::cpu::lookups::gkr::tests::logup_with_multiplicities_trace_works ... ok
+test prover::backend::simd::bit_reverse::tests::test_bit_reverse16 ... ok
+test prover::backend::simd::accumulation::tests::test_generate_secure_powers_simd ... ok
+test prover::backend::simd::blake2s::tests::untranspose_states_is_transpose_states_inverse ... ok
+test prover::backend::simd::blake2s::tests::hash_16_works ... ok
+test prover::backend::simd::blake2s::tests::compress16_works ... ok
+test prover::backend::cpu::lookups::gkr::tests::logup_with_singles_trace_works ... ok
+test core::vcs::poseidon252_merkle::tests::test_construct_word ... ok
+test core::vcs_lifted::verifier::tests::test_merkle_success_poseidon ... ok
+test prover::backend::simd::circle::tests::test_circle_poly_split_at_mid_medium ... ok
+test prover::backend::simd::circle::tests::test_circle_poly_split_at_mid_small ... ok
+test prover::backend::simd::bit_reverse::tests::bit_reverse_m31_works ... ok
+test prover::backend::simd::blake2s_lifted::tests::test_build_next_layer ... ok
+test prover::backend::cpu::accumulation::tests::test_lift_and_accumulate ... ok
+test prover::backend::cpu::fri::tests::decompose_coeff_out_fft_space_test ... ok
+test prover::backend::simd::blake2s_lifted::tests::test_merkle_commit_small_column ... ok
+test prover::backend::simd::circle::tests::test_optimized_precompute_twiddles ... ok
+test prover::backend::cpu::circle::tests::test_cpu_eval_at_point_by_folding ... ok
+test prover::backend::simd::cm31::tests::addition_works ... ok
+test prover::backend::simd::cm31::tests::multiplication_works ... ok
+test prover::backend::simd::cm31::tests::negation_works ... ok
+test prover::backend::simd::cm31::tests::subtraction_works ... ok
+test prover::backend::simd::column::tests::base_field_vec_from_iter_works ... ok
+test prover::backend::simd::column::tests::secure_field_vec_from_iter_works ... ok
+test prover::backend::simd::column::tests::test_base_column_chunks_mut ... ok
+test prover::backend::simd::column::tests::test_secure_column_by_coords_chunks_mut ... ok
+test prover::backend::simd::column::tests::test_split_at_mid_base_column ... ok
+test prover::backend::simd::column::tests::test_split_at_mid_cm31_column ... ok
+test prover::backend::simd::column::tests::test_split_at_mid_secure_column ... ok
+test prover::backend::simd::circle::tests::test_simd_eval_at_point_by_folding ... ok
+test prover::backend::simd::column::tests::test_split_at_mid_very_packed_base_column ... ok
+test prover::backend::simd::conversion::tests::test_type_conversion ... ok
+test prover::backend::simd::domain::tests::test_circle_domain_bit_rev_iterator ... ok
+test prover::backend::simd::fft::ifft::tests::test_ibutterfly ... ok
+test prover::backend::simd::fft::ifft::tests::test_ifft3 ... ok
+test prover::backend::simd::domain::tests::test_start_at ... ok
+test prover::air::accumulation::tests::test_domain_evaluation_accumulator_lifted ... ok
+test prover::backend::simd::fft::ifft::tests::test_vecwise_ibutterflies ... ok
+test prover::backend::simd::fft::rfft::tests::test_butterfly ... ok
+test prover::backend::simd::fft::rfft::tests::test_fft3 ... ok
+test prover::backend::simd::fft::ifft::tests::test_ifft_lower_with_vecwise ... ok
+test prover::backend::simd::fft::rfft::tests::test_fft_lower ... ok
+test prover::backend::simd::fft::rfft::tests::test_vecwise_butterflies ... ok
+test prover::backend::simd::blake2s_lifted::tests::test_blake_merkle_commit ... ok
+test prover::backend::simd::fri::tests::decomposition_test ... ok
+test core::fri::tests::valid_proof_with_jumps_and_packed_leaves_passes_verification ... ok
+test prover::backend::simd::fri::tests::test_fold_circle_into_line ... ok
+test prover::backend::simd::fri::tests::test_fold_line ... ok
+test prover::backend::simd::blake2s_lifted::tests::test_blake_merkle_m31_commit ... ok
+test prover::backend::simd::keccak256_permutation::tests::eight_distinct_states_match_scalar ... ok
+test prover::backend::simd::keccak256_permutation::tests::single_state_matches_scalar ... ok
+test prover::backend::simd::grind::tests::test_grind_poseidon ... ok
+test prover::backend::simd::keccak256_permutation::tests::zero_state_matches_scalar ... ok
+test prover::backend::simd::keccak256_permutation::tests::two_step_matches_scalar ... ok
+test prover::backend::simd::lookups::gkr::tests::gen_eq_evals_with_small_assignment_matches_cpu ... ok
+test prover::backend::simd::lookups::gkr::tests::gen_eq_evals_matches_cpu ... ok
+test prover::backend::simd::circle::tests::test_simd_barycentric_evaluation ... ok
+test prover::backend::simd::lookups::gkr::tests::logup_with_generic_trace_works ... ok
+test prover::backend::simd::lookups::gkr::tests::grand_product_works ... ok
+test prover::backend::simd::lookups::mle::tests::fix_first_variable_with_base_field_mle_matches_cpu ... ok
+test prover::backend::simd::lookups::gkr::tests::logup_with_singles_trace_works ... ok
+test prover::backend::simd::m31::tests::addition_works ... ok
+test prover::backend::simd::m31::tests::inverse_works ... ok
+test prover::backend::simd::m31::tests::load_works ... ok
+test prover::backend::simd::m31::tests::multiplication_works ... ok
+test prover::backend::simd::m31::tests::negation_works ... ok
+test prover::backend::simd::m31::tests::store_works ... ok
+test prover::backend::simd::m31::tests::subtraction_works ... ok
+test prover::backend::simd::m31::tests::test_reduction ... ok
+test prover::backend::simd::lookups::gkr::tests::logup_with_multiplicities_trace_works ... ok
+test prover::backend::simd::lookups::mle::tests::fix_first_variable_with_secure_field_mle_matches_cpu ... ok
+test prover::backend::simd::circle::tests::test_circle_poly_split_at_mid_large ... ok
+test prover::backend::simd::prefix_sum::tests::exclusive_prefix_sum_simd_with_log_size_3_works ... ok
+test prover::backend::simd::prefix_sum::tests::exclusive_prefix_sum_simd_with_log_size_6_works ... ok
+test prover::backend::simd::prefix_sum::tests::exclusive_prefix_sum_simd_with_log_size_8_works ... ok
+test prover::backend::simd::qm31::tests::addition_works ... ok
+test prover::backend::simd::qm31::tests::multiplication_works ... ok
+test prover::backend::simd::qm31::tests::negation_works ... ok
+test prover::backend::simd::qm31::tests::subtraction_works ... ok
+test prover::backend::simd::quotients::tests::test_simd_and_cpu_numerators_are_consistent ... ok
+test prover::backend::simd::utils::tests::test_transpose_leaf ... ok
+test prover::channel::logging_channel::tests::test_logging_channel ... ok
+test prover::fri::tests::committing_column_from_invalid_domain_fails - should panic ... ok
+test prover::fri::tests::committing_high_degree_polynomial_fails - should panic ... ok
+test prover::fri::tests::test_fri_commit_decommit_keccak256_cpu ... ok
+test prover::backend::simd::poseidon252_lifted::tests::test_build_next_layer ... ok
+test prover::backend::simd::grind::tests::test_grind_blake_is_deterministic ... ok
+test prover::fri::tests::test_fri_commit_decommit_with_jumps ... ok
+test prover::fri::tests::test_fri_commit_decommit_keccak256_simd ... ok
+test prover::fri::tests::test_pack_leaves_input_simd_matches_cpu ... ok
+test prover::line::tests::line_evaluation_interpolation ... ok
+test prover::line::tests::line_polynomial_eval_at_point ... ok
+test prover::fri::tests::test_fri_commit_decommit_with_packed_leaves_simd ... ok
+test prover::lookups::gkr_verifier::tests::prove_batch_works ... ok
+test prover::lookups::sumcheck::tests::batch_sumcheck_with_different_n_variables ... ok
+test prover::fri::tests::test_fri_commit_decommit_with_packed_leaves ... ok
+test prover::lookups::gkr_verifier::tests::prove_batch_with_different_sizes_works ... ok
+test prover::lookups::sumcheck::tests::sumcheck_works ... ok
+test prover::lookups::sumcheck::tests::invalid_sumcheck_proof_fails ... ok
+test prover::lookups::utils::tests::eq_different_hypercube_points_returns_zero ... ok
+test prover::lookups::utils::tests::eq_different_size_points - should panic ... ok
+test prover::lookups::utils::tests::eq_identical_hypercube_points_returns_one ... ok
+test prover::lookups::utils::tests::fraction_addition_works ... ok
+test prover::lookups::utils::tests::horner_eval_works ... ok
+test prover::lookups::sumcheck::tests::batch_sumcheck_works ... ok
+test prover::lookups::utils::tests::lagrange_interpolation_works ... ok
+test prover::pcs::quotient_ops::tests::test_pcs_prove_and_verify_simd ... ok
+test prover::pcs::quotient_ops::tests::test_quotients_are_low_degree ... ok
+test prover::pcs::quotient_ops::tests::test_simd_quotients_are_low_degree_small_trace ... ok
+test prover::poly::circle::evaluation::tests::test_interpolate_non_canonic ... ok
+test prover::poly::circle::poly::tests::test_circle_poly_extend ... ok
+test prover::pcs::quotient_ops::tests::test_pcs_prove_and_verify_simd_with_barycentric ... ok
+test prover::poly::circle::tests::is_canonic_valid_domain ... ok
+test prover::poly::circle::tests::test_bit_reverse_indices ... ok
+test prover::poly::circle::tests::test_interpolate_and_eval ... ok
+test prover::poly::twiddles::tests::test_extract_subdomain_twiddles ... ok
+test prover::poly::twiddles::tests::test_extract_subdomain_twiddles_from_larger_buffer ... ok
+test prover::poly::circle::secure_poly::tests::test_secure_circle_poly_split_at_mid ... ok
+test prover::vcs_lifted::prover::test::test_decommitment_aux ... ok
+test prover::vcs_lifted::prover::test::test_empty_cols ... ok
+test prover::vcs_lifted::prover::test::test_lifted_decommitted_values ... ok
+test prover::vcs_lifted::prover::test::test_lifted_merkle_leaves ... ok
+test prover::pcs::quotient_ops::tests::test_pcs_prove_and_verify_cpu ... ok
+test prover::vcs_lifted::prover::test::test_bit_reverse_lifted_merkle_cpu ... ok
+test prover::backend::simd::circle::tests::test_eval_securefield ... ok
+test core::fri::tests::valid_proof_with_jumps_passes_verification ... ok
+test prover::backend::cpu::circle::tests::test_cpu_barycentric_evaluation ... ok
+test prover::backend::simd::circle::tests::test_simd_barycentric_weights ... ok
+test prover::backend::simd::fft::rfft::tests::test_fft_full ... ok
+test prover::backend::simd::fft::ifft::tests::test_ifft_full ... ok
+test prover::backend::simd::grind::tests::test_grind_poseidon_is_deterministic ... ok
+test prover::backend::simd::poseidon252_lifted::tests::test_small_columns_leaves ... ok
+test prover::backend::simd::circle::tests::test_interpolate_and_eval ... ok
+test prover::backend::simd::poseidon252_lifted::tests::test_poseidon_merkle_commit ... ok
+test prover::backend::simd::circle::tests::test_eval_at_point ... ok
+test prover::backend::simd::circle::tests::test_circle_poly_extend ... ok
+test prover::backend::simd::circle::tests::test_eval_extension ... ok
+
+test result: ok. 268 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+
+
+running 9 tests
+test crates/stwo/src/core/circle.rs - core::circle::CirclePoint<F>::double_x (line 34) ... ok
+test crates/stwo/src/core/fields/m31.rs - core::fields::m31::M31::inverse (line 111) ... ok
+test crates/stwo/src/core/fields/mod.rs - core::fields::ComplexConjugate::complex_conjugate (line 156) ... ok
+test crates/stwo/src/core/circle.rs - core::circle::M31_CIRCLE_GEN (line 188) ... ok
+test crates/stwo/src/core/fields/m31.rs - core::fields::m31::pow2147483645 (line 190) ... ok
+test crates/stwo/src/core/fields/m31.rs - core::fields::m31::M31::partial_reduce (line 40) ... ok
+test crates/stwo/src/core/circle.rs - core::circle::CirclePoint<F>::log_order (line 51) ... ok
+test crates/stwo/src/core/fields/m31.rs - core::fields::m31::M31::reduce (line 52) ... ok
+test crates/stwo/src/core/poly/utils.rs - core::poly::utils::repeat_value (line 76) ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.24s
+
