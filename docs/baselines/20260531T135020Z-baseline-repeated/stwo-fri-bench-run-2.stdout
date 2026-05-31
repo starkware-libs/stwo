@@ -1,0 +1,4 @@
+fold_line               time:   [404.21 µs 405.08 µs 406.11 µs]
+                        change: [-1.4617% -1.1780% -0.9309%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+

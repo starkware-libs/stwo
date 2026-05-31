@@ -1,0 +1,8 @@
+fold_line               time:   [405.33 µs 405.72 µs 406.16 µs]
+                        change: [-2.7855% -2.5924% -2.4165%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+

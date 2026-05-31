@@ -1,0 +1,7 @@
+touch: /Users/ehjc/.config/envman/PATH.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/ENV.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/alias.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/function.sh: Operation not permitted
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running unittests src/lib.rs (target/debug/deps/stwo-479cab32ec265a05)
+   Doc-tests stwo

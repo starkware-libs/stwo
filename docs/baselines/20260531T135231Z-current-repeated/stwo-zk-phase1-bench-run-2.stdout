@@ -1,0 +1,141 @@
+zk phase1 r coefficient sampling cpu 2^12
+                        time:   [6.2314 µs 6.2478 µs 6.2683 µs]
+                        change: [+0.1948% +0.4001% +0.6578%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+zk phase1 r evaluation cpu 2^12
+                        time:   [56.795 µs 56.855 µs 56.905 µs]
+                        change: [-0.0024% +0.0992% +0.2092%] (p = 0.10 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+zk phase1 r sampling and evaluation cpu 2^12
+                        time:   [62.718 µs 62.755 µs 62.786 µs]
+                        change: [-0.1661% -0.0287% +0.1107%] (p = 0.70 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+zk phase1 r coefficient sampling cpu 2^16
+                        time:   [98.286 µs 98.461 µs 98.661 µs]
+                        change: [+0.0305% +0.1640% +0.3286%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+
+zk phase1 r evaluation cpu 2^16
+                        time:   [1.0765 ms 1.0768 ms 1.0771 ms]
+                        change: [-0.0174% +0.1189% +0.2717%] (p = 0.14 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+zk phase1 r sampling and evaluation cpu 2^16
+                        time:   [1.1741 ms 1.1746 ms 1.1755 ms]
+                        change: [+0.0242% +0.1534% +0.2898%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+
+zk phase1 r coefficient sampling cpu 2^20
+                        time:   [1.5641 ms 1.5648 ms 1.5656 ms]
+                        change: [-0.1630% -0.0354% +0.0730%] (p = 0.61 > 0.05)
+                        No change in performance detected.
+
+zk phase1 r evaluation cpu 2^20
+                        time:   [20.041 ms 20.063 ms 20.088 ms]
+                        change: [-0.3087% -0.1568% -0.0089%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+
+zk phase1 r sampling and evaluation cpu 2^20
+                        time:   [21.605 ms 21.627 ms 21.659 ms]
+                        change: [-0.5002% -0.2004% +0.0374%] (p = 0.20 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+zk phase1 r commitment cpu 2^12
+                        time:   [1.0988 ms 1.1087 ms 1.1167 ms]
+                        change: [-0.5724% +0.2292% +1.0560%] (p = 0.61 > 0.05)
+                        No change in performance detected.
+
+zk phase1 r commitment cpu 2^16
+                        time:   [7.3776 ms 7.3968 ms 7.4109 ms]
+                        change: [-0.6753% -0.1470% +0.3758%] (p = 0.62 > 0.05)
+                        No change in performance detected.
+
+zk phase1 r commitment cpu 2^20
+                        time:   [98.615 ms 98.739 ms 98.877 ms]
+                        change: [+0.0229% +0.2391% +0.4656%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) low mild
+
+zk phase1 h_batch addition cpu 2^12
+                        time:   [2.0228 µs 2.0637 µs 2.0855 µs]
+                        change: [-2.3284% +0.9247% +4.2919%] (p = 0.60 > 0.05)
+                        No change in performance detected.
+
+zk phase1 h_batch addition cpu 2^16
+                        time:   [27.904 µs 28.109 µs 28.259 µs]
+                        change: [+0.4533% +1.2022% +1.9238%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+
+zk phase1 h_batch addition cpu 2^20
+                        time:   [517.28 µs 518.83 µs 520.64 µs]
+                        change: [-0.6632% -0.4020% -0.1650%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low severe
+  1 (10.00%) high mild
+
+zk phase1 r opening construction cpu 2^12
+                        time:   [5.4064 µs 5.7204 µs 6.4335 µs]
+                        change: [-11.559% +1.0794% +13.986%] (p = 0.84 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+zk phase1 r opening construction cpu 2^16
+                        time:   [6.7993 µs 6.8499 µs 6.9265 µs]
+                        change: [-37.439% -16.420% +1.6198%] (p = 0.39 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) low mild
+
+zk phase1 r opening construction cpu 2^20
+                        time:   [10.935 µs 11.213 µs 11.640 µs]
+                        change: [-5.0690% -1.0856% +2.9958%] (p = 0.62 > 0.05)
+                        No change in performance detected.
+
+zk phase1 r opening verification cpu 2^12
+                        time:   [5.5709 µs 5.5837 µs 5.5942 µs]
+                        change: [+3.3077% +3.8087% +4.2022%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+
+zk phase1 r opening verification cpu 2^16
+                        time:   [6.9488 µs 7.0055 µs 7.0670 µs]
+                        change: [+3.6446% +5.5468% +7.9642%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+zk phase1 r opening verification cpu 2^20
+                        time:   [8.8662 µs 8.9474 µs 9.1058 µs]
+                        change: [-3.7344% +3.0086% +11.603%] (p = 0.57 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+
+zk phase1 r answer addition 6 queries
+                        time:   [16.952 ns 16.999 ns 17.053 ns]
+                        change: [-0.4858% -0.0996% +0.3360%] (p = 0.67 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+

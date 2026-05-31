@@ -1,0 +1,101 @@
+touch: /Users/ehjc/.config/envman/PATH.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/ENV.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/alias.env: Operation not permitted
+touch: /Users/ehjc/.config/envman/function.sh: Operation not permitted
+    Finished `bench` profile [optimized] target(s) in 0.10s
+     Running benches/zk_phase1.rs (target/release/deps/zk_phase1-1d4fe178e64c87fb)
+Gnuplot not found, using plotters backend
+Benchmarking zk phase1 r coefficient sampling cpu 2^12
+Benchmarking zk phase1 r coefficient sampling cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r coefficient sampling cpu 2^12: Collecting 10 samples in estimated 5.0002 s (801k iterations)
+Benchmarking zk phase1 r coefficient sampling cpu 2^12: Analyzing
+Benchmarking zk phase1 r evaluation cpu 2^12
+Benchmarking zk phase1 r evaluation cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r evaluation cpu 2^12: Collecting 10 samples in estimated 5.0009 s (79k iterations)
+Benchmarking zk phase1 r evaluation cpu 2^12: Analyzing
+Benchmarking zk phase1 r sampling and evaluation cpu 2^12
+Benchmarking zk phase1 r sampling and evaluation cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r sampling and evaluation cpu 2^12: Collecting 10 samples in estimated 5.0008 s (80k iterations)
+Benchmarking zk phase1 r sampling and evaluation cpu 2^12: Analyzing
+Benchmarking zk phase1 r coefficient sampling cpu 2^16
+Benchmarking zk phase1 r coefficient sampling cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r coefficient sampling cpu 2^16: Collecting 10 samples in estimated 5.0016 s (51k iterations)
+Benchmarking zk phase1 r coefficient sampling cpu 2^16: Analyzing
+Benchmarking zk phase1 r evaluation cpu 2^16
+Benchmarking zk phase1 r evaluation cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r evaluation cpu 2^16: Collecting 10 samples in estimated 5.0522 s (4290 iterations)
+Benchmarking zk phase1 r evaluation cpu 2^16: Analyzing
+Benchmarking zk phase1 r sampling and evaluation cpu 2^16
+Benchmarking zk phase1 r sampling and evaluation cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r sampling and evaluation cpu 2^16: Collecting 10 samples in estimated 5.0445 s (4290 iterations)
+Benchmarking zk phase1 r sampling and evaluation cpu 2^16: Analyzing
+Benchmarking zk phase1 r coefficient sampling cpu 2^20
+Benchmarking zk phase1 r coefficient sampling cpu 2^20: Warming up for 3.0000 s
+Benchmarking zk phase1 r coefficient sampling cpu 2^20: Collecting 10 samples in estimated 5.0851 s (3245 iterations)
+Benchmarking zk phase1 r coefficient sampling cpu 2^20: Analyzing
+Benchmarking zk phase1 r evaluation cpu 2^20
+Benchmarking zk phase1 r evaluation cpu 2^20: Warming up for 3.0000 s
+Benchmarking zk phase1 r evaluation cpu 2^20: Collecting 10 samples in estimated 5.9545 s (275 iterations)
+Benchmarking zk phase1 r evaluation cpu 2^20: Analyzing
+Benchmarking zk phase1 r sampling and evaluation cpu 2^20
+Benchmarking zk phase1 r sampling and evaluation cpu 2^20: Warming up for 3.0000 s
+Benchmarking zk phase1 r sampling and evaluation cpu 2^20: Collecting 10 samples in estimated 5.9503 s (275 iterations)
+Benchmarking zk phase1 r sampling and evaluation cpu 2^20: Analyzing
+Benchmarking zk phase1 r commitment cpu 2^12
+Benchmarking zk phase1 r commitment cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r commitment cpu 2^12: Collecting 10 samples in estimated 5.0028 s (4455 iterations)
+Benchmarking zk phase1 r commitment cpu 2^12: Analyzing
+Benchmarking zk phase1 r commitment cpu 2^16
+Benchmarking zk phase1 r commitment cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r commitment cpu 2^16: Collecting 10 samples in estimated 5.3347 s (715 iterations)
+Benchmarking zk phase1 r commitment cpu 2^16: Analyzing
+Benchmarking zk phase1 r commitment cpu 2^20
+Benchmarking zk phase1 r commitment cpu 2^20: Warming up for 3.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 5.5s or enable flat sampling.
+Benchmarking zk phase1 r commitment cpu 2^20: Collecting 10 samples in estimated 5.4695 s (55 iterations)
+Benchmarking zk phase1 r commitment cpu 2^20: Analyzing
+Benchmarking zk phase1 h_batch addition cpu 2^12
+Benchmarking zk phase1 h_batch addition cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 h_batch addition cpu 2^12: Collecting 10 samples in estimated 5.0001 s (1.3M iterations)
+Benchmarking zk phase1 h_batch addition cpu 2^12: Analyzing
+Benchmarking zk phase1 h_batch addition cpu 2^16
+Benchmarking zk phase1 h_batch addition cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 h_batch addition cpu 2^16: Collecting 10 samples in estimated 5.0003 s (93k iterations)
+Benchmarking zk phase1 h_batch addition cpu 2^16: Analyzing
+Benchmarking zk phase1 h_batch addition cpu 2^20
+Benchmarking zk phase1 h_batch addition cpu 2^20: Warming up for 3.0000 s
+Benchmarking zk phase1 h_batch addition cpu 2^20: Collecting 10 samples in estimated 5.0280 s (5225 iterations)
+Benchmarking zk phase1 h_batch addition cpu 2^20: Analyzing
+Benchmarking zk phase1 r opening construction cpu 2^12
+Benchmarking zk phase1 r opening construction cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r opening construction cpu 2^12: Collecting 10 samples in estimated 5.0209 s (4455 iterations)
+Benchmarking zk phase1 r opening construction cpu 2^12: Analyzing
+Benchmarking zk phase1 r opening construction cpu 2^16
+Benchmarking zk phase1 r opening construction cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r opening construction cpu 2^16: Collecting 10 samples in estimated 5.3790 s (715 iterations)
+Benchmarking zk phase1 r opening construction cpu 2^16: Analyzing
+Benchmarking zk phase1 r opening construction cpu 2^20
+Benchmarking zk phase1 r opening construction cpu 2^20: Warming up for 3.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 5.5s or enable flat sampling.
+Benchmarking zk phase1 r opening construction cpu 2^20: Collecting 10 samples in estimated 5.4770 s (55 iterations)
+Benchmarking zk phase1 r opening construction cpu 2^20: Analyzing
+Benchmarking zk phase1 r opening verification cpu 2^12
+Benchmarking zk phase1 r opening verification cpu 2^12: Warming up for 3.0000 s
+Benchmarking zk phase1 r opening verification cpu 2^12: Collecting 10 samples in estimated 5.0273 s (4400 iterations)
+Benchmarking zk phase1 r opening verification cpu 2^12: Analyzing
+Benchmarking zk phase1 r opening verification cpu 2^16
+Benchmarking zk phase1 r opening verification cpu 2^16: Warming up for 3.0000 s
+Benchmarking zk phase1 r opening verification cpu 2^16: Collecting 10 samples in estimated 5.3866 s (715 iterations)
+Benchmarking zk phase1 r opening verification cpu 2^16: Analyzing
+Benchmarking zk phase1 r opening verification cpu 2^20
+Benchmarking zk phase1 r opening verification cpu 2^20: Warming up for 3.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 5.5s or enable flat sampling.
+Benchmarking zk phase1 r opening verification cpu 2^20: Collecting 10 samples in estimated 5.4919 s (55 iterations)
+Benchmarking zk phase1 r opening verification cpu 2^20: Analyzing
+Benchmarking zk phase1 r answer addition 6 queries
+Benchmarking zk phase1 r answer addition 6 queries: Warming up for 3.0000 s
+Benchmarking zk phase1 r answer addition 6 queries: Collecting 10 samples in estimated 5.0000 s (163M iterations)
+Benchmarking zk phase1 r answer addition 6 queries: Analyzing

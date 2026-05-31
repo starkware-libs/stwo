@@ -1,0 +1,10 @@
+simd polynomial commitment 2^20
+                        time:   [39.764 ms 39.860 ms 40.001 ms]
+                        change: [-0.3532% +0.2245% +0.7891%] (p = 0.46 > 0.05)
+                        No change in performance detected.
+
+cpu polynomial commitment 2^20
+                        time:   [357.85 ms 359.36 ms 360.78 ms]
+                        change: [-1.1379% -0.5695% -0.0367%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+
