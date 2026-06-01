@@ -15,16 +15,18 @@ use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
 use crate::core::zk::{
     build_zk_randomizer_matrices_from_stwo_sample_metadata, validate_zk_column_degree_bound_ranges,
     validate_zk_private_column_scope_for_witness_randomization, validate_zk_public_only_metadata,
-    validate_zk_query_closure_for_witness_randomization,
+    validate_zk_query_closure_for_witness_randomization, validate_zk_quotient_split_mask_profile,
     validate_zk_randomizer_rank_profile_for_witness_randomization, zk_trace_domain_half_coset,
     ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange, ZkFriBatchMaskProof,
     ZkFriBatchMaskQueryValues, ZkMetadataValidationError, ZkPrivacyMap, ZkPrivateColumnScope,
     ZkPrivateColumnScopeValidationError, ZkProofVersion, ZkPublicMetadata, ZkQueryClosure,
-    ZkQueryClosureKind, ZkQueryClosureValidationError, ZkRandomizerRankProfile,
+    ZkQueryClosureKind, ZkQueryClosureValidationError, ZkQuotientSplitMaskProfile,
+    ZkQuotientSplitMaskProfileValidationError, ZkRandomizerRankProfile,
     ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
+    ZK_RANDOMIZER_MATRIX_MAX_DIMENSION,
 };
 use crate::core::ColumnVec;
-use crate::prover::backend::{Col, ColumnOps};
+use crate::prover::backend::{Col, Column, ColumnOps};
 use crate::prover::poly::circle::{
     CircleCoefficients, PolyOps, SecureCirclePoly, SecureEvaluation,
 };
@@ -517,6 +519,181 @@ impl ZkProvingConfig {
 
         Ok(())
     }
+}
+
+#[allow(dead_code)]
+pub(crate) struct ZkMaskedCompositionSplitPair<B: PolyOps> {
+    pub left_hat: SecureCirclePoly<B>,
+    pub right_hat: SecureCirclePoly<B>,
+    pub profile: ZkQuotientSplitMaskProfile,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum ZkQuotientSplitMaskError {
+    Profile(ZkQuotientSplitMaskProfileValidationError),
+    SplitIdentityLogSizeMismatch {
+        expected: u32,
+        left: u32,
+        right: u32,
+    },
+    SplitMaskLogSizeExceedsProfile {
+        actual: u32,
+        max: u32,
+    },
+    ShiftedMaskOutOfBounds {
+        target_log_size: u32,
+    },
+    MaskedSplitBoundTooLarge {
+        log_size: u32,
+        max_coefficients: usize,
+    },
+}
+
+fn validate_masked_split_log_size(log_size: u32) -> Result<(), ZkQuotientSplitMaskError> {
+    let Some(coefficient_count) = 1usize.checked_shl(log_size) else {
+        return Err(ZkQuotientSplitMaskError::MaskedSplitBoundTooLarge {
+            log_size,
+            max_coefficients: ZK_RANDOMIZER_MATRIX_MAX_DIMENSION as usize,
+        });
+    };
+    if coefficient_count > ZK_RANDOMIZER_MATRIX_MAX_DIMENSION as usize {
+        return Err(ZkQuotientSplitMaskError::MaskedSplitBoundTooLarge {
+            log_size,
+            max_coefficients: ZK_RANDOMIZER_MATRIX_MAX_DIMENSION as usize,
+        });
+    }
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn mask_left_split_coordinate<B: PolyOps>(
+    left: &CircleCoefficients<B>,
+    split_mask: &CircleCoefficients<B>,
+    split_component_log_degree_bound: u32,
+    target_log_size: u32,
+) -> Result<CircleCoefficients<B>, ZkQuotientSplitMaskError> {
+    let mut coeffs = left.extend(target_log_size).coeffs;
+    let shifted_offset = 1usize
+        .checked_shl(split_component_log_degree_bound)
+        .ok_or(ZkQuotientSplitMaskError::ShiftedMaskOutOfBounds { target_log_size })?;
+    let Some(shifted_end) = shifted_offset.checked_add(split_mask.coeffs.len()) else {
+        return Err(ZkQuotientSplitMaskError::ShiftedMaskOutOfBounds { target_log_size });
+    };
+    if shifted_end > coeffs.len() {
+        return Err(ZkQuotientSplitMaskError::ShiftedMaskOutOfBounds { target_log_size });
+    }
+    for index in 0..split_mask.coeffs.len() {
+        let target_index = shifted_offset + index;
+        coeffs.set(
+            target_index,
+            coeffs.at(target_index) + split_mask.coeffs.at(index),
+        );
+    }
+
+    Ok(CircleCoefficients::new(coeffs))
+}
+
+#[allow(dead_code)]
+fn mask_right_split_coordinate<B: PolyOps>(
+    right: &CircleCoefficients<B>,
+    split_mask: &CircleCoefficients<B>,
+    target_log_size: u32,
+) -> CircleCoefficients<B> {
+    let mut coeffs = right.extend(target_log_size).coeffs;
+    for index in 0..split_mask.coeffs.len() {
+        coeffs.set(index, coeffs.at(index) - split_mask.coeffs.at(index));
+    }
+
+    CircleCoefficients::new(coeffs)
+}
+
+#[allow(dead_code)]
+pub(crate) fn mask_composition_split_pair<B: PolyOps>(
+    left: SecureCirclePoly<B>,
+    right: SecureCirclePoly<B>,
+    split_mask: SecureCirclePoly<B>,
+    profile: ZkQuotientSplitMaskProfile,
+) -> Result<ZkMaskedCompositionSplitPair<B>, ZkQuotientSplitMaskError> {
+    validate_zk_quotient_split_mask_profile(profile).map_err(ZkQuotientSplitMaskError::Profile)?;
+    validate_masked_split_log_size(profile.left_masked_log_degree_bound)?;
+    validate_masked_split_log_size(profile.right_masked_log_degree_bound)?;
+
+    let split_component_log_degree_bound = profile.split_identity_log_degree_bound - 1;
+    if left.log_size() != split_component_log_degree_bound
+        || right.log_size() != split_component_log_degree_bound
+    {
+        return Err(ZkQuotientSplitMaskError::SplitIdentityLogSizeMismatch {
+            expected: split_component_log_degree_bound,
+            left: left.log_size(),
+            right: right.log_size(),
+        });
+    }
+    if split_mask.log_size() > profile.split_mask_log_degree_bound {
+        return Err(ZkQuotientSplitMaskError::SplitMaskLogSizeExceedsProfile {
+            actual: split_mask.log_size(),
+            max: profile.split_mask_log_degree_bound,
+        });
+    }
+
+    let left_coordinates = left.into_coordinate_polys();
+    let right_coordinates = right.into_coordinate_polys();
+    let split_mask_coordinates = split_mask.into_coordinate_polys();
+    let left_hat = SecureCirclePoly([
+        mask_left_split_coordinate(
+            &left_coordinates[0],
+            &split_mask_coordinates[0],
+            split_component_log_degree_bound,
+            profile.left_masked_log_degree_bound,
+        )?,
+        mask_left_split_coordinate(
+            &left_coordinates[1],
+            &split_mask_coordinates[1],
+            split_component_log_degree_bound,
+            profile.left_masked_log_degree_bound,
+        )?,
+        mask_left_split_coordinate(
+            &left_coordinates[2],
+            &split_mask_coordinates[2],
+            split_component_log_degree_bound,
+            profile.left_masked_log_degree_bound,
+        )?,
+        mask_left_split_coordinate(
+            &left_coordinates[3],
+            &split_mask_coordinates[3],
+            split_component_log_degree_bound,
+            profile.left_masked_log_degree_bound,
+        )?,
+    ]);
+    let right_hat = SecureCirclePoly([
+        mask_right_split_coordinate(
+            &right_coordinates[0],
+            &split_mask_coordinates[0],
+            profile.right_masked_log_degree_bound,
+        ),
+        mask_right_split_coordinate(
+            &right_coordinates[1],
+            &split_mask_coordinates[1],
+            profile.right_masked_log_degree_bound,
+        ),
+        mask_right_split_coordinate(
+            &right_coordinates[2],
+            &split_mask_coordinates[2],
+            profile.right_masked_log_degree_bound,
+        ),
+        mask_right_split_coordinate(
+            &right_coordinates[3],
+            &split_mask_coordinates[3],
+            profile.right_masked_log_degree_bound,
+        ),
+    ]);
+
+    Ok(ZkMaskedCompositionSplitPair {
+        left_hat,
+        right_hat,
+        profile,
+    })
 }
 
 /// Forms the Protocol 2 FRI input `H_batch = raw_quotient + R`.
@@ -1295,6 +1472,168 @@ mod tests {
         assert_eq!(
             config.validate_quotient_split_rank_closure_present(),
             Ok(())
+        );
+    }
+
+    fn quotient_split_mask_helper_profile() -> ZkQuotientSplitMaskProfile {
+        ZkQuotientSplitMaskProfile {
+            split_index: 0,
+            split_identity_log_degree_bound: 6,
+            split_mask_log_degree_bound: 5,
+            h_split: 32,
+            left_range: ZkColumnRange::new(
+                1,
+                0,
+                crate::core::fields::qm31::SECURE_EXTENSION_DEGREE,
+            ),
+            right_range: ZkColumnRange::new(
+                1,
+                crate::core::fields::qm31::SECURE_EXTENSION_DEGREE,
+                2 * crate::core::fields::qm31::SECURE_EXTENSION_DEGREE,
+            ),
+            left_masked_log_degree_bound: 6,
+            right_masked_log_degree_bound: 5,
+        }
+    }
+
+    fn quotient_split_test_poly(
+        log_size: u32,
+        offset: u32,
+    ) -> SecureCirclePoly<crate::prover::backend::CpuBackend> {
+        SecureCirclePoly(std::array::from_fn(|coordinate| {
+            crate::prover::backend::cpu::CpuCirclePoly::new(
+                (0..1 << log_size)
+                    .map(|index| {
+                        BaseField::from_u32_unchecked(
+                            offset + coordinate as u32 * 101 + index as u32,
+                        )
+                    })
+                    .collect(),
+            )
+        }))
+    }
+
+    #[test]
+    fn quotient_split_mask_helper_preserves_recombination_identity() {
+        let profile = quotient_split_mask_helper_profile();
+        let composition_poly = quotient_split_test_poly(profile.split_identity_log_degree_bound, 7);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let split_mask = quotient_split_test_poly(profile.split_mask_log_degree_bound, 409);
+        let masked = mask_composition_split_pair(
+            SecureCirclePoly(left.clone()),
+            SecureCirclePoly(right.clone()),
+            split_mask,
+            profile,
+        )
+        .unwrap();
+        let point = CirclePoint::get_point(21903);
+        let split_factor = point
+            .repeated_double(profile.split_identity_log_degree_bound - 2)
+            .x;
+
+        assert_eq!(
+            masked.left_hat.eval_at_point(point)
+                + split_factor * masked.right_hat.eval_at_point(point),
+            left.eval_at_point(point) + split_factor * right.eval_at_point(point)
+        );
+        assert_eq!(
+            masked.left_hat.log_size(),
+            profile.left_masked_log_degree_bound
+        );
+        assert_eq!(
+            masked.right_hat.log_size(),
+            profile.right_masked_log_degree_bound
+        );
+        assert_eq!(masked.profile, profile);
+    }
+
+    #[test]
+    fn quotient_split_mask_helper_changes_opened_sides_with_different_masks() {
+        let profile = quotient_split_mask_helper_profile();
+        let composition_poly =
+            quotient_split_test_poly(profile.split_identity_log_degree_bound, 11);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let masked0 = mask_composition_split_pair(
+            SecureCirclePoly(left.clone()),
+            SecureCirclePoly(right.clone()),
+            quotient_split_test_poly(profile.split_mask_log_degree_bound, 503),
+            profile,
+        )
+        .unwrap();
+        let masked1 = mask_composition_split_pair(
+            SecureCirclePoly(left.clone()),
+            SecureCirclePoly(right.clone()),
+            quotient_split_test_poly(profile.split_mask_log_degree_bound, 907),
+            profile,
+        )
+        .unwrap();
+        let point = CirclePoint::get_point(32771);
+        let split_factor = point
+            .repeated_double(profile.split_identity_log_degree_bound - 2)
+            .x;
+
+        assert_ne!(
+            masked0.left_hat.eval_at_point(point),
+            masked1.left_hat.eval_at_point(point)
+        );
+        assert_ne!(
+            masked0.right_hat.eval_at_point(point),
+            masked1.right_hat.eval_at_point(point)
+        );
+        assert_eq!(
+            masked0.left_hat.eval_at_point(point)
+                + split_factor * masked0.right_hat.eval_at_point(point),
+            masked1.left_hat.eval_at_point(point)
+                + split_factor * masked1.right_hat.eval_at_point(point)
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_helper_rejects_wrong_split_side_size() {
+        let profile = quotient_split_mask_helper_profile();
+        let left = quotient_split_test_poly(profile.split_identity_log_degree_bound, 13);
+        let right = quotient_split_test_poly(profile.split_identity_log_degree_bound - 1, 17);
+        let split_mask = quotient_split_test_poly(profile.split_mask_log_degree_bound, 19);
+
+        assert_eq!(
+            mask_composition_split_pair(left, right, split_mask, profile).err(),
+            Some(ZkQuotientSplitMaskError::SplitIdentityLogSizeMismatch {
+                expected: 5,
+                left: 6,
+                right: 5,
+            })
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_helper_rejects_mask_above_profile() {
+        let profile = quotient_split_mask_helper_profile();
+        let composition_poly =
+            quotient_split_test_poly(profile.split_identity_log_degree_bound, 23);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let split_mask = quotient_split_test_poly(profile.split_mask_log_degree_bound + 1, 29);
+
+        assert_eq!(
+            mask_composition_split_pair(left, right, split_mask, profile).err(),
+            Some(ZkQuotientSplitMaskError::SplitMaskLogSizeExceedsProfile { actual: 6, max: 5 })
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_helper_rejects_excessive_masked_bound_before_extend() {
+        let mut profile = quotient_split_mask_helper_profile();
+        profile.left_masked_log_degree_bound = usize::BITS;
+        let composition_poly =
+            quotient_split_test_poly(profile.split_identity_log_degree_bound, 31);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let split_mask = quotient_split_test_poly(profile.split_mask_log_degree_bound, 37);
+
+        assert_eq!(
+            mask_composition_split_pair(left, right, split_mask, profile).err(),
+            Some(ZkQuotientSplitMaskError::MaskedSplitBoundTooLarge {
+                log_size: usize::BITS,
+                max_coefficients: ZK_RANDOMIZER_MATRIX_MAX_DIMENSION as usize,
+            })
         );
     }
 
