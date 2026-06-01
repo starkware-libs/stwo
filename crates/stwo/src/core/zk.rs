@@ -1114,6 +1114,168 @@ pub struct ZkQuotientIntegrationProfile {
     pub quotient_degree_bounds: Vec<ZkColumnDegreeBound>,
 }
 
+/// Passive metadata for the reviewed STWO quotient-split masking design.
+///
+/// This profile describes the algebraic cancellation
+/// `left_hat = left + Pi_L * t`, `right_hat = right - t` for STWO's
+/// `split_at_mid` identity. It is deliberately not part of the active proof
+/// format yet; activation requires prover and verifier wiring plus separate
+/// soundness review.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkQuotientSplitMaskProfile {
+    pub split_index: u32,
+    pub split_identity_log_degree_bound: u32,
+    pub split_mask_log_degree_bound: u32,
+    pub h_split: u64,
+    pub left_range: ZkColumnRange,
+    pub right_range: ZkColumnRange,
+    pub left_masked_log_degree_bound: u32,
+    pub right_masked_log_degree_bound: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkQuotientSplitMaskProfileValidationError {
+    EmptySplitMask,
+    EmptySplitRange {
+        range: ZkColumnRange,
+    },
+    SplitRangeTreeMismatch {
+        left_range: ZkColumnRange,
+        right_range: ZkColumnRange,
+    },
+    SplitRangeWidthMismatch {
+        left_range: ZkColumnRange,
+        right_range: ZkColumnRange,
+    },
+    NonContiguousSplitRanges {
+        left_range: ZkColumnRange,
+        right_range: ZkColumnRange,
+    },
+    SplitIdentityUnderflow {
+        split_identity_log_degree_bound: u32,
+    },
+    SplitMaskDegreeExceedsSplitComponent {
+        split_mask_log_degree_bound: u32,
+        split_component_log_degree_bound: u32,
+    },
+    SplitMaskDimensionTooLarge {
+        split_mask_log_degree_bound: u32,
+    },
+    SplitMaskEntropyTooLarge {
+        h_split: u64,
+        max: u64,
+    },
+    LeftMaskedBoundBelowCancellationProduct {
+        required: u32,
+        actual: u32,
+    },
+    RightMaskedBoundBelowOriginalSplit {
+        required: u32,
+        actual: u32,
+    },
+}
+
+/// Validates passive quotient-split masking metadata for STWO's current
+/// two-way `split_at_mid` identity.
+///
+/// Let `L = split_identity_log_degree_bound` and `S = L - 1`. The reviewed
+/// conservative bound requires `t` to fit in the original split-component
+/// space (`T <= S`), `right_hat` to retain at least the original split bound,
+/// and `left_hat` to allow the `Pi_L * t` cancellation product.
+pub fn validate_zk_quotient_split_mask_profile(
+    profile: ZkQuotientSplitMaskProfile,
+) -> Result<(), ZkQuotientSplitMaskProfileValidationError> {
+    if profile.h_split == 0 {
+        return Err(ZkQuotientSplitMaskProfileValidationError::EmptySplitMask);
+    }
+    if profile.left_range.column_start >= profile.left_range.column_end {
+        return Err(ZkQuotientSplitMaskProfileValidationError::EmptySplitRange {
+            range: profile.left_range,
+        });
+    }
+    if profile.right_range.column_start >= profile.right_range.column_end {
+        return Err(ZkQuotientSplitMaskProfileValidationError::EmptySplitRange {
+            range: profile.right_range,
+        });
+    }
+    if profile.left_range.tree_index != profile.right_range.tree_index {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::SplitRangeTreeMismatch {
+                left_range: profile.left_range,
+                right_range: profile.right_range,
+            },
+        );
+    }
+    let left_range_width = profile.left_range.column_end - profile.left_range.column_start;
+    let right_range_width = profile.right_range.column_end - profile.right_range.column_start;
+    if left_range_width != right_range_width {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::SplitRangeWidthMismatch {
+                left_range: profile.left_range,
+                right_range: profile.right_range,
+            },
+        );
+    }
+    if profile.left_range.column_end != profile.right_range.column_start {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::NonContiguousSplitRanges {
+                left_range: profile.left_range,
+                right_range: profile.right_range,
+            },
+        );
+    }
+
+    if profile.split_identity_log_degree_bound < 2 {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::SplitIdentityUnderflow {
+                split_identity_log_degree_bound: profile.split_identity_log_degree_bound,
+            },
+        );
+    }
+    let split_component_log_degree_bound = profile.split_identity_log_degree_bound - 1;
+    if profile.split_mask_log_degree_bound > split_component_log_degree_bound {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::SplitMaskDegreeExceedsSplitComponent {
+                split_mask_log_degree_bound: profile.split_mask_log_degree_bound,
+                split_component_log_degree_bound,
+            },
+        );
+    }
+    let max_h_split = 1u64
+        .checked_shl(profile.split_mask_log_degree_bound)
+        .ok_or(
+            ZkQuotientSplitMaskProfileValidationError::SplitMaskDimensionTooLarge {
+                split_mask_log_degree_bound: profile.split_mask_log_degree_bound,
+            },
+        )?;
+    if profile.h_split > max_h_split {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::SplitMaskEntropyTooLarge {
+                h_split: profile.h_split,
+                max: max_h_split,
+            },
+        );
+    }
+    if profile.left_masked_log_degree_bound < profile.split_identity_log_degree_bound {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::LeftMaskedBoundBelowCancellationProduct {
+                required: profile.split_identity_log_degree_bound,
+                actual: profile.left_masked_log_degree_bound,
+            },
+        );
+    }
+    if profile.right_masked_log_degree_bound < split_component_log_degree_bound {
+        return Err(
+            ZkQuotientSplitMaskProfileValidationError::RightMaskedBoundBelowOriginalSplit {
+                required: split_component_log_degree_bound,
+                actual: profile.right_masked_log_degree_bound,
+            },
+        );
+    }
+
+    Ok(())
+}
+
 /// Public metadata echoed by a ZK proof and compared against verifier-owned
 /// configuration before affected Fiat-Shamir challenges.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -4355,6 +4517,198 @@ mod tests {
         assert_ne!(
             canonical_zk_split_derivation_hash(1),
             canonical_zk_split_derivation_hash(2)
+        );
+    }
+
+    fn quotient_split_mask_profile() -> ZkQuotientSplitMaskProfile {
+        ZkQuotientSplitMaskProfile {
+            split_index: 0,
+            split_identity_log_degree_bound: 6,
+            split_mask_log_degree_bound: 5,
+            h_split: 32,
+            left_range: ZkColumnRange::new(1, 0, SECURE_EXTENSION_DEGREE),
+            right_range: ZkColumnRange::new(
+                1,
+                SECURE_EXTENSION_DEGREE,
+                2 * SECURE_EXTENSION_DEGREE,
+            ),
+            left_masked_log_degree_bound: 6,
+            right_masked_log_degree_bound: 5,
+        }
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_accepts_stwo_cancellation_bounds() {
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(quotient_split_mask_profile()),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_empty_entropy() {
+        let mut profile = quotient_split_mask_profile();
+        profile.h_split = 0;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(ZkQuotientSplitMaskProfileValidationError::EmptySplitMask)
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_empty_range() {
+        let mut profile = quotient_split_mask_profile();
+        profile.left_range = ZkColumnRange::new(1, 0, 0);
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(ZkQuotientSplitMaskProfileValidationError::EmptySplitRange {
+                range: profile.left_range,
+            })
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_tree_mismatch() {
+        let mut profile = quotient_split_mask_profile();
+        profile.right_range =
+            ZkColumnRange::new(2, SECURE_EXTENSION_DEGREE, 2 * SECURE_EXTENSION_DEGREE);
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitRangeTreeMismatch {
+                    left_range: profile.left_range,
+                    right_range: profile.right_range,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_width_mismatch() {
+        let mut profile = quotient_split_mask_profile();
+        profile.right_range = ZkColumnRange::new(1, SECURE_EXTENSION_DEGREE, 9);
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitRangeWidthMismatch {
+                    left_range: profile.left_range,
+                    right_range: profile.right_range,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_noncontiguous_ranges() {
+        let mut profile = quotient_split_mask_profile();
+        profile.right_range = ZkColumnRange::new(1, SECURE_EXTENSION_DEGREE + 1, 9);
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::NonContiguousSplitRanges {
+                    left_range: profile.left_range,
+                    right_range: profile.right_range,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_split_identity_underflow() {
+        let mut profile = quotient_split_mask_profile();
+        profile.split_identity_log_degree_bound = 1;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitIdentityUnderflow {
+                    split_identity_log_degree_bound: 1,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_mask_above_split_component_bound() {
+        let mut profile = quotient_split_mask_profile();
+        profile.split_mask_log_degree_bound = profile.split_identity_log_degree_bound;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitMaskDegreeExceedsSplitComponent {
+                    split_mask_log_degree_bound: 6,
+                    split_component_log_degree_bound: 5,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_mask_dimension_overflow() {
+        let mut profile = quotient_split_mask_profile();
+        profile.split_identity_log_degree_bound = 66;
+        profile.split_mask_log_degree_bound = 64;
+        profile.left_masked_log_degree_bound = 66;
+        profile.right_masked_log_degree_bound = 65;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitMaskDimensionTooLarge {
+                    split_mask_log_degree_bound: 64,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_entropy_above_mask_dimension() {
+        let mut profile = quotient_split_mask_profile();
+        profile.h_split = 33;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::SplitMaskEntropyTooLarge {
+                    h_split: 33,
+                    max: 32,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_rejects_bounds_below_cancellation_requirements() {
+        let mut profile = quotient_split_mask_profile();
+        profile.left_masked_log_degree_bound = 5;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::LeftMaskedBoundBelowCancellationProduct {
+                    required: 6,
+                    actual: 5,
+                }
+            )
+        );
+
+        let mut profile = quotient_split_mask_profile();
+        profile.right_masked_log_degree_bound = 4;
+
+        assert_eq!(
+            validate_zk_quotient_split_mask_profile(profile),
+            Err(
+                ZkQuotientSplitMaskProfileValidationError::RightMaskedBoundBelowOriginalSplit {
+                    required: 5,
+                    actual: 4,
+                }
+            )
         );
     }
 
