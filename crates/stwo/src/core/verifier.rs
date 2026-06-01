@@ -226,8 +226,9 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     )?;
 
     if zk_metadata_requires_private_stark_activation(&zk_config.metadata) {
+        let _ = witness_randomization_audit;
         return Err(VerificationError::InvalidStructure(String::from(
-            "ZK private witness STARK verification is blocked until degree/OODS integration lands",
+            "ZK private witness STARK verification is blocked until quotient/split rank closure lands",
         )));
     }
 

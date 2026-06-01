@@ -335,7 +335,7 @@ impl ZkProvingConfig {
         Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
     }
 
-    pub(crate) fn validate_witness_and_quotient_pre_activation(
+    pub(crate) fn validate_witness_and_quotient_static_config(
         &self,
     ) -> Result<(), ZkProvingConfigError> {
         if self.metadata.version != ZkProofVersion::V1 {
@@ -431,6 +431,16 @@ impl ZkProvingConfig {
         if self.column_degree_bounds != expected_column_degree_bounds {
             return Err(ZkProvingConfigError::ColumnDegreeBoundsMismatch);
         }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_witness_and_quotient_pre_activation(
+        &self,
+    ) -> Result<(), ZkProvingConfigError> {
+        self.validate_witness_and_quotient_static_config()?;
+
+        let metadata = &self.metadata;
         let query_closure = self
             .query_closure
             .as_ref()
@@ -1207,6 +1217,20 @@ mod tests {
         assert_eq!(
             witness_and_quotient_config().validate_for_witness_and_quotient_integration(),
             Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
+        );
+    }
+
+    #[test]
+    fn witness_and_quotient_static_config_allows_dynamic_metadata_derivation_later() {
+        let mut config = witness_and_quotient_config();
+        config.query_closure = None;
+        config.randomizer_rank_profile = None;
+        config.derived_randomizer_metadata = None;
+
+        assert_eq!(config.validate_witness_and_quotient_static_config(), Ok(()));
+        assert_eq!(
+            config.validate_witness_and_quotient_pre_activation(),
+            Err(ZkProvingConfigError::MissingQueryClosure)
         );
     }
 

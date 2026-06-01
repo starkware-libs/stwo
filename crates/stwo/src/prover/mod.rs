@@ -166,9 +166,9 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 /// sampling policy.
 ///
 /// This is an explicit ZK API. It does not change [`prove`]. At this stage,
-/// STARK-level private witness mode is fail-closed until the reviewed Phase 3
-/// degree/OODS integration is wired; public-only FRI batch masking remains
-/// available through this API.
+/// STARK-level private witness mode is fail-closed until quotient/split
+/// leakage is included in the reviewed randomizer-rank audit. Public-only FRI
+/// batch masking remains available through this API.
 pub fn prove_zk<B, MC, R>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
@@ -195,8 +195,8 @@ where
 /// Produces an explicit ZK STARK proof using the paper-aligned PCS ZK path.
 ///
 /// This API does not alter the default [`prove_ex`] transcript or proof format.
-/// It currently rejects private witness metadata until the Phase 3
-/// STARK-level degree and OODS derivation is implemented.
+/// It currently rejects private witness metadata until quotient/split leakage
+/// is included in the reviewed STARK-level randomizer-rank audit.
 #[instrument(skip_all)]
 pub fn prove_zk_ex<B, MC, R>(
     components: &[&dyn ComponentProver<B>],
@@ -211,11 +211,11 @@ where
     MC: MerkleChannel,
     R: RngCore + CryptoRng + ?Sized,
 {
-    if !zk_config.privacy_map.private_columns.is_empty()
-        || zk_metadata_requires_private_stark_activation(&zk_config.metadata)
-    {
+    let requires_private_witness_integration = !zk_config.privacy_map.private_columns.is_empty()
+        || zk_metadata_requires_private_stark_activation(&zk_config.metadata);
+    if requires_private_witness_integration {
         zk_config
-            .validate_witness_and_quotient_pre_activation()
+            .validate_witness_and_quotient_static_config()
             .map_err(ProvingError::ZkConfig)?;
         return Err(ProvingError::ZkConfig(
             ZkProvingConfigError::Phase2And3ActivationBlocked,
@@ -422,4 +422,254 @@ pub enum ProvingError {
     InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
     #[error(transparent)]
     InvalidCanonicCosetLogSize(#[from] crate::core::poly::circle::InvalidCanonicCosetLogSize),
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    use super::*;
+    use crate::core::air::accumulation::PointEvaluationAccumulator;
+    use crate::core::air::Component;
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::m31::M31;
+    use crate::core::pcs::{PcsConfig, TreeVec};
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::zk::{
+        canonical_zk_private_column_scope_hash, canonical_zk_randomizer_space_hash,
+        canonical_zk_split_derivation_hash, expected_zk_fri_batch_degree_bound,
+        zk_trace_domain_half_coset, ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange,
+        ZkDegreeProfile, ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope,
+        ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata,
+        ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry,
+        ZkVerificationConfig, ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+    };
+    use crate::core::ColumnVec;
+    use crate::prover::backend::cpu::CpuBackend;
+    use crate::prover::poly::circle::{CircleCoefficients, PolyOps};
+    use crate::prover::zk::{ZkDerivationGate, ZkDerivationReview};
+
+    const TEST_TRACE_LOG_SIZE: u32 = 5;
+    const TEST_RANDOMIZED_LOG_DEGREE: u32 = TEST_TRACE_LOG_SIZE + 1;
+    const TEST_FRI_FIRST_LAYER_LOG_SIZE: u32 = TEST_RANDOMIZED_LOG_DEGREE + 1;
+
+    struct NoConstraintPrivateComponent;
+
+    impl Component for NoConstraintPrivateComponent {
+        fn n_constraints(&self) -> usize {
+            0
+        }
+
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            TEST_FRI_FIRST_LAYER_LOG_SIZE
+        }
+
+        fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+            TreeVec(vec![vec![], vec![TEST_TRACE_LOG_SIZE]])
+        }
+
+        fn mask_points(
+            &self,
+            point: CirclePoint<SecureField>,
+            _max_log_degree_bound: u32,
+        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+            TreeVec(vec![vec![], vec![vec![point]]])
+        }
+
+        fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
+            vec![]
+        }
+
+        fn evaluate_constraint_quotients_at_point(
+            &self,
+            _point: CirclePoint<SecureField>,
+            _mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+            _evaluation_accumulator: &mut PointEvaluationAccumulator,
+            _max_log_degree_bound: u32,
+        ) {
+        }
+    }
+
+    impl ComponentProver<CpuBackend> for NoConstraintPrivateComponent {
+        fn evaluate_constraint_quotients_on_domain(
+            &self,
+            _trace: &Trace<'_, CpuBackend>,
+            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+        ) {
+        }
+
+        fn evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+            &self,
+            _trace: &Trace<'_, CpuBackend>,
+            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+            _max_constraint_log_degree_bound: u32,
+        ) -> Result<(), ProvingError> {
+            Ok(())
+        }
+    }
+
+    fn test_hash(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
+
+    fn test_derivation_reviews() -> Vec<ZkDerivationReview> {
+        [
+            ZkDerivationGate::StwoSplitQueryExpansion,
+            ZkDerivationGate::CircleRandomizerSpace,
+            ZkDerivationGate::OodsDomainExclusion,
+            ZkDerivationGate::ZkAwareDegreeMetadata,
+            ZkDerivationGate::FriBatchMaskDegree,
+            ZkDerivationGate::PrivateLookupPermutationExclusion,
+            ZkDerivationGate::ProofDataSecrecy,
+            ZkDerivationGate::ZkPerformanceControls,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, gate)| ZkDerivationReview {
+            gate,
+            review_hash: test_hash(index as u8 + 10),
+        })
+        .collect()
+    }
+
+    fn private_stark_test_configs() -> (
+        ZkProvingConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+    ) {
+        let private_range = ZkColumnRange::new(1, 0, 1);
+        let quotient_range = ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE);
+        let privacy_map_hash = ZkPrivacyMapHash(test_hash(1));
+        let mut private_column_scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: [0; 32],
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range: private_range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+            }],
+        };
+        let private_column_scope_hash =
+            canonical_zk_private_column_scope_hash(&private_column_scope);
+        private_column_scope.hash = private_column_scope_hash;
+        let trace_domain = CanonicCoset::new(TEST_TRACE_LOG_SIZE).coset;
+        let h_witness = 1u64 << TEST_TRACE_LOG_SIZE;
+        let randomizer_space_hash = canonical_zk_randomizer_space_hash(
+            private_column_scope_hash,
+            &[ZkRandomizerSpaceEntry {
+                range: private_range,
+                trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                randomized_log_degree: TEST_RANDOMIZED_LOG_DEGREE,
+                randomizer_dimension: h_witness,
+            }],
+        );
+        let private_degree_bound = ZkColumnDegreeBound {
+            range: private_range,
+            log_degree_bound: TEST_RANDOMIZED_LOG_DEGREE,
+        };
+        let quotient_degree_bound = ZkColumnDegreeBound {
+            range: quotient_range,
+            log_degree_bound: TEST_FRI_FIRST_LAYER_LOG_SIZE - 1,
+        };
+        let h_batch = expected_zk_fri_batch_degree_bound(TEST_FRI_FIRST_LAYER_LOG_SIZE, 1)
+            .expect("test FRI layer has a valid batch-mask degree");
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash,
+            public_statement_hash: ZkPublicStatementHash(test_hash(2)),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: TEST_TRACE_LOG_SIZE,
+                h_witness,
+                h_batch,
+                fri_first_layer_log_size: TEST_FRI_FIRST_LAYER_LOG_SIZE,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness,
+                randomizer_space_hash,
+                private_column_scope_hash,
+                private_column_degree_bounds: vec![private_degree_bound],
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch,
+                fri_first_layer_log_size: TEST_FRI_FIRST_LAYER_LOG_SIZE,
+                split_derivation_hash: canonical_zk_split_derivation_hash(COMPOSITION_LOG_SPLIT),
+                quotient_degree_bounds: vec![quotient_degree_bound],
+            },
+        };
+        let column_degree_bounds = vec![private_degree_bound, quotient_degree_bound];
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![private_range],
+            hash: privacy_map_hash,
+        };
+        let prover_config = ZkProvingConfig {
+            metadata: metadata.clone(),
+            privacy_map: privacy_map.clone(),
+            private_column_scope: Some(private_column_scope.clone()),
+            query_closure: None,
+            randomizer_rank_profile: None,
+            derived_randomizer_metadata: None,
+            column_degree_bounds: column_degree_bounds.clone(),
+            derivation_reviews: test_derivation_reviews(),
+        };
+        let verifier_config = ZkVerificationConfig {
+            metadata,
+            column_degree_bounds,
+        };
+        let verifier_audit = ZkWitnessRandomizationVerifierAudit {
+            privacy_map,
+            private_column_scope,
+        };
+
+        (prover_config, verifier_config, verifier_audit)
+    }
+
+    #[test]
+    fn private_witness_zk_stark_top_level_remains_blocked() {
+        let config = PcsConfig::default();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(TEST_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let mut prover_channel = Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(Vec::<CircleCoefficients<CpuBackend>>::new());
+        tree_builder.commit(&mut prover_channel);
+
+        let witness = CircleCoefficients::new(
+            (0..1 << TEST_TRACE_LOG_SIZE)
+                .map(|value| M31::from(value as u32))
+                .collect(),
+        );
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_stark_test_configs();
+        let mut witness_rng = StdRng::seed_from_u64(1);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(vec![witness]);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, &mut prover_channel)
+            .unwrap();
+
+        let component = NoConstraintPrivateComponent;
+        let mut proof_rng = StdRng::seed_from_u64(2);
+        let error = prove_zk_ex::<CpuBackend, Blake2sMerkleChannel, _>(
+            &[&component],
+            &mut prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+            false,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProvingError::ZkConfig(ZkProvingConfigError::Phase2And3ActivationBlocked)
+        ));
+        let _ = (zk_verifier_config, zk_verifier_audit);
+    }
 }
