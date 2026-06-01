@@ -310,8 +310,9 @@ where
         &trace,
         commitment_scheme.twiddles,
         commitment_scheme.config.fri_config.log_blowup_factor,
+        zk_degree_profile.trace_log_degree_bound,
         zk_degree_profile.composition_log_degree_bound,
-    );
+    )?;
     span1.exit();
 
     let mut tree_builder = commitment_scheme.tree_builder();

@@ -12,7 +12,7 @@ use crate::prover::backend::{Backend, Col};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
-use crate::prover::CirclePoint;
+use crate::prover::{CirclePoint, ProvingError};
 
 /// Type alias for the weights hash map used in barycentric eval_at_point.
 pub type WeightsHashMap<B> = DashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>>;
@@ -25,6 +25,25 @@ pub trait ComponentProver<B: Backend>: Component {
         trace: &Trace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
     );
+
+    /// Evaluates constraint quotients using an explicit constraint degree bound.
+    ///
+    /// Implementations that can evaluate on verifier-selected ZK domains should
+    /// override this method. The default fails closed so unsupported component
+    /// provers cannot silently ignore the explicit degree bound.
+    fn evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+        &self,
+        trace: &Trace<'_, B>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
+        max_constraint_log_degree_bound: u32,
+    ) -> Result<(), ProvingError> {
+        let _ = (
+            trace,
+            evaluation_accumulator,
+            max_constraint_log_degree_bound,
+        );
+        Err(ProvingError::InvalidZkDegreeGeometry)
+    }
 }
 
 /// The set of polynomials that make up the trace.
@@ -102,13 +121,23 @@ impl<B: Backend> ComponentProvers<'_, B> {
         twiddles: &TwiddleTree<B>,
         log_blowup_factor: u32,
     ) -> SecureCirclePoly<B> {
-        self.compute_composition_polynomial_with_log_degree_bound(
+        let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
+        let components: Vec<&dyn Component> = self
+            .components
+            .iter()
+            .map(|c| *c as &dyn Component)
+            .collect();
+        let evaluation_mode = EvaluationMode::infer(&components, log_blowup_factor);
+        let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
-            trace,
-            twiddles,
-            log_blowup_factor,
             self.components().composition_log_degree_bound(),
-        )
+            total_constraints,
+            evaluation_mode,
+        );
+        for component in &self.components {
+            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        }
+        accumulator.finalize(twiddles)
     }
 
     /// Computes the composition polynomial using an explicit accumulator degree
@@ -125,24 +154,90 @@ impl<B: Backend> ComponentProvers<'_, B> {
         trace: &Trace<'_, B>,
         twiddles: &TwiddleTree<B>,
         log_blowup_factor: u32,
+        trace_log_degree_bound: u32,
         composition_log_degree_bound: u32,
-    ) -> SecureCirclePoly<B> {
+    ) -> Result<SecureCirclePoly<B>, ProvingError> {
         let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
-        let components: Vec<&dyn Component> = self
+        let component_trace_log_degree_bounds = self
             .components
             .iter()
-            .map(|c| *c as &dyn Component)
-            .collect();
-        let evaluation_mode = EvaluationMode::infer(&components, log_blowup_factor);
+            .map(|component| {
+                component
+                    .trace_log_degree_bounds()
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect_vec();
+        let max_component_trace_log_degree_bound = component_trace_log_degree_bounds
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0);
+        if trace_log_degree_bound < max_component_trace_log_degree_bound
+            || composition_log_degree_bound < trace_log_degree_bound
+        {
+            return Err(ProvingError::InvalidZkDegreeGeometry);
+        }
+
+        let component_derived_composition_log_degree_bound =
+            self.components().composition_log_degree_bound();
+        let composition_log_degree_delta = composition_log_degree_bound
+            .checked_sub(component_derived_composition_log_degree_bound)
+            .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
+        let mut explicit_component_constraint_log_degree_bounds =
+            Vec::with_capacity(self.components.len());
+        let mut constrained_trace_log_degree_bounds = Vec::new();
+        let mut constrained_constraint_log_degree_bounds = Vec::new();
+        for (component, &component_trace_log_degree_bound) in self
+            .components
+            .iter()
+            .zip(&component_trace_log_degree_bounds)
+        {
+            let component_constraint_log_degree_bound = component
+                .max_constraint_log_degree_bound()
+                .checked_add(composition_log_degree_delta)
+                .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
+            if component_constraint_log_degree_bound > composition_log_degree_bound {
+                return Err(ProvingError::InvalidZkDegreeGeometry);
+            }
+            if component.n_constraints() != 0 {
+                if component_constraint_log_degree_bound < component_trace_log_degree_bound {
+                    return Err(ProvingError::InvalidZkDegreeGeometry);
+                }
+                constrained_trace_log_degree_bounds.push(component_trace_log_degree_bound);
+                constrained_constraint_log_degree_bounds
+                    .push(component_constraint_log_degree_bound);
+            }
+            explicit_component_constraint_log_degree_bounds
+                .push(component_constraint_log_degree_bound);
+        }
+
+        let evaluation_mode = EvaluationMode::infer_from_component_bounds(
+            &constrained_trace_log_degree_bounds,
+            &constrained_constraint_log_degree_bounds,
+            log_blowup_factor,
+        )
+        .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
             composition_log_degree_bound,
             total_constraints,
             evaluation_mode,
         );
-        for component in &self.components {
-            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        for (component, &component_constraint_log_degree_bound) in self
+            .components
+            .iter()
+            .zip(&explicit_component_constraint_log_degree_bounds)
+        {
+            component.evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+                trace,
+                &mut accumulator,
+                component_constraint_log_degree_bound,
+            )?;
         }
-        accumulator.finalize(twiddles)
+        Ok(accumulator.finalize(twiddles))
     }
 }

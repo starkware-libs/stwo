@@ -18,7 +18,9 @@ use stwo::prover::backend::{Backend, CpuBackend};
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
-use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, EvaluationMode, Poly, Trace};
+use stwo::prover::{
+    ComponentProver, DomainEvaluationAccumulator, EvaluationMode, Poly, ProvingError, Trace,
+};
 use tracing::{span, Level};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};
@@ -78,7 +80,25 @@ fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
     trace: &'a Trace<'a, B>,
     mode: EvaluationMode,
 ) -> ConstraintQuotientInputs<'a, B> {
-    let max_constraint_log_degree_bound = component.max_constraint_log_degree_bound();
+    get_constraint_quotient_inputs_with_log_degree_bound(
+        component,
+        trace,
+        mode,
+        component.max_constraint_log_degree_bound(),
+    )
+    .expect("component constraint quotient inputs should be valid")
+}
+
+fn get_constraint_quotient_inputs_with_log_degree_bound<'a, E: FrameworkEval, B: Backend>(
+    component: &FrameworkComponent<E>,
+    trace: &'a Trace<'a, B>,
+    mode: EvaluationMode,
+    max_constraint_log_degree_bound: u32,
+) -> Result<ConstraintQuotientInputs<'a, B>, ProvingError> {
+    if max_constraint_log_degree_bound < component.max_constraint_log_degree_bound() {
+        return Err(ProvingError::InvalidZkDegreeGeometry);
+    }
+
     let trace_domain = CanonicCoset::new(component.eval.log_size());
 
     let mut component_polys = trace.polys.sub_tree(&component.trace_locations);
@@ -96,21 +116,42 @@ fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
             CanonicCoset::new(max_constraint_log_degree_bound).circle_domain()
         }
     };
+    if eval_domain.log_size() < trace_domain.log_size() {
+        return Err(ProvingError::InvalidZkDegreeGeometry);
+    }
+    let explicit_bound_differs =
+        max_constraint_log_degree_bound != component.max_constraint_log_degree_bound();
+    if explicit_bound_differs {
+        if let EvaluationMode::SubDomain { log_expansion } = mode {
+            let expected_committed_log_size = eval_domain
+                .log_size()
+                .checked_add(log_expansion)
+                .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
+            for poly in component_polys.iter().flatten() {
+                if poly.evals.domain.log_size() != expected_committed_log_size {
+                    return Err(ProvingError::InvalidZkDegreeGeometry);
+                }
+            }
+        }
+    }
     let trace = get_trace_columns(component_polys, eval_domain, mode);
 
     // Denom inverses.
-    let log_expand = eval_domain.log_size() - trace_domain.log_size();
+    let log_expand = eval_domain
+        .log_size()
+        .checked_sub(trace_domain.log_size())
+        .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
     let mut denom_inv = (0..1 << log_expand)
         .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
         .collect_vec();
     bit_reverse(&mut denom_inv);
 
-    ConstraintQuotientInputs {
+    Ok(ConstraintQuotientInputs {
         eval_domain,
         trace_domain,
         trace,
         denom_inv,
-    }
+    })
 }
 
 impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponent<E> {
@@ -119,8 +160,22 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         trace: &Trace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
     ) {
+        self.evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+            trace,
+            evaluation_accumulator,
+            self.max_constraint_log_degree_bound(),
+        )
+        .expect("framework component quotient evaluation should be valid")
+    }
+
+    fn evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+        &self,
+        trace: &Trace<'_, SimdBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
+        max_constraint_log_degree_bound: u32,
+    ) -> Result<(), ProvingError> {
         if self.n_constraints() == 0 {
-            return;
+            return Ok(());
         }
 
         let ConstraintQuotientInputs {
@@ -128,7 +183,12 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             trace_domain,
             trace,
             denom_inv,
-        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
+        } = get_constraint_quotient_inputs_with_log_degree_bound(
+            self,
+            trace,
+            evaluation_accumulator.evaluation_mode(),
+            max_constraint_log_degree_bound,
+        )?;
 
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
@@ -154,7 +214,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 &accum.random_coeff_powers,
                 &accum.col.to_cpu(),
             ));
-            return;
+            return Ok(());
         }
 
         let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col) };
@@ -205,6 +265,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 }
             }
         });
+        Ok(())
     }
 }
 
@@ -214,8 +275,22 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
         trace: &Trace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
+        self.evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+            trace,
+            evaluation_accumulator,
+            self.max_constraint_log_degree_bound(),
+        )
+        .expect("framework component quotient evaluation should be valid")
+    }
+
+    fn evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+        &self,
+        trace: &Trace<'_, CpuBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+        max_constraint_log_degree_bound: u32,
+    ) -> Result<(), ProvingError> {
         if self.n_constraints() == 0 {
-            return;
+            return Ok(());
         }
 
         let ConstraintQuotientInputs {
@@ -223,7 +298,12 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             trace_domain,
             trace,
             denom_inv,
-        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
+        } = get_constraint_quotient_inputs_with_log_degree_bound(
+            self,
+            trace,
+            evaluation_accumulator.evaluation_mode(),
+            max_constraint_log_degree_bound,
+        )?;
 
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
@@ -246,6 +326,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             &accum.random_coeff_powers,
             accum.col,
         );
+        Ok(())
     }
 }
 
