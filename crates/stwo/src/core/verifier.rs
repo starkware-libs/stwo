@@ -16,9 +16,9 @@ use crate::core::zk::{
     validate_zk_public_metadata_against_verifier_config,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
     zk_metadata_requires_private_stark_activation, zk_oods_exclusion_set,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
-    ZkWitnessRandomizationVerifierAudit,
+    zk_trace_domain_log_size_from_column_bounds, ZkCommittedColumnLogSizeValidationError,
+    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
+    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -239,8 +239,9 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
+    let base_column_log_degree_bounds = components.column_log_sizes();
     let zk_degree_profile = derive_zk_stark_degree_bound_profile(
-        components.column_log_sizes(),
+        base_column_log_degree_bounds.clone(),
         components.composition_log_degree_bound(),
         COMPOSITION_LOG_SPLIT,
         zk_config,
@@ -286,28 +287,13 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     let max_log_degree_bound =
         lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
 
-    let mut actual_trace_domain_log_size = None;
-    for tree in commitment_scheme.trees.iter() {
-        for &column_log_size in &tree.column_log_sizes {
-            let Some(trace_log_size) =
-                column_log_size.checked_sub(commitment_scheme.config.fri_config.log_blowup_factor)
-            else {
-                return Err(VerificationError::InvalidStructure(String::from(
-                    "Invalid ZK committed trace geometry",
-                )));
-            };
-            actual_trace_domain_log_size = Some(
-                actual_trace_domain_log_size
-                    .map_or(trace_log_size, |actual: u32| actual.max(trace_log_size)),
-            );
-        }
-    }
-    let actual_trace_domain_log_size = actual_trace_domain_log_size.ok_or_else(|| {
-        VerificationError::InvalidStructure(String::from("Invalid ZK committed trace geometry"))
-    })?;
+    let actual_trace_domain_log_size =
+        zk_trace_domain_log_size_from_column_bounds(&base_column_log_degree_bounds).ok_or_else(
+            || VerificationError::InvalidStructure(String::from("Invalid ZK trace geometry")),
+        )?;
     if zk_config.metadata.degree_profile.trace_domain_log_size != actual_trace_domain_log_size {
         return Err(VerificationError::InvalidStructure(String::from(
-            "ZK trace domain metadata does not match committed trace geometry",
+            "ZK trace domain metadata does not match component trace geometry",
         )));
     }
 

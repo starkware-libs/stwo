@@ -12,9 +12,9 @@ use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
     validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
     validate_zk_sample_points_outside_exclusion_set, zk_metadata_requires_private_stark_activation,
-    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkCommittedColumnLogSizeValidationError,
-    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
-    ZkStarkProof, ZkVerificationConfig,
+    zk_oods_exclusion_set, zk_trace_domain_log_size_from_column_bounds, ExtendedZkStarkProof,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError, ZkOodsSamplingError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
@@ -230,19 +230,10 @@ where
         n_preprocessed_columns,
     };
 
-    let actual_trace_domain_log_size = commitment_scheme
-        .trees
-        .iter()
-        .flat_map(|tree| tree.polynomials.iter())
-        .map(|poly| {
-            poly.evals
-                .domain
-                .log_size()
-                .checked_sub(commitment_scheme.config.fri_config.log_blowup_factor)
-        })
-        .collect::<Option<Vec<_>>>()
-        .and_then(|log_sizes| log_sizes.into_iter().max())
-        .ok_or(ProvingError::InvalidZkTraceGeometry)?;
+    let base_column_log_degree_bounds = component_provers.components().column_log_sizes();
+    let actual_trace_domain_log_size =
+        zk_trace_domain_log_size_from_column_bounds(&base_column_log_degree_bounds)
+            .ok_or(ProvingError::InvalidZkTraceGeometry)?;
     if zk_config.metadata.degree_profile.trace_domain_log_size != actual_trace_domain_log_size {
         return Err(ProvingError::InvalidZkTraceGeometry);
     }
@@ -251,7 +242,7 @@ where
         column_degree_bounds: zk_config.column_degree_bounds.clone(),
     };
     let zk_degree_profile = derive_zk_stark_degree_bound_profile(
-        component_provers.components().column_log_sizes(),
+        base_column_log_degree_bounds,
         component_provers
             .components()
             .composition_log_degree_bound(),

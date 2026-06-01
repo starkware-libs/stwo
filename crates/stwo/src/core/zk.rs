@@ -1320,6 +1320,20 @@ pub fn apply_zk_column_degree_bounds(
     Ok(base_bounds)
 }
 
+/// Returns the original trace-domain log size represented by component-owned
+/// column degree bounds.
+///
+/// This intentionally does not inspect committed column sizes. In the
+/// paper-shaped private witness path, committed private columns may be larger
+/// because they contain `w_hat = w + v_H * r`, while the trace domain `H`
+/// remains the original AIR trace domain.
+#[must_use]
+pub fn zk_trace_domain_log_size_from_column_bounds(
+    column_log_degree_bounds: &TreeVec<ColumnVec<u32>>,
+) -> Option<u32> {
+    column_log_degree_bounds.iter().flatten().copied().max()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkCommittedColumnLogSizeValidationError {
     TreeCountMismatch {
@@ -3004,6 +3018,20 @@ mod tests {
         let mut metadata = public_only_metadata(16, 1);
         metadata.quotient_integration.split_derivation_hash = nonzero_hash();
         assert!(zk_metadata_requires_private_stark_activation(&metadata));
+    }
+
+    #[test]
+    fn trace_domain_log_size_is_derived_from_base_column_bounds() {
+        let base_column_bounds = TreeVec(vec![vec![3], vec![5, 4]]);
+
+        assert_eq!(
+            zk_trace_domain_log_size_from_column_bounds(&base_column_bounds),
+            Some(5)
+        );
+        assert_eq!(
+            zk_trace_domain_log_size_from_column_bounds(&TreeVec(vec![vec![], vec![]])),
+            None
+        );
     }
 
     fn witness_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {
