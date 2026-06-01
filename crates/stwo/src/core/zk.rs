@@ -1485,6 +1485,10 @@ pub enum ZkStarkDegreeBoundProfileError {
         expected_range: ZkColumnRange,
         actual_count: usize,
     },
+    SplitDerivationHashMismatch {
+        expected: [u8; 32],
+        actual: [u8; 32],
+    },
     QuotientDegreeBoundShrinksComposition {
         normal_split_composition_log_degree_bound: u32,
         zk_split_composition_log_degree_bound: u32,
@@ -1572,6 +1576,25 @@ fn validate_zk_quotient_degree_bounds_for_stark_profile(
     Ok(())
 }
 
+fn validate_zk_split_derivation_hash_for_stark_profile(
+    metadata: &ZkPublicMetadata,
+    composition_log_split: u32,
+) -> Result<(), ZkStarkDegreeBoundProfileError> {
+    if !zk_metadata_has_private_witness_randomization(metadata) {
+        return Ok(());
+    }
+
+    let expected = canonical_zk_split_derivation_hash(composition_log_split);
+    let actual = metadata.quotient_integration.split_derivation_hash;
+    if actual != expected {
+        return Err(
+            ZkStarkDegreeBoundProfileError::SplitDerivationHashMismatch { expected, actual },
+        );
+    }
+
+    Ok(())
+}
+
 fn zk_composition_split_column_count(
     composition_log_split: u32,
 ) -> Result<usize, ZkStarkDegreeBoundProfileError> {
@@ -1615,6 +1638,7 @@ pub fn derive_zk_stark_degree_bound_profile(
         0,
         zk_composition_split_column_count(composition_log_split)?,
     );
+    validate_zk_split_derivation_hash_for_stark_profile(metadata, composition_log_split)?;
     validate_zk_quotient_degree_bounds_for_stark_profile(
         &metadata.quotient_integration.quotient_degree_bounds,
         expected_quotient_range,
@@ -2883,7 +2907,7 @@ mod tests {
             quotient_integration: ZkQuotientIntegrationProfile {
                 h_batch,
                 fri_first_layer_log_size: lifting_log_size,
-                split_derivation_hash: nonzero_hash(),
+                split_derivation_hash: canonical_zk_split_derivation_hash(1),
                 quotient_degree_bounds: vec![ZkColumnDegreeBound {
                     range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
                     log_degree_bound: lifting_log_size - log_blowup_factor,
@@ -3287,6 +3311,7 @@ mod tests {
         let mut metadata = witness_metadata(7, 1);
         set_witness_trace_domain(&mut metadata, 5);
         metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 6;
+        metadata.quotient_integration.split_derivation_hash = canonical_zk_split_derivation_hash(0);
         metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE);
@@ -3313,6 +3338,7 @@ mod tests {
         let mut metadata = witness_metadata(8, 1);
         set_witness_trace_domain(&mut metadata, 6);
         metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 7;
+        metadata.quotient_integration.split_derivation_hash = canonical_zk_split_derivation_hash(2);
         metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 6;
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, 4 * SECURE_EXTENSION_DEGREE);
@@ -3332,6 +3358,32 @@ mod tests {
         assert_eq!(profile.split_composition_log_degree_bound, 6);
         assert_eq!(profile.composition_log_degree_bound, 8);
         assert_eq!(profile.fri_first_layer_log_size, 8);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_wrong_split_derivation_hash() {
+        let mut metadata = witness_metadata(7, 1);
+        set_witness_trace_domain(&mut metadata, 5);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 6;
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
+        metadata.quotient_integration.split_derivation_hash = canonical_zk_split_derivation_hash(2);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                7,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::SplitDerivationHashMismatch {
+                expected: canonical_zk_split_derivation_hash(1),
+                actual: canonical_zk_split_derivation_hash(2),
+            }
+        );
     }
 
     #[test]
