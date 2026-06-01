@@ -804,6 +804,67 @@ mod tests {
         (verifier_channel, verifier)
     }
 
+    fn prove_private_stark_test_proof(
+        witness_rng_seed: u64,
+        proof_rng_seed: u64,
+    ) -> (
+        PcsConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+        ZkStarkProof<<Blake2sMerkleChannel as crate::core::channel::MerkleChannel>::H>,
+    ) {
+        let config = private_stark_test_pcs_config();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(TEST_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let mut prover_channel = Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_stark_test_configs();
+        commit_private_stark_test_inputs(
+            &mut commitment_scheme,
+            &mut prover_channel,
+            &zk_prover_config,
+            witness_rng_seed,
+        );
+
+        let component = NoConstraintPrivateComponent;
+        let mut proof_rng = StdRng::seed_from_u64(proof_rng_seed);
+        let proof = prove_zk::<CpuBackend, Blake2sMerkleChannel, _>(
+            &[&component],
+            &mut prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+        )
+        .unwrap();
+
+        (config, zk_verifier_config, zk_verifier_audit, proof)
+    }
+
+    fn verify_private_stark_test_proof(
+        config: PcsConfig,
+        proof: ZkStarkProof<<Blake2sMerkleChannel as crate::core::channel::MerkleChannel>::H>,
+        verifier_config: &ZkVerificationConfig,
+        verifier_audit: &ZkWitnessRandomizationVerifierAudit,
+    ) -> Result<(), crate::core::verifier::VerificationError> {
+        let component = NoConstraintPrivateComponent;
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof);
+
+        crate::core::verifier::verify_zk_with_witness_randomization_audit::<Blake2sMerkleChannel>(
+            &[&component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof,
+            verifier_config,
+            verifier_audit,
+        )
+    }
+
     #[test]
     fn private_witness_zk_stark_top_level_proves_and_verifies_with_audit() {
         let config = private_stark_test_pcs_config();
@@ -993,6 +1054,63 @@ mod tests {
             )
             .unwrap();
         }
+    }
+
+    #[test]
+    fn private_witness_zk_stark_rejects_mismatched_public_metadata() {
+        let (config, mut verifier_config, verifier_audit, proof) =
+            prove_private_stark_test_proof(41, 42);
+        verifier_config.metadata.public_statement_hash = ZkPublicStatementHash(test_hash(91));
+
+        assert!(
+            verify_private_stark_test_proof(config, proof, &verifier_config, &verifier_audit)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn private_witness_zk_stark_rejects_mismatched_privacy_map_audit() {
+        let (config, verifier_config, mut verifier_audit, proof) =
+            prove_private_stark_test_proof(51, 52);
+        verifier_audit.privacy_map.hash = ZkPrivacyMapHash(test_hash(92));
+
+        assert!(
+            verify_private_stark_test_proof(config, proof, &verifier_config, &verifier_audit)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn private_witness_zk_stark_rejects_wrong_committed_private_degree() {
+        let (config, verifier_config, verifier_audit, proof) =
+            prove_private_stark_test_proof(61, 62);
+        let component = NoConstraintPrivateComponent;
+        let mut verifier_channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(
+            proof.0.randomized_pcs_proof.commitments[0],
+            &[TEST_TRACE_LOG_SIZE],
+            &mut verifier_channel,
+        );
+        verifier.commit(
+            proof.0.randomized_pcs_proof.commitments[1],
+            &[TEST_TRACE_LOG_SIZE],
+            &mut verifier_channel,
+        );
+
+        assert!(
+            crate::core::verifier::verify_zk_with_witness_randomization_audit::<
+                Blake2sMerkleChannel,
+            >(
+                &[&component],
+                &mut verifier_channel,
+                &mut verifier,
+                proof,
+                &verifier_config,
+                &verifier_audit,
+            )
+            .is_err()
+        );
     }
 
     #[test]
