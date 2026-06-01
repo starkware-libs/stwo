@@ -305,11 +305,12 @@ where
     )
     .entered();
 
-    let composition_poly = component_provers.compute_composition_polynomial(
+    let composition_poly = component_provers.compute_composition_polynomial_with_log_degree_bound(
         random_coeff,
         &trace,
         commitment_scheme.twiddles,
         commitment_scheme.config.fri_config.log_blowup_factor,
+        zk_degree_profile.composition_log_degree_bound,
     );
     span1.exit();
 

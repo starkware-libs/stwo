@@ -102,6 +102,31 @@ impl<B: Backend> ComponentProvers<'_, B> {
         twiddles: &TwiddleTree<B>,
         log_blowup_factor: u32,
     ) -> SecureCirclePoly<B> {
+        self.compute_composition_polynomial_with_log_degree_bound(
+            random_coeff,
+            trace,
+            twiddles,
+            log_blowup_factor,
+            self.components().composition_log_degree_bound(),
+        )
+    }
+
+    /// Computes the composition polynomial using an explicit accumulator degree
+    /// bound.
+    ///
+    /// This is used by the explicit ZK STARK path to bind composition
+    /// generation to the verifier-owned ZK degree profile. It does not by
+    /// itself activate private-witness STARK ZK: component evaluators must still
+    /// expose reviewed ZK-aware constraint evaluation domains before private
+    /// activation can be unblocked.
+    pub(crate) fn compute_composition_polynomial_with_log_degree_bound(
+        &self,
+        random_coeff: SecureField,
+        trace: &Trace<'_, B>,
+        twiddles: &TwiddleTree<B>,
+        log_blowup_factor: u32,
+        composition_log_degree_bound: u32,
+    ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
         let components: Vec<&dyn Component> = self
             .components
@@ -111,7 +136,7 @@ impl<B: Backend> ComponentProvers<'_, B> {
         let evaluation_mode = EvaluationMode::infer(&components, log_blowup_factor);
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
-            self.components().composition_log_degree_bound(),
+            composition_log_degree_bound,
             total_constraints,
             evaluation_mode,
         );
