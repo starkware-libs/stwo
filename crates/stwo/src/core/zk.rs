@@ -199,10 +199,12 @@ pub struct ZkRandomizerSpaceEntry {
 const ZK_PRIVATE_COLUMN_SCOPE_HASH_DOMAIN: &[u8] = b"stwo.zk.private-column-scope.v1";
 const ZK_RANDOMIZER_SPACE_HASH_DOMAIN: &[u8] = b"stwo.zk.randomizer-space.v1";
 const ZK_SPLIT_DERIVATION_HASH_DOMAIN: &[u8] = b"stwo.zk.split-derivation.v1";
+const ZK_QUOTIENT_SPLIT_MASK_PROFILE_HASH_DOMAIN: &[u8] = b"stwo.zk.quotient-split-mask-profile.v1";
 const ZK_RANDOMIZER_BASIS_ID: &[u8] = b"circle-fft-bit-reversed";
 const ZK_RANDOMIZER_CONSTRUCTION_ID: &[u8] = b"eval-coset-vanishing-times-r-interpolate";
 const ZK_RANDOMIZER_RANK_MATRIX_ID: &[u8] = b"base-field-functional-matrix-v1";
 const ZK_SPLIT_IDENTITY: &[u8] = b"p(z)=left(z)+pi^(L-2)(z.x)*right(z)";
+const ZK_QUOTIENT_SPLIT_MASK_CONSTRUCTION_ID: &[u8] = b"left-plus-pi-t-right-minus-t";
 const ZK_QUOTIENT_OPENING_MODEL: &[u8] = b"internal-pcs-fri-only";
 const ZK_H_BATCH_RULE: &[u8] = b"fri-first-layer-degree-bound";
 
@@ -318,6 +320,27 @@ pub fn canonical_zk_split_derivation_hash(composition_log_split: u32) -> [u8; 32
     push_tag(&mut bytes, ZK_SPLIT_IDENTITY);
     push_tag(&mut bytes, ZK_QUOTIENT_OPENING_MODEL);
     push_tag(&mut bytes, ZK_H_BATCH_RULE);
+    blake2s_hash(&bytes)
+}
+
+#[must_use]
+pub fn canonical_zk_quotient_split_mask_profile_hash(
+    profile: ZkQuotientSplitMaskProfile,
+) -> [u8; 32] {
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_QUOTIENT_SPLIT_MASK_PROFILE_HASH_DOMAIN);
+    push_u32(&mut bytes, ZkProofVersion::V1.0);
+    push_u32(&mut bytes, profile.split_index);
+    push_u32(&mut bytes, profile.split_identity_log_degree_bound);
+    push_u32(&mut bytes, profile.split_mask_log_degree_bound);
+    push_u64(&mut bytes, profile.h_split);
+    push_column_range(&mut bytes, profile.left_range);
+    push_column_range(&mut bytes, profile.right_range);
+    push_u32(&mut bytes, profile.left_masked_log_degree_bound);
+    push_u32(&mut bytes, profile.right_masked_log_degree_bound);
+    push_tag(&mut bytes, ZK_RANDOMIZER_BASIS_ID);
+    push_tag(&mut bytes, ZK_SPLIT_IDENTITY);
+    push_tag(&mut bytes, ZK_QUOTIENT_SPLIT_MASK_CONSTRUCTION_ID);
     blake2s_hash(&bytes)
 }
 
@@ -1131,6 +1154,33 @@ pub struct ZkQuotientSplitMaskProfile {
     pub right_range: ZkColumnRange,
     pub left_masked_log_degree_bound: u32,
     pub right_masked_log_degree_bound: u32,
+}
+
+pub fn stwo_composition_quotient_split_mask_profile(
+    composition_tree_index: usize,
+    split_identity_log_degree_bound: u32,
+    split_mask_log_degree_bound: u32,
+    h_split: u64,
+    left_masked_log_degree_bound: u32,
+    right_masked_log_degree_bound: u32,
+) -> Result<ZkQuotientSplitMaskProfile, ZkQuotientSplitMaskProfileValidationError> {
+    let profile = ZkQuotientSplitMaskProfile {
+        split_index: 0,
+        split_identity_log_degree_bound,
+        split_mask_log_degree_bound,
+        h_split,
+        left_range: ZkColumnRange::new(composition_tree_index, 0, SECURE_EXTENSION_DEGREE),
+        right_range: ZkColumnRange::new(
+            composition_tree_index,
+            SECURE_EXTENSION_DEGREE,
+            2 * SECURE_EXTENSION_DEGREE,
+        ),
+        left_masked_log_degree_bound,
+        right_masked_log_degree_bound,
+    };
+    validate_zk_quotient_split_mask_profile(profile)?;
+
+    Ok(profile)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2342,6 +2392,7 @@ pub fn validate_zk_public_only_metadata(
 
 const ZK_PUBLIC_METADATA_TRANSCRIPT_DOMAIN: u32 = 0x5a4b_0001;
 const ZK_COLUMN_BOUNDS_TRANSCRIPT_DOMAIN: u32 = 0x5a4b_0002;
+const ZK_QUOTIENT_SPLIT_MASK_PROFILE_TRANSCRIPT_DOMAIN: u32 = 0x5a4b_0003;
 
 pub fn mix_zk_public_metadata<C: Channel>(
     channel: &mut C,
@@ -2387,6 +2438,31 @@ pub fn mix_zk_public_metadata<C: Channel>(
     mix_column_degree_bounds(channel, column_degree_bounds);
 }
 
+pub fn mix_zk_quotient_split_mask_profile<C: Channel>(
+    channel: &mut C,
+    profile: ZkQuotientSplitMaskProfile,
+) -> Result<(), ZkQuotientSplitMaskProfileValidationError> {
+    validate_zk_quotient_split_mask_profile(profile)?;
+
+    channel.mix_u32s(&[
+        ZK_QUOTIENT_SPLIT_MASK_PROFILE_TRANSCRIPT_DOMAIN,
+        profile.split_index,
+        profile.split_identity_log_degree_bound,
+        profile.split_mask_log_degree_bound,
+        profile.left_masked_log_degree_bound,
+        profile.right_masked_log_degree_bound,
+    ]);
+    channel.mix_u64(profile.h_split);
+    mix_hash_bytes(
+        channel,
+        &canonical_zk_quotient_split_mask_profile_hash(profile),
+    );
+    mix_column_range(channel, profile.left_range);
+    mix_column_range(channel, profile.right_range);
+
+    Ok(())
+}
+
 fn mix_hash_bytes<C: Channel>(channel: &mut C, bytes: &[u8; 32]) {
     let words: [u32; 8] = core::array::from_fn(|index| {
         let offset = index * 4;
@@ -2404,11 +2480,15 @@ fn mix_column_degree_bounds<C: Channel>(channel: &mut C, bounds: &[ZkColumnDegre
     channel.mix_u32s(&[ZK_COLUMN_BOUNDS_TRANSCRIPT_DOMAIN]);
     channel.mix_u64(bounds.len() as u64);
     for bound in bounds {
-        channel.mix_u64(bound.range.tree_index as u64);
-        channel.mix_u64(bound.range.column_start as u64);
-        channel.mix_u64(bound.range.column_end as u64);
+        mix_column_range(channel, bound.range);
         channel.mix_u32s(&[bound.log_degree_bound]);
     }
+}
+
+fn mix_column_range<C: Channel>(channel: &mut C, range: ZkColumnRange) {
+    channel.mix_u64(range.tree_index as u64);
+    channel.mix_u64(range.column_start as u64);
+    channel.mix_u64(range.column_end as u64);
 }
 
 /// Public OODS exclusion policy for the ZK path.
@@ -4542,6 +4622,64 @@ mod tests {
         assert_eq!(
             validate_zk_quotient_split_mask_profile(quotient_split_mask_profile()),
             Ok(())
+        );
+    }
+
+    #[test]
+    fn stwo_composition_quotient_split_mask_profile_binds_split_geometry() {
+        let profile = stwo_composition_quotient_split_mask_profile(3, 6, 5, 32, 6, 5).unwrap();
+
+        assert_eq!(profile.split_index, 0);
+        assert_eq!(
+            profile.left_range,
+            ZkColumnRange::new(3, 0, SECURE_EXTENSION_DEGREE)
+        );
+        assert_eq!(
+            profile.right_range,
+            ZkColumnRange::new(3, SECURE_EXTENSION_DEGREE, 2 * SECURE_EXTENSION_DEGREE)
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_hash_binds_geometry_and_bounds() {
+        let profile = quotient_split_mask_profile();
+        let mut changed_tree = profile;
+        changed_tree.left_range = ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE);
+        changed_tree.right_range =
+            ZkColumnRange::new(2, SECURE_EXTENSION_DEGREE, 2 * SECURE_EXTENSION_DEGREE);
+        let mut changed_h_split = profile;
+        changed_h_split.h_split -= 1;
+        let mut changed_identity_bound = profile;
+        changed_identity_bound.split_identity_log_degree_bound += 1;
+
+        assert_ne!(
+            canonical_zk_quotient_split_mask_profile_hash(profile),
+            canonical_zk_quotient_split_mask_profile_hash(changed_tree)
+        );
+        assert_ne!(
+            canonical_zk_quotient_split_mask_profile_hash(profile),
+            canonical_zk_quotient_split_mask_profile_hash(changed_h_split)
+        );
+        assert_ne!(
+            canonical_zk_quotient_split_mask_profile_hash(profile),
+            canonical_zk_quotient_split_mask_profile_hash(changed_identity_bound)
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_profile_transcript_mixing_binds_profile_hash() {
+        let profile = quotient_split_mask_profile();
+        let mut changed = profile;
+        changed.right_masked_log_degree_bound += 1;
+        let mut channel = Blake2sChannel::default();
+        let mut changed_channel = Blake2sChannel::default();
+
+        mix_zk_quotient_split_mask_profile(&mut channel, profile).unwrap();
+        mix_zk_quotient_split_mask_profile(&mut changed_channel, changed).unwrap();
+
+        assert_ne!(
+            channel.draw_secure_felt(),
+            changed_channel.draw_secure_felt()
         );
     }
 
