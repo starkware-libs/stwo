@@ -13,8 +13,9 @@ use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
     validate_zk_committed_column_log_sizes, validate_zk_public_metadata_against_verifier_config,
-    validate_zk_sampled_values_shape, zk_oods_exclusion_set,
-    ZkCommittedColumnLogSizeValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
+    validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
+    zk_oods_exclusion_set, ZkCommittedColumnLogSizeValidationError,
+    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
     ZkVerificationConfig,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
@@ -295,6 +296,9 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         sample_points_by_column.into_iter().flatten().count()
     );
 
+    validate_zk_sample_points_outside_exclusion_set(&sample_points, &oods_exclusion_set)
+        .map_err(VerificationError::ZkOodsSamplePoint)?;
+
     validate_zk_sampled_values_shape(&sample_points, &proof.0.randomized_pcs_proof.sampled_values)
         .map_err(|_| {
             VerificationError::InvalidStructure(String::from(
@@ -337,6 +341,8 @@ pub enum VerificationError {
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK committed column log sizes: {0:?}.")]
     ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
+    #[error("Invalid ZK OODS sample point: {0:?}.")]
+    ZkOodsSamplePoint(ZkOodsSamplePointValidationError),
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]

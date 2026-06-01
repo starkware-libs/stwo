@@ -10,8 +10,9 @@ use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_committed_column_log_sizes, zk_oods_exclusion_set, ExtendedZkStarkProof,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
+    validate_zk_committed_column_log_sizes, validate_zk_sample_points_outside_exclusion_set,
+    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkCommittedColumnLogSizeValidationError,
+    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
     ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
@@ -366,6 +367,8 @@ where
         include_all_preprocessed_columns,
     );
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+    validate_zk_sample_points_outside_exclusion_set(&sample_points, &oods_exclusion_set)
+        .map_err(ProvingError::ZkOodsSamplePoint)?;
 
     let commitment_scheme_proof = commitment_scheme
         .prove_values_zk(sample_points, zk_config, rng, channel)
@@ -401,6 +404,8 @@ pub enum ProvingError {
     ZkConfig(ZkProvingConfigError),
     #[error("Could not sample a valid ZK OODS point: {0:?}.")]
     ZkOodsSampling(ZkOodsSamplingError),
+    #[error("Invalid ZK OODS sample point: {0:?}.")]
+    ZkOodsSamplePoint(ZkOodsSamplePointValidationError),
     #[error("Invalid ZK STARK degree profile: {0:?}.")]
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK committed column log sizes: {0:?}.")]

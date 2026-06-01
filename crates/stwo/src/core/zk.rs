@@ -2115,6 +2115,39 @@ pub fn draw_zk_oods_point<C: Channel>(
     })
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkOodsSamplePointValidationError {
+    ForbiddenSamplePoint {
+        tree_index: usize,
+        column_index: usize,
+        sample_index: usize,
+    },
+}
+
+/// Validates every generated ZK sample point against the public OODS exclusion
+/// policy. This extends deterministic rejection from the sampled OODS point to
+/// translated/shifted component mask points derived from it.
+pub fn validate_zk_sample_points_outside_exclusion_set(
+    sample_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    exclusion_set: &ZkOodsExclusionSet,
+) -> Result<(), ZkOodsSamplePointValidationError> {
+    for (tree_index, tree_points) in sample_points.iter().enumerate() {
+        for (column_index, column_points) in tree_points.iter().enumerate() {
+            for (sample_index, &point) in column_points.iter().enumerate() {
+                if !exclusion_set.accepts(point) {
+                    return Err(ZkOodsSamplePointValidationError::ForbiddenSamplePoint {
+                        tree_index,
+                        column_index,
+                        sample_index,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Canonical public encoding of `R(query)` values.
 ///
 /// Each entry is one `SecureField` value encoded as four base-field
@@ -3023,6 +3056,65 @@ mod tests {
                 column_index: 0,
                 expected: 2,
                 actual: 1,
+            })
+        );
+    }
+
+    fn secure_circle_point(point: CirclePoint<BaseField>) -> CirclePoint<SecureField> {
+        CirclePoint {
+            x: point.x.into(),
+            y: point.y.into(),
+        }
+    }
+
+    #[test]
+    fn zk_oods_sample_points_accept_safe_points() {
+        let point = CirclePoint::<SecureField>::get_point(5);
+        let exclusion_set = ZkOodsExclusionSet {
+            forbidden_cosets: vec![CanonicCoset::new(4).coset],
+            reject_line_degeneracy: true,
+        };
+
+        assert_eq!(
+            validate_zk_sample_points_outside_exclusion_set(
+                &TreeVec(vec![vec![vec![point]]]),
+                &exclusion_set,
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn zk_oods_sample_points_reject_forbidden_coset_and_degeneracy() {
+        let coset = CanonicCoset::new(4).coset;
+        let forbidden_point = secure_circle_point(coset.at(0));
+        let forbidden_coset_exclusion_set = ZkOodsExclusionSet {
+            forbidden_cosets: vec![coset],
+            reject_line_degeneracy: false,
+        };
+
+        assert_eq!(
+            validate_zk_sample_points_outside_exclusion_set(
+                &TreeVec(vec![vec![vec![forbidden_point]]]),
+                &forbidden_coset_exclusion_set,
+            ),
+            Err(ZkOodsSamplePointValidationError::ForbiddenSamplePoint {
+                tree_index: 0,
+                column_index: 0,
+                sample_index: 0,
+            })
+        );
+
+        let degenerate_point = CirclePoint::<SecureField>::zero();
+        assert_eq!(
+            validate_zk_sample_points_outside_exclusion_set(
+                &TreeVec(vec![vec![vec![degenerate_point]]]),
+                &ZkOodsExclusionSet::empty(),
+            ),
+            Err(ZkOodsSamplePointValidationError::ForbiddenSamplePoint {
+                tree_index: 0,
+                column_index: 0,
+                sample_index: 0,
             })
         );
     }
