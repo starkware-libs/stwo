@@ -16,7 +16,7 @@ use crate::core::zk::{
     validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
     zk_oods_exclusion_set, ZkCommittedColumnLogSizeValidationError,
     ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
-    ZkVerificationConfig,
+    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -153,6 +153,66 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: ZkStarkProof<MC::H>,
     zk_config: &ZkVerificationConfig,
+    include_all_preprocessed_columns: bool,
+) -> Result<(), VerificationError> {
+    verify_zk_ex_with_optional_witness_randomization_audit(
+        components,
+        channel,
+        commitment_scheme,
+        proof,
+        zk_config,
+        None,
+        include_all_preprocessed_columns,
+    )
+}
+
+pub fn verify_zk_with_witness_randomization_audit<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: ZkStarkProof<MC::H>,
+    zk_config: &ZkVerificationConfig,
+    witness_randomization_audit: &ZkWitnessRandomizationVerifierAudit,
+) -> Result<(), VerificationError> {
+    let include_all_preprocessed_columns = false;
+    verify_zk_ex_with_witness_randomization_audit(
+        components,
+        channel,
+        commitment_scheme,
+        proof,
+        zk_config,
+        witness_randomization_audit,
+        include_all_preprocessed_columns,
+    )
+}
+
+pub fn verify_zk_ex_with_witness_randomization_audit<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: ZkStarkProof<MC::H>,
+    zk_config: &ZkVerificationConfig,
+    witness_randomization_audit: &ZkWitnessRandomizationVerifierAudit,
+    include_all_preprocessed_columns: bool,
+) -> Result<(), VerificationError> {
+    verify_zk_ex_with_optional_witness_randomization_audit(
+        components,
+        channel,
+        commitment_scheme,
+        proof,
+        zk_config,
+        Some(witness_randomization_audit),
+        include_all_preprocessed_columns,
+    )
+}
+
+fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: ZkStarkProof<MC::H>,
+    zk_config: &ZkVerificationConfig,
+    witness_randomization_audit: Option<&ZkWitnessRandomizationVerifierAudit>,
     include_all_preprocessed_columns: bool,
 ) -> Result<(), VerificationError> {
     if !zk_config
@@ -323,7 +383,17 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         return Err(VerificationError::OodsNotMatching);
     }
 
-    commitment_scheme.verify_values_zk(sample_points, proof.0, zk_config, channel)
+    if let Some(witness_randomization_audit) = witness_randomization_audit {
+        commitment_scheme.verify_values_zk_with_witness_randomization_audit(
+            sample_points,
+            proof.0,
+            zk_config,
+            witness_randomization_audit,
+            channel,
+        )
+    } else {
+        commitment_scheme.verify_values_zk(sample_points, proof.0, zk_config, channel)
+    }
 }
 
 #[derive(Clone, Debug, Error)]

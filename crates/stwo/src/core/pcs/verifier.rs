@@ -18,8 +18,9 @@ use crate::core::verifier::VerificationError;
 use crate::core::zk::{
     mix_zk_public_metadata, validate_zk_public_metadata_against_verifier_config,
     validate_zk_public_only_metadata, validate_zk_sampled_values_shape,
-    validate_zk_witness_metadata, zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
-    ZkColumnDegreeBound, ZkCommitmentSchemeProof, ZkVerificationConfig,
+    validate_zk_witness_metadata, validate_zk_witness_randomization_audit_for_verifier,
+    zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions, ZkColumnDegreeBound,
+    ZkCommitmentSchemeProof, ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
 use crate::core::ColumnVec;
 
@@ -184,6 +185,40 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         proof: ZkCommitmentSchemeProof<MC::H>,
         zk_config: &ZkVerificationConfig,
+        channel: &mut MC::C,
+    ) -> Result<(), VerificationError> {
+        self.verify_values_zk_with_optional_witness_randomization_audit(
+            sampled_points,
+            proof,
+            zk_config,
+            None,
+            channel,
+        )
+    }
+
+    pub fn verify_values_zk_with_witness_randomization_audit(
+        &self,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        proof: ZkCommitmentSchemeProof<MC::H>,
+        zk_config: &ZkVerificationConfig,
+        witness_randomization_audit: &ZkWitnessRandomizationVerifierAudit,
+        channel: &mut MC::C,
+    ) -> Result<(), VerificationError> {
+        self.verify_values_zk_with_optional_witness_randomization_audit(
+            sampled_points,
+            proof,
+            zk_config,
+            Some(witness_randomization_audit),
+            channel,
+        )
+    }
+
+    fn verify_values_zk_with_optional_witness_randomization_audit(
+        &self,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        proof: ZkCommitmentSchemeProof<MC::H>,
+        zk_config: &ZkVerificationConfig,
+        witness_randomization_audit: Option<&ZkWitnessRandomizationVerifierAudit>,
         channel: &mut MC::C,
     ) -> Result<(), VerificationError> {
         if proof.version != zk_config.metadata.version
@@ -366,6 +401,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         validate_zk_sampled_values_shape(&sampled_points, &proof.sampled_values).map_err(|_| {
             VerificationError::InvalidStructure(String::from(
                 "ZK PCS sampled-value shape does not match sampled points",
+            ))
+        })?;
+        validate_zk_witness_randomization_audit_for_verifier(
+            zk_config,
+            witness_randomization_audit,
+            &sampled_points,
+            &query_positions,
+            lifting_log_size,
+        )
+        .map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Invalid ZK witness-randomization verifier audit",
             ))
         })?;
 

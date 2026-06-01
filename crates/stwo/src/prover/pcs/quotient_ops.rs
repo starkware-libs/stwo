@@ -190,7 +190,7 @@ mod tests {
         ZkDegreeProfile, ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope,
         ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata,
         ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry,
-        ZkVerificationConfig, ZkWitnessRandomizationProfile,
+        ZkVerificationConfig, ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
     };
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::simd::column::BaseColumn;
@@ -311,7 +311,11 @@ mod tests {
         randomized_log_degree: u32,
         fri_first_layer_log_size: u32,
         log_blowup_factor: u32,
-    ) -> (ZkProvingConfig, ZkVerificationConfig) {
+    ) -> (
+        ZkProvingConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+    ) {
         let range = ZkColumnRange::new(private_tree_index, 0, 1);
         let quotient_range = ZkColumnRange::new(private_tree_index, 1, 2);
         let h_witness = 1u64 << trace_log_size;
@@ -372,14 +376,15 @@ mod tests {
             },
         };
         let column_degree_bounds = vec![private_degree_bound, quotient_degree_bound];
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: privacy_map_hash,
+        };
         let prover_config = ZkProvingConfig {
             metadata: metadata.clone(),
-            privacy_map: ZkPrivacyMap {
-                version: ZkProofVersion::V1,
-                private_columns: vec![range],
-                hash: privacy_map_hash,
-            },
-            private_column_scope: Some(private_column_scope),
+            privacy_map: privacy_map.clone(),
+            private_column_scope: Some(private_column_scope.clone()),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -390,8 +395,12 @@ mod tests {
             metadata,
             column_degree_bounds,
         };
+        let verifier_audit = ZkWitnessRandomizationVerifierAudit {
+            privacy_map,
+            private_column_scope,
+        };
 
-        (prover_config, verifier_config)
+        (prover_config, verifier_config, verifier_audit)
     }
 
     #[test]
@@ -602,7 +611,7 @@ mod tests {
             .map(|poly| poly.log_size())
             .collect_vec();
         witness_sizes[0] = RANDOMIZED_LOG_DEGREE;
-        let (zk_prover_config, zk_verifier_config) = zk_private_witness_configs(
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) = zk_private_witness_configs(
             PRIVATE_TREE_INDEX,
             TRACE_LOG_SIZE,
             RANDOMIZED_LOG_DEGREE,
@@ -656,10 +665,11 @@ mod tests {
             &witness_sizes,
             &mut channel,
         );
-        verifier.verify_values_zk(
+        verifier.verify_values_zk_with_witness_randomization_audit(
             TreeVec(sampled_points),
             proof.proof,
             &zk_verifier_config,
+            &zk_verifier_audit,
             &mut channel,
         )
     }

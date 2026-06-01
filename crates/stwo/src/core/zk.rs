@@ -1126,12 +1126,39 @@ pub struct ZkPublicMetadata {
     pub quotient_integration: ZkQuotientIntegrationProfile,
 }
 
+/// Verifier-owned witness-randomization audit inputs.
+///
+/// Query closure and rank profile are derived during verification from the
+/// verifier-constructed sample points and Fiat-Shamir FRI query positions,
+/// because those are proof-specific. This audit block carries only stable
+/// verifier policy needed to perform that dynamic rank check.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkWitnessRandomizationVerifierAudit {
+    pub privacy_map: ZkPrivacyMap,
+    pub private_column_scope: ZkPrivateColumnScope,
+}
+
 /// Verifier-owned ZK configuration. Verification trusts this configuration,
 /// not the proof's echoed metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZkVerificationConfig {
     pub metadata: ZkPublicMetadata,
     pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkWitnessRandomizationVerifierAuditError {
+    MissingAudit,
+    UnexpectedAuditForPublicOnly,
+    PrivacyMapVersionMismatch,
+    PrivacyMapHashMismatch,
+    PrivateColumnDegreeBoundsMismatch,
+    RandomizerSpaceHashMismatch,
+    InvalidTraceDomainLogSize { log_size: u32 },
+    PrivateColumnScope(ZkPrivateColumnScopeValidationError),
+    QueryClosure(ZkQueryClosureValidationError),
+    RandomizerRank(ZkRandomizerRankValidationError),
+    SampleMetadata(ZkSampleMetadataBuildError),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1708,6 +1735,97 @@ pub fn validate_zk_public_only_metadata_against_verifier_config(
     }
 
     Ok(())
+}
+
+pub fn validate_zk_witness_randomization_audit_for_verifier(
+    verifier_config: &ZkVerificationConfig,
+    audit: Option<&ZkWitnessRandomizationVerifierAudit>,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+) -> Result<(), ZkWitnessRandomizationVerifierAuditError> {
+    let metadata = &verifier_config.metadata;
+    if !zk_metadata_has_private_witness_randomization(metadata) {
+        return if audit.is_some() {
+            Err(ZkWitnessRandomizationVerifierAuditError::UnexpectedAuditForPublicOnly)
+        } else {
+            Ok(())
+        };
+    }
+
+    let audit = audit.ok_or(ZkWitnessRandomizationVerifierAuditError::MissingAudit)?;
+    if audit.privacy_map.version != metadata.version {
+        return Err(ZkWitnessRandomizationVerifierAuditError::PrivacyMapVersionMismatch);
+    }
+    if audit.privacy_map.hash != metadata.privacy_map_hash {
+        return Err(ZkWitnessRandomizationVerifierAuditError::PrivacyMapHashMismatch);
+    }
+    let mut expected_private_ranges = audit.privacy_map.private_columns.clone();
+    expected_private_ranges.sort_unstable();
+    let mut actual_private_ranges = metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .iter()
+        .map(|bound| bound.range)
+        .collect::<Vec<_>>();
+    actual_private_ranges.sort_unstable();
+    if actual_private_ranges != expected_private_ranges {
+        return Err(ZkWitnessRandomizationVerifierAuditError::PrivateColumnDegreeBoundsMismatch);
+    }
+    validate_zk_private_column_scope_for_witness_randomization(
+        &audit.privacy_map,
+        metadata.witness_randomization.private_column_scope_hash,
+        &audit.private_column_scope,
+    )
+    .map_err(ZkWitnessRandomizationVerifierAuditError::PrivateColumnScope)?;
+
+    let trace_domain = CanonicCoset::try_new(metadata.degree_profile.trace_domain_log_size)
+        .map_err(
+            |_| ZkWitnessRandomizationVerifierAuditError::InvalidTraceDomainLogSize {
+                log_size: metadata.degree_profile.trace_domain_log_size,
+            },
+        )?
+        .coset;
+    let randomizer_space_entries = metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .iter()
+        .map(|bound| ZkRandomizerSpaceEntry {
+            range: bound.range,
+            trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+            randomized_log_degree: bound.log_degree_bound,
+            randomizer_dimension: metadata.witness_randomization.h_witness,
+        })
+        .collect::<Vec<_>>();
+    if canonical_zk_randomizer_space_hash(
+        audit.private_column_scope.hash,
+        &randomizer_space_entries,
+    ) != metadata.witness_randomization.randomizer_space_hash
+    {
+        return Err(ZkWitnessRandomizationVerifierAuditError::RandomizerSpaceHashMismatch);
+    }
+    let sampled_metadata = build_zk_randomizer_matrices_from_stwo_sample_metadata(
+        trace_domain,
+        &audit.privacy_map,
+        metadata.witness_randomization.h_witness,
+        sampled_points,
+        fri_query_positions,
+        lifting_log_size,
+    )
+    .map_err(ZkWitnessRandomizationVerifierAuditError::SampleMetadata)?;
+    validate_zk_query_closure_for_witness_randomization(
+        &audit.privacy_map,
+        metadata,
+        &sampled_metadata.closure,
+    )
+    .map_err(ZkWitnessRandomizationVerifierAuditError::QueryClosure)?;
+    validate_zk_randomizer_rank_profile_for_witness_randomization(
+        &audit.privacy_map,
+        metadata,
+        &sampled_metadata.closure,
+        &sampled_metadata.rank_profile,
+    )
+    .map_err(ZkWitnessRandomizationVerifierAuditError::RandomizerRank)
 }
 
 pub fn validate_zk_witness_metadata(
@@ -3715,6 +3833,166 @@ mod tests {
                 &profile,
             ),
             Err(ZkRandomizerRankValidationError::DuplicatePrivateColumn { range })
+        );
+    }
+
+    fn verifier_witness_audit_fixture(
+        h_witness: u64,
+    ) -> (
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+        TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        Vec<usize>,
+    ) {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let trace_domain = CanonicCoset::new(3).coset;
+        let randomized_log_degree = 4;
+        let privacy_map_hash = ZkPrivacyMapHash(nonzero_hash());
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: privacy_map_hash,
+        };
+        let mut private_column_scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: [0; 32],
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+            }],
+        };
+        private_column_scope.hash = canonical_zk_private_column_scope_hash(&private_column_scope);
+        let private_degree_bound = ZkColumnDegreeBound {
+            range,
+            log_degree_bound: randomized_log_degree,
+        };
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash,
+            public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: trace_domain.log_size(),
+                h_witness,
+                h_batch: 0,
+                fri_first_layer_log_size: 4,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness,
+                randomizer_space_hash: canonical_zk_randomizer_space_hash(
+                    private_column_scope.hash,
+                    &[ZkRandomizerSpaceEntry {
+                        range,
+                        trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(
+                            trace_domain,
+                        )),
+                        randomized_log_degree,
+                        randomizer_dimension: h_witness,
+                    }],
+                ),
+                private_column_scope_hash: private_column_scope.hash,
+                private_column_degree_bounds: vec![private_degree_bound],
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch: 0,
+                fri_first_layer_log_size: 4,
+                split_derivation_hash: nonzero_hash(),
+                quotient_degree_bounds: Vec::new(),
+            },
+        };
+        let verifier_config = ZkVerificationConfig {
+            metadata,
+            column_degree_bounds: vec![private_degree_bound],
+        };
+        let audit = ZkWitnessRandomizationVerifierAudit {
+            privacy_map,
+            private_column_scope,
+        };
+        (
+            verifier_config,
+            audit,
+            TreeVec(vec![vec![vec![CirclePoint::<SecureField>::get_point(
+                9834759221,
+            )]]]),
+            vec![1],
+        )
+    }
+
+    #[test]
+    fn verifier_witness_randomization_audit_accepts_derived_rank() {
+        let (verifier_config, audit, sampled_points, fri_query_positions) =
+            verifier_witness_audit_fixture(8);
+
+        assert_eq!(
+            validate_zk_witness_randomization_audit_for_verifier(
+                &verifier_config,
+                Some(&audit),
+                &sampled_points,
+                &fri_query_positions,
+                4,
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn verifier_witness_randomization_audit_rejects_missing_audit() {
+        let (verifier_config, _audit, sampled_points, fri_query_positions) =
+            verifier_witness_audit_fixture(8);
+
+        assert_eq!(
+            validate_zk_witness_randomization_audit_for_verifier(
+                &verifier_config,
+                None,
+                &sampled_points,
+                &fri_query_positions,
+                4,
+            ),
+            Err(ZkWitnessRandomizationVerifierAuditError::MissingAudit)
+        );
+    }
+
+    #[test]
+    fn verifier_witness_randomization_audit_rejects_randomizer_space_hash_mismatch() {
+        let (mut verifier_config, audit, sampled_points, fri_query_positions) =
+            verifier_witness_audit_fixture(8);
+        verifier_config
+            .metadata
+            .witness_randomization
+            .randomizer_space_hash[0] ^= 1;
+
+        assert_eq!(
+            validate_zk_witness_randomization_audit_for_verifier(
+                &verifier_config,
+                Some(&audit),
+                &sampled_points,
+                &fri_query_positions,
+                4,
+            ),
+            Err(ZkWitnessRandomizationVerifierAuditError::RandomizerSpaceHashMismatch)
+        );
+    }
+
+    #[test]
+    fn verifier_witness_randomization_audit_rejects_insufficient_dynamic_rank_space() {
+        let (verifier_config, audit, sampled_points, fri_query_positions) =
+            verifier_witness_audit_fixture(4);
+        let range = ZkColumnRange::new(0, 0, 1);
+
+        assert_eq!(
+            validate_zk_witness_randomization_audit_for_verifier(
+                &verifier_config,
+                Some(&audit),
+                &sampled_points,
+                &fri_query_positions,
+                4,
+            ),
+            Err(ZkWitnessRandomizationVerifierAuditError::QueryClosure(
+                ZkQueryClosureValidationError::InsufficientRandomizerDimension {
+                    range,
+                    required: 5,
+                    actual: 4,
+                },
+            ))
         );
     }
 
