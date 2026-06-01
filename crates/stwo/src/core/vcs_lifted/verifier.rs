@@ -1,7 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, Vec};
+use std_shims::{vec, BTreeMap, Vec};
 use thiserror::Error;
 
 use crate::core::fields::m31::BaseField;
@@ -116,47 +116,39 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
             return Ok(());
         };
 
+        let mut first_index_by_query = BTreeMap::new();
+        for (idx, &query_position) in query_positions.iter().enumerate() {
+            first_index_by_query.entry(query_position).or_insert(idx);
+        }
+
         // Check that if some query positions are duplicated, then the corresponding queried values
-        // are the same.
-        for (i, j) in (0..query_positions.len()).tuple_windows() {
-            if query_positions[i] == query_positions[j] {
-                for col in &queried_values {
-                    assert_eq!(col[i], col[j]);
+        // are the same. Query positions are not required to be sorted after lifted projection.
+        for col in &queried_values {
+            let mut value_by_query = BTreeMap::new();
+            for (idx, &query_position) in query_positions.iter().enumerate() {
+                if let Some(previous_value) = value_by_query.insert(query_position, col[idx]) {
+                    if previous_value != col[idx] {
+                        return Err(MerkleVerificationError::RootMismatch);
+                    }
                 }
             }
         }
 
-        // Sort the queries in ascending order by column log size and deduplicate them.
-        let mut sorted_queries_iter = queried_values
+        let sorted_queried_values = queried_values
             .iter()
             .zip_eq(self.column_log_sizes.iter())
             .sorted_by_key(|(_, col_size)| *col_size)
-            .map(|(vals, _)| {
-                vals.iter()
-                    .enumerate()
-                    .dedup_by(|(idx1, _), (idx2, _)| {
-                        query_positions[*idx1] == query_positions[*idx2]
-                    })
-                    .map(|(_, val)| val)
-            })
+            .map(|(vals, _)| vals)
             .collect_vec();
 
         // Build the leaves.
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = vec![];
-        for pos in query_positions.iter().dedup() {
-            let row: Vec<_> = sorted_queries_iter
-                .iter_mut()
-                .map(|col_iter| *col_iter.next().unwrap())
-                .collect();
+        for (pos, &idx) in &first_index_by_query {
+            let row: Vec<_> = sorted_queried_values.iter().map(|col| col[idx]).collect();
             let mut hasher = H::default();
             hasher.update_leaf(&row);
             prev_layer_hashes.push((*pos, hasher.finalize()));
         }
-
-        // Check that all queried values have been consumed.
-        assert!(sorted_queries_iter
-            .iter_mut()
-            .all(|cols_iter| cols_iter.next().is_none()));
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
         // Verify inner layers
@@ -315,6 +307,34 @@ mod tests {
 
         // Use queries with a duplicate position.
         let queries = vec![3, 3, 7];
+        let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
+        let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
+        verifier
+            .verify(&queries, values, decommitment.decommitment)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_merkle_unsorted_duplicate_query_positions() {
+        let mut rng = SmallRng::seed_from_u64(43);
+        let log_sizes = vec![3, 4, 3];
+        let cols: Vec<Vec<BaseField>> = log_sizes
+            .iter()
+            .map(|&log_size| {
+                (0..(1 << log_size))
+                    .map(|_| BaseField::from(rng.gen_range(1..(1u32 << 30))))
+                    .collect()
+            })
+            .collect();
+        let max_log_size = *log_sizes.iter().max().unwrap();
+
+        let merkle = MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(
+            cols.iter().collect(),
+            max_log_size,
+            0,
+        );
+
+        let queries = vec![3, 1, 3, 0];
         let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
         let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
         verifier

@@ -2976,19 +2976,92 @@ pub fn plan_zk_oods_sample_points(
     max_log_degree_bound: u32,
     exclusion_set: &ZkOodsExclusionSet,
 ) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
+    let semantic_step_log_sizes = TreeVec(
+        mask_offsets
+            .iter()
+            .map(|tree| vec![max_log_degree_bound; tree.len()])
+            .collect(),
+    );
+    plan_zk_oods_sample_points_with_semantic_step_log_sizes(
+        deepest_point,
+        mask_offsets,
+        &semantic_step_log_sizes,
+        committed_column_log_sizes,
+        lifting_log_size,
+        exclusion_set,
+    )
+}
+
+/// Derives semantic AIR sample points and PCS preimage sample points using an
+/// explicit semantic offset-step domain for each column.
+///
+/// For a column with committed log size `c`, `delta = lifting_log_size - c`.
+/// The returned PCS point `p` satisfies `double^delta(p) == semantic_point`.
+/// The semantic point is translated from the semantic OODS point by the
+/// column's own AIR offset-step domain; this is required for AIRs whose
+/// constraint degree expansion is greater than one.
+pub fn plan_zk_oods_sample_points_with_semantic_step_log_sizes(
+    deepest_point: CirclePoint<SecureField>,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_step_log_sizes: &TreeVec<ColumnVec<u32>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
+    let semantic_base_doublings = TreeVec(
+        mask_offsets
+            .iter()
+            .map(|tree| vec![0; tree.len()])
+            .collect(),
+    );
+    plan_zk_oods_sample_points_with_semantic_domains(
+        deepest_point,
+        mask_offsets,
+        semantic_step_log_sizes,
+        &semantic_base_doublings,
+        committed_column_log_sizes,
+        lifting_log_size,
+        exclusion_set,
+    )
+}
+
+pub fn plan_zk_oods_sample_points_with_semantic_domains(
+    deepest_point: CirclePoint<SecureField>,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_step_log_sizes: &TreeVec<ColumnVec<u32>>,
+    semantic_base_doublings: &TreeVec<ColumnVec<u32>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
     if mask_offsets.len() != committed_column_log_sizes.len() {
         return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
             expected: committed_column_log_sizes.len(),
             actual: mask_offsets.len(),
         });
     }
+    if mask_offsets.len() != semantic_step_log_sizes.len() {
+        return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
+            expected: semantic_step_log_sizes.len(),
+            actual: mask_offsets.len(),
+        });
+    }
+    if mask_offsets.len() != semantic_base_doublings.len() {
+        return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
+            expected: semantic_base_doublings.len(),
+            actual: mask_offsets.len(),
+        });
+    }
 
     let mut max_delta = 0;
     let mut column_deltas = TreeVec(Vec::with_capacity(mask_offsets.len()));
-    for (tree_index, (offset_tree, log_size_tree)) in mask_offsets
-        .iter()
-        .zip(committed_column_log_sizes.iter())
-        .enumerate()
+    for (tree_index, (((offset_tree, semantic_step_tree), semantic_base_tree), log_size_tree)) in
+        mask_offsets
+            .iter()
+            .zip(semantic_step_log_sizes.iter())
+            .zip(semantic_base_doublings.iter())
+            .zip(committed_column_log_sizes.iter())
+            .enumerate()
     {
         if offset_tree.len() != log_size_tree.len() {
             return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
@@ -2997,9 +3070,29 @@ pub fn plan_zk_oods_sample_points(
                 actual: offset_tree.len(),
             });
         }
+        if offset_tree.len() != semantic_step_tree.len() {
+            return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
+                tree_index,
+                expected: semantic_step_tree.len(),
+                actual: offset_tree.len(),
+            });
+        }
+        if offset_tree.len() != semantic_base_tree.len() {
+            return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
+                tree_index,
+                expected: semantic_base_tree.len(),
+                actual: offset_tree.len(),
+            });
+        }
 
         let mut tree_deltas = Vec::with_capacity(offset_tree.len());
-        for (column_index, &column_log_size) in log_size_tree.iter().enumerate() {
+        for (column_index, ((column_offsets, &column_log_size), &semantic_base_doubling)) in
+            offset_tree
+                .iter()
+                .zip(log_size_tree.iter())
+                .zip(semantic_base_tree.iter())
+                .enumerate()
+        {
             let delta = lifting_log_size.checked_sub(column_log_size).ok_or(
                 ZkOodsSamplePointPlanError::ColumnLogSizeAboveLifting {
                     tree_index,
@@ -3016,7 +3109,9 @@ pub fn plan_zk_oods_sample_points(
                     max: ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA,
                 });
             }
-            max_delta = max_delta.max(delta);
+            if !column_offsets.is_empty() {
+                max_delta = max_delta.max(delta.saturating_sub(semantic_base_doubling));
+            }
             tree_deltas.push(delta);
         }
         column_deltas.push(tree_deltas);
@@ -3030,31 +3125,58 @@ pub fn plan_zk_oods_sample_points(
         return Err(ZkOodsSamplePointPlanError::ForbiddenSemanticOodsPoint);
     }
 
-    let semantic_step = CanonicCoset::try_new(max_log_degree_bound)
-        .map_err(
-            |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
-                log_size: max_log_degree_bound,
-            },
-        )?
-        .step();
     let mut semantic_sample_points = TreeVec(Vec::with_capacity(mask_offsets.len()));
     let mut pcs_sample_points = TreeVec(Vec::with_capacity(mask_offsets.len()));
 
-    for (tree_index, (offset_tree, delta_tree)) in
-        mask_offsets.iter().zip(column_deltas.iter()).enumerate()
+    for (tree_index, (((offset_tree, semantic_step_tree), semantic_base_tree), delta_tree)) in
+        mask_offsets
+            .iter()
+            .zip(semantic_step_log_sizes.iter())
+            .zip(semantic_base_doublings.iter())
+            .zip(column_deltas.iter())
+            .enumerate()
     {
         let mut semantic_tree = Vec::with_capacity(offset_tree.len());
         let mut pcs_tree = Vec::with_capacity(offset_tree.len());
-        for (column_index, (column_offsets, &delta)) in
-            offset_tree.iter().zip(delta_tree.iter()).enumerate()
+        for (
+            column_index,
+            (((column_offsets, &semantic_step_log_size), &semantic_base_doubling), &delta),
+        ) in offset_tree
+            .iter()
+            .zip(semantic_step_tree.iter())
+            .zip(semantic_base_tree.iter())
+            .zip(delta_tree.iter())
+            .enumerate()
         {
-            let pcs_base_doubles = max_delta.checked_sub(delta).ok_or(
-                ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow { max_delta, delta },
-            )?;
-            let pcs_base = deepest_point.repeated_double(pcs_base_doubles);
-            let pcs_step_log_size = max_log_degree_bound.checked_add(delta).ok_or(
+            if column_offsets.is_empty() {
+                semantic_tree.push(Vec::new());
+                pcs_tree.push(Vec::new());
+                continue;
+            }
+            let semantic_base_doubles = max_delta.checked_add(semantic_base_doubling).ok_or(
                 ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
-                    max_log_degree_bound,
+                    max_log_degree_bound: semantic_base_doubling,
+                    delta: max_delta,
+                },
+            )?;
+            let pcs_base_doubles = semantic_base_doubles.checked_sub(delta).ok_or(
+                ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow {
+                    max_delta: semantic_base_doubles,
+                    delta,
+                },
+            )?;
+            let semantic_base = deepest_point.repeated_double(semantic_base_doubles);
+            let pcs_base = deepest_point.repeated_double(pcs_base_doubles);
+            let semantic_step = CanonicCoset::try_new(semantic_step_log_size)
+                .map_err(
+                    |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                        log_size: semantic_step_log_size,
+                    },
+                )?
+                .step();
+            let pcs_step_log_size = semantic_step_log_size.checked_add(delta).ok_or(
+                ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                    max_log_degree_bound: semantic_step_log_size,
                     delta,
                 },
             )?;
@@ -3069,8 +3191,7 @@ pub fn plan_zk_oods_sample_points(
             let mut semantic_column = Vec::with_capacity(column_offsets.len());
             let mut pcs_column = Vec::with_capacity(column_offsets.len());
             for (sample_index, &offset) in column_offsets.iter().enumerate() {
-                let semantic_point =
-                    semantic_oods_point + semantic_step.mul_signed(offset).into_ef();
+                let semantic_point = semantic_base + semantic_step.mul_signed(offset).into_ef();
                 let pcs_point = pcs_base + pcs_step.mul_signed(offset).into_ef();
 
                 if !exclusion_set.accepts(semantic_point) {
@@ -3130,6 +3251,67 @@ pub fn draw_zk_oods_sample_point_plan<C: Channel>(
             committed_column_log_sizes,
             lifting_log_size,
             max_log_degree_bound,
+            exclusion_set,
+        ) {
+            Ok(plan) => return Ok(plan),
+            Err(error) if error.is_sampling_rejection() => {}
+            Err(error) => return Err(ZkOodsSamplePointPlanningError::Plan(error)),
+        }
+    }
+
+    Err(ZkOodsSamplePointPlanningError::Sampling(
+        ZkOodsSamplingError::ExhaustedAttempts {
+            attempts: max_attempts,
+        },
+    ))
+}
+
+pub fn draw_zk_oods_sample_point_plan_with_semantic_step_log_sizes<C: Channel>(
+    channel: &mut C,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_step_log_sizes: &TreeVec<ColumnVec<u32>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanningError> {
+    let semantic_base_doublings = TreeVec(
+        mask_offsets
+            .iter()
+            .map(|tree| vec![0; tree.len()])
+            .collect(),
+    );
+    draw_zk_oods_sample_point_plan_with_semantic_domains(
+        channel,
+        mask_offsets,
+        semantic_step_log_sizes,
+        &semantic_base_doublings,
+        committed_column_log_sizes,
+        lifting_log_size,
+        exclusion_set,
+        max_attempts,
+    )
+}
+
+pub fn draw_zk_oods_sample_point_plan_with_semantic_domains<C: Channel>(
+    channel: &mut C,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_step_log_sizes: &TreeVec<ColumnVec<u32>>,
+    semantic_base_doublings: &TreeVec<ColumnVec<u32>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanningError> {
+    for _ in 0..max_attempts {
+        let deepest_point = CirclePoint::<SecureField>::get_random_point(channel);
+        match plan_zk_oods_sample_points_with_semantic_domains(
+            deepest_point,
+            mask_offsets,
+            semantic_step_log_sizes,
+            semantic_base_doublings,
+            committed_column_log_sizes,
+            lifting_log_size,
             exclusion_set,
         ) {
             Ok(plan) => return Ok(plan),
@@ -4287,6 +4469,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn zk_oods_sample_point_plan_uses_column_semantic_step_domains() {
+        let deepest_point = CirclePoint::<SecureField>::get_point(19);
+        let mask_offsets = TreeVec(vec![vec![vec![3]]]);
+        let semantic_step_log_sizes = TreeVec(vec![vec![5]]);
+        let committed_log_sizes = TreeVec(vec![vec![7]]);
+        let plan = plan_zk_oods_sample_points_with_semantic_step_log_sizes(
+            deepest_point,
+            &mask_offsets,
+            &semantic_step_log_sizes,
+            &committed_log_sizes,
+            9,
+            &ZkOodsExclusionSet {
+                forbidden_cosets: vec![],
+                reject_line_degeneracy: false,
+            },
+        )
+        .unwrap();
+
+        let semantic_oods_point = deepest_point.repeated_double(2);
+        let expected_semantic_point =
+            semantic_oods_point + CanonicCoset::new(5).step().mul_signed(3).into_ef();
+
+        assert_eq!(plan.semantic_oods_point, semantic_oods_point);
+        assert_eq!(
+            plan.semantic_sample_points[0][0][0],
+            expected_semantic_point
+        );
+        assert_eq!(
+            plan.pcs_sample_points[0][0][0].repeated_double(2),
+            expected_semantic_point
+        );
     }
 
     #[test]

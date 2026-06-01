@@ -1,5 +1,6 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
+use std_shims::BTreeSet;
 use tracing::{span, Level};
 
 use super::ops::MerkleOpsLifted;
@@ -115,8 +116,9 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             queried_values.push(res);
         }
 
-        let mut prev_layer_queries = query_positions.to_vec();
-        prev_layer_queries.dedup();
+        let mut prev_layer_queries = BTreeSet::from_iter(query_positions.iter().copied())
+            .into_iter()
+            .collect_vec();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
         // layer available for the computation.

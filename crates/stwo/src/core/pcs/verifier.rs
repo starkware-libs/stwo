@@ -123,25 +123,25 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         channel.mix_u64(proof.proof_of_work);
         // Get FRI query positions.
         let query_positions = fri_verifier.sample_query_positions(channel);
-        let preprocessed_query_positions = prepare_preprocessed_query_positions(
-            &query_positions,
-            lifting_log_size,
-            self.trees[0].height,
-        );
-
-        // Build the query positions tree: the preprocessed tree needs a different treatment than
-        // the other trees.
+        let query_positions_by_tree = self
+            .trees
+            .iter()
+            .map(|tree| {
+                if tree.height == lifting_log_size {
+                    query_positions.clone()
+                } else {
+                    prepare_preprocessed_query_positions(
+                        &query_positions,
+                        lifting_log_size,
+                        tree.height,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
         let query_positions_tree = TreeVec::new(
-            self.trees
+            query_positions_by_tree
                 .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    if i == 0 {
-                        preprocessed_query_positions.as_slice()
-                    } else {
-                        query_positions.as_slice()
-                    }
-                })
+                .map(Vec::as_slice)
                 .collect::<Vec<_>>(),
         );
         // Verify decommitments.
@@ -375,17 +375,25 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             )));
         }
 
+        let query_positions_by_tree = self
+            .trees
+            .iter()
+            .map(|tree| {
+                if tree.height == lifting_log_size {
+                    query_positions.clone()
+                } else {
+                    prepare_preprocessed_query_positions(
+                        &query_positions,
+                        lifting_log_size,
+                        tree.height,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
         let query_positions_tree = TreeVec::new(
-            self.trees
+            query_positions_by_tree
                 .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    if i == 0 {
-                        preprocessed_query_positions.as_slice()
-                    } else {
-                        query_positions.as_slice()
-                    }
-                })
+                .map(Vec::as_slice)
                 .collect::<Vec<_>>(),
         );
         if proof.decommitments.len() != self.trees.len()

@@ -486,7 +486,6 @@ mod tests {
         );
     }
 
-    #[ignore = "AIRs with constraint degree >= 2 are not supported yet in the lifted protocol."]
     #[test_log::test]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with

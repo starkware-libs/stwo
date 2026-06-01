@@ -33,11 +33,16 @@ impl Components<'_> {
         max_log_degree_bound: u32,
         include_all_preprocessed_columns: bool,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let mut mask_points = TreeVec::concat_cols(
-            self.components
-                .iter()
-                .map(|component| component.mask_points(point, max_log_degree_bound)),
-        );
+        let composition_log_degree_bound = self.composition_log_degree_bound();
+        let mut mask_points = TreeVec::concat_cols(self.components.iter().map(|component| {
+            let component_lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            let component_point = point.repeated_double(component_lift);
+            component.mask_points(component_point, max_log_degree_bound)
+        }));
 
         let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
         if include_all_preprocessed_columns {
@@ -80,6 +85,55 @@ impl Components<'_> {
         Some(mask_offsets)
     }
 
+    pub fn semantic_step_log_sizes_and_lifts(
+        &self,
+        include_all_preprocessed_columns: bool,
+    ) -> (TreeVec<ColumnVec<u32>>, TreeVec<ColumnVec<u32>>) {
+        let composition_log_degree_bound = self.composition_log_degree_bound();
+        let mut semantic_step_log_sizes = TreeVec::concat_cols(
+            self.components
+                .iter()
+                .map(|component| component.trace_log_degree_bounds()),
+        );
+        let mut semantic_base_lifts =
+            TreeVec::concat_cols(self.components.iter().map(|component| {
+                let lift = if component.n_constraints() == 0 {
+                    0
+                } else {
+                    composition_log_degree_bound - component.max_constraint_log_degree_bound()
+                };
+                component.trace_log_degree_bounds().map_cols(|_| lift)
+            }));
+
+        let preprocessed_step_log_sizes = &mut semantic_step_log_sizes[PREPROCESSED_TRACE_IDX];
+        let preprocessed_base_lifts = &mut semantic_base_lifts[PREPROCESSED_TRACE_IDX];
+        *preprocessed_step_log_sizes = vec![0; self.n_preprocessed_columns];
+        *preprocessed_base_lifts = vec![0; self.n_preprocessed_columns];
+        if include_all_preprocessed_columns {
+            return (semantic_step_log_sizes, semantic_base_lifts);
+        }
+
+        for component in &self.components {
+            let component_bounds = component.trace_log_degree_bounds();
+            let lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            for (local_index, column_index) in component
+                .preprocessed_column_indices()
+                .into_iter()
+                .enumerate()
+            {
+                preprocessed_step_log_sizes[column_index] =
+                    component_bounds[PREPROCESSED_TRACE_IDX][local_index];
+                preprocessed_base_lifts[column_index] = lift;
+            }
+        }
+
+        (semantic_step_log_sizes, semantic_base_lifts)
+    }
+
     pub fn eval_composition_polynomial_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -87,10 +141,17 @@ impl Components<'_> {
         random_coeff: SecureField,
         max_log_degree_bound: u32,
     ) -> SecureField {
+        let composition_log_degree_bound = self.composition_log_degree_bound();
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         for component in &self.components {
+            let component_lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            let component_point = point.repeated_double(component_lift);
             component.evaluate_constraint_quotients_at_point(
-                point,
+                component_point,
                 mask_values,
                 &mut evaluation_accumulator,
                 max_log_degree_bound,
@@ -106,10 +167,17 @@ impl Components<'_> {
         random_coeff: SecureField,
         max_log_degree_bound: u32,
     ) -> SecureField {
+        let composition_log_degree_bound = self.composition_log_degree_bound();
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         for component in &self.components {
+            let component_lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            let component_point = point.repeated_double(component_lift);
             component.evaluate_zk_constraint_quotients_at_point(
-                point,
+                component_point,
                 mask_values,
                 &mut evaluation_accumulator,
                 max_log_degree_bound,

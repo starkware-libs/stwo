@@ -32,6 +32,7 @@ const CHUNK_SIZE: usize = 1;
 struct ConstraintQuotientInputs<'a, B: Backend> {
     eval_domain: CircleDomain,
     trace_domain: CanonicCoset,
+    denominator_log_size: u32,
     trace: TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>>,
     denom_inv: Vec<BaseField>,
 }
@@ -117,7 +118,11 @@ fn get_constraint_quotient_inputs_with_log_degree_bound<'a, E: FrameworkEval, B:
             CanonicCoset::new(max_constraint_log_degree_bound).circle_domain()
         }
     };
-    if eval_domain.log_size() < trace_domain.log_size() {
+    let denominator_log_size = trace_domain.log_size();
+    let denominator_domain = CanonicCoset::new(denominator_log_size);
+    if eval_domain.log_size() < trace_domain.log_size()
+        || eval_domain.log_size() < denominator_log_size
+    {
         return Err(ProvingError::InvalidZkDegreeGeometry);
     }
     let explicit_bound_differs =
@@ -137,19 +142,22 @@ fn get_constraint_quotient_inputs_with_log_degree_bound<'a, E: FrameworkEval, B:
     }
     let trace = get_trace_columns(component_polys, eval_domain, mode);
 
-    // Denom inverses.
+    // Denominator inverses. Framework AIR constraints are trace-domain
+    // constraints; higher constraint-degree bounds increase the quotient degree
+    // budget but do not change the vanishing domain being divided out.
     let log_expand = eval_domain
         .log_size()
-        .checked_sub(trace_domain.log_size())
+        .checked_sub(denominator_log_size)
         .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
     let mut denom_inv = (0..1 << log_expand)
-        .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+        .map(|i| coset_vanishing(denominator_domain.coset(), eval_domain.at(i)).inverse())
         .collect_vec();
     bit_reverse(&mut denom_inv);
 
     Ok(ConstraintQuotientInputs {
         eval_domain,
         trace_domain,
+        denominator_log_size,
         trace,
         denom_inv,
     })
@@ -182,6 +190,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let ConstraintQuotientInputs {
             eval_domain,
             trace_domain,
+            denominator_log_size,
             trace,
             denom_inv,
         } = get_constraint_quotient_inputs_with_log_degree_bound(
@@ -203,7 +212,9 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         .entered();
 
         // Fall back to CPU if the trace is too small.
-        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
+        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS
+            || denominator_log_size < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS
+        {
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.to_cpu());
             let trace_cols = trace_cols.as_cols_ref();
             *accum.col = SecureColumnByCoords::from_cpu(accumulate_pointwise_cpu(
@@ -211,6 +222,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 trace_cols,
                 eval_domain.log_size(),
                 trace_domain.log_size(),
+                denominator_log_size,
                 denom_inv,
                 &accum.random_coeff_powers,
                 &accum.col.to_cpu(),
@@ -246,7 +258,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &trace_cols,
                     vec_row,
                     &accum.random_coeff_powers,
-                    trace_domain.log_size(),
+                    denominator_log_size,
                     eval_domain.log_size(),
                     self_eval.log_size(),
                     self_claimed_sum,
@@ -257,7 +269,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 unsafe {
                     let row_denom_inv = VeryPackedBaseField::broadcast(
                         denom_inv[vec_row
-                            >> (trace_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)],
+                            >> (denominator_log_size - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)],
                     );
                     chunk.set_packed(
                         idx_in_chunk,
@@ -296,7 +308,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
 
         let ConstraintQuotientInputs {
             eval_domain,
-            trace_domain,
+            trace_domain: _,
+            denominator_log_size,
             trace,
             denom_inv,
         } = get_constraint_quotient_inputs_with_log_degree_bound(
@@ -322,7 +335,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             self,
             trace_cols,
             eval_domain.log_size(),
-            trace_domain.log_size(),
+            denominator_log_size,
+            denominator_log_size,
             denom_inv,
             &accum.random_coeff_powers,
             accum.col,
@@ -347,7 +361,8 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
     trace_cols: TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
     eval_log_size: u32,
-    trace_log_size: u32,
+    mask_domain_log_size: u32,
+    denominator_log_size: u32,
     denom_inv: Vec<BaseField>,
     random_coeff_powers: &[SecureField],
     accum: &SecureColumnByCoords<CpuBackend>,
@@ -359,7 +374,7 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
             &trace_cols,
             row,
             random_coeff_powers,
-            trace_log_size,
+            mask_domain_log_size,
             eval_log_size,
             component.eval.log_size(),
             component.claimed_sum,
@@ -367,7 +382,7 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
         let row_res = component.eval.evaluate(eval).row_res;
 
         // Finalize row.
-        let row_denom_inv = denom_inv[row >> trace_log_size];
+        let row_denom_inv = denom_inv[row >> denominator_log_size];
         res.set(row, accum.at(row) + row_res * row_denom_inv)
     }
     res

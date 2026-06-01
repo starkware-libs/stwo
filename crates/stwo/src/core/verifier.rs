@@ -11,15 +11,15 @@ use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
-    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_sample_point_plan,
-    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
-    validate_zk_committed_column_log_sizes,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point,
+    draw_zk_oods_sample_point_plan_with_semantic_domains, mix_zk_public_metadata,
+    mix_zk_quotient_split_mask_profile, validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_public_metadata_against_verifier_config,
     validate_zk_quotient_split_mask_query_budget, validate_zk_sample_points_outside_exclusion_set,
     validate_zk_sampled_values_shape, zk_metadata_requires_private_stark_activation,
     zk_oods_exclusion_set, zk_trace_domain_log_size_from_column_bounds,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointPlanningError,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsExclusionSet, ZkOodsSamplePointPlanningError,
     ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
     ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
@@ -85,8 +85,7 @@ pub fn verify_ex<MC: MerkleChannel>(
 
     // The max degree of a committed polynomial. If `lifting_log_size` is not set,
     // the largest degree is attained by the splits of the composition polynomial.
-    let max_log_degree_bound =
-        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+    let max_log_degree_bound = split_composition_log_degree_bound;
 
     let random_coeff = channel.draw_secure_felt();
 
@@ -97,16 +96,59 @@ pub fn verify_ex<MC: MerkleChannel>(
         channel,
     );
 
-    // Draw OODS point.
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(
-        oods_point,
-        max_log_degree_bound,
-        include_all_preprocessed_columns,
-    );
-    // Add the composition polynomial mask points.
-    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+    let committed_column_log_sizes = commitment_scheme
+        .trees
+        .as_ref()
+        .map(|tree| tree.column_log_sizes.clone());
+    let requires_lifted_sample_planning = committed_column_log_sizes
+        .iter()
+        .flatten()
+        .any(|&column_log_size| column_log_size < lifting_log_size);
+    let (oods_point, sample_points) = if requires_lifted_sample_planning {
+        let mut mask_offsets = components
+            .mask_offsets(include_all_preprocessed_columns)
+            .ok_or_else(|| {
+                VerificationError::InvalidStructure(String::from(
+                    "Lifted component does not expose structured mask offsets",
+                ))
+            })?;
+        mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
+
+        let (mut semantic_step_log_sizes, mut semantic_base_doublings) =
+            components.semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
+        semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
+        semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+
+        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
+            channel,
+            &mask_offsets,
+            &semantic_step_log_sizes,
+            &semantic_base_doublings,
+            &committed_column_log_sizes,
+            lifting_log_size,
+            &ZkOodsExclusionSet {
+                forbidden_cosets: vec![],
+                reject_line_degeneracy: false,
+            },
+            1,
+        )
+        .map_err(VerificationError::ZkOodsSamplePointPlan)?;
+
+        (
+            sample_point_plan.semantic_oods_point,
+            sample_point_plan.pcs_sample_points,
+        )
+    } else {
+        let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+        let mut sample_points = components.mask_points(
+            oods_point,
+            max_log_degree_bound,
+            include_all_preprocessed_columns,
+        );
+        sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+
+        (oods_point, sample_points)
+    };
 
     let sample_points_by_column = sample_points.as_cols_ref().flatten();
     tracing::info!("Sampling {} columns.", sample_points_by_column.len());
@@ -364,7 +406,17 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     })?;
 
     let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
-    let (oods_point, sample_points) = if requires_private_stark_activation {
+    let zk_committed_column_log_sizes = commitment_scheme
+        .trees
+        .as_ref()
+        .map(|tree| tree.column_log_sizes.clone());
+    let requires_lifted_sample_planning = zk_committed_column_log_sizes
+        .iter()
+        .flatten()
+        .any(|&column_log_size| column_log_size < lifting_log_size);
+    let (oods_point, sample_points) = if requires_private_stark_activation
+        || requires_lifted_sample_planning
+    {
         let mut mask_offsets = components
             .mask_offsets(include_all_preprocessed_columns)
             .ok_or_else(|| {
@@ -374,16 +426,18 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
             })?;
         mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let zk_committed_column_log_sizes = commitment_scheme
-            .trees
-            .as_ref()
-            .map(|tree| tree.column_log_sizes.clone());
-        let sample_point_plan = draw_zk_oods_sample_point_plan(
+        let (mut semantic_step_log_sizes, mut semantic_base_doublings) =
+            components.semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
+        semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
+        semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+
+        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
             channel,
             &mask_offsets,
+            &semantic_step_log_sizes,
+            &semantic_base_doublings,
             &zk_committed_column_log_sizes,
             lifting_log_size,
-            max_log_degree_bound,
             &oods_exclusion_set,
             64,
         )

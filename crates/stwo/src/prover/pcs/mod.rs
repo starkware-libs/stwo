@@ -271,22 +271,26 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
         // Build the query position tree.
-        let preprocessed_query_positions = prepare_preprocessed_query_positions(
-            &query_positions,
-            lifting_log_size,
-            self.trees[0].commitment.layers.len() as u32 - 1,
-        );
+        let query_positions_by_tree = self
+            .trees
+            .iter()
+            .map(|tree| {
+                let tree_log_size = tree.commitment.layers.len() as u32 - 1;
+                if tree_log_size == lifting_log_size {
+                    query_positions.clone()
+                } else {
+                    prepare_preprocessed_query_positions(
+                        &query_positions,
+                        lifting_log_size,
+                        tree_log_size,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
         let query_positions_tree = TreeVec::new(
-            self.trees
+            query_positions_by_tree
                 .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    if i == 0 {
-                        preprocessed_query_positions.as_slice()
-                    } else {
-                        query_positions.as_slice()
-                    }
-                })
+                .map(Vec::as_slice)
                 .collect::<Vec<_>>(),
         );
         let commitments = self.roots();
@@ -526,17 +530,26 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             fri_batch_mask_fri_proof.proof.first_layer.commitment,
             "FRI batch mask opening commitment must match its low-degree FRI commitment"
         );
+        let query_positions_by_tree = self
+            .trees
+            .iter()
+            .map(|tree| {
+                let tree_log_size = tree.commitment.layers.len() as u32 - 1;
+                if tree_log_size == lifting_log_size {
+                    query_positions.clone()
+                } else {
+                    prepare_preprocessed_query_positions(
+                        &query_positions,
+                        lifting_log_size,
+                        tree_log_size,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
         let query_positions_tree = TreeVec::new(
-            self.trees
+            query_positions_by_tree
                 .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    if i == 0 {
-                        preprocessed_query_positions.as_slice()
-                    } else {
-                        query_positions.as_slice()
-                    }
-                })
+                .map(Vec::as_slice)
                 .collect::<Vec<_>>(),
         );
         let commitments = self.roots();

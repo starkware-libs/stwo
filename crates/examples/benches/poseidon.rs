@@ -3,10 +3,10 @@ use stwo::core::pcs::PcsConfig;
 use stwo_examples::poseidon::prove_poseidon;
 
 pub fn simd_poseidon(c: &mut Criterion) {
-    if std::env::var_os("STWO_RUN_UNSUPPORTED_POSEIDON_PROOF_BENCH").is_none() {
+    if std::env::var_os("STWO_RUN_POSEIDON_PROOF_BENCH").is_none() {
         eprintln!(
-            "skipping unsupported Poseidon proof bench; set \
-             STWO_RUN_UNSUPPORTED_POSEIDON_PROOF_BENCH=1 to run it explicitly"
+            "skipping Poseidon proof bench by default; set \
+             STWO_RUN_POSEIDON_PROOF_BENCH=1 to run it explicitly"
         );
         return;
     }
