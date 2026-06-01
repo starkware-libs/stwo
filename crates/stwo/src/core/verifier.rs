@@ -11,14 +11,17 @@ use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
-    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_point_with_preimage,
+    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
+    validate_zk_committed_column_log_sizes,
+    validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_public_metadata_against_verifier_config,
-    validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
-    zk_metadata_requires_private_stark_activation, zk_oods_exclusion_set,
-    zk_trace_domain_log_size_from_column_bounds, ZkCommittedColumnLogSizeValidationError,
-    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
-    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    validate_zk_quotient_split_mask_query_budget, validate_zk_sample_points_outside_exclusion_set,
+    validate_zk_sampled_values_shape, zk_metadata_requires_private_stark_activation,
+    zk_oods_exclusion_set, zk_trace_domain_log_size_from_column_bounds,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -224,12 +227,30 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
             ))
         },
     )?;
-
-    if zk_metadata_requires_private_stark_activation(&zk_config.metadata) {
-        let _ = witness_randomization_audit;
-        return Err(VerificationError::InvalidStructure(String::from(
-            "ZK private witness STARK verification is blocked until quotient/split rank closure lands",
-        )));
+    let requires_private_stark_activation =
+        zk_metadata_requires_private_stark_activation(&zk_config.metadata);
+    if requires_private_stark_activation {
+        if commitment_scheme.config.lifting_log_size
+            != Some(zk_config.metadata.degree_profile.fri_first_layer_log_size)
+        {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK private witness verification requires PCS lifting at the ZK FRI first layer",
+            )));
+        }
+        let profile = zk_config.quotient_split_mask_profile.ok_or_else(|| {
+            VerificationError::InvalidStructure(String::from(
+                "Missing ZK quotient split mask profile",
+            ))
+        })?;
+        validate_zk_quotient_split_mask_query_budget(
+            profile,
+            commitment_scheme.config.fri_config.n_queries,
+        )
+        .map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "ZK quotient split mask query budget is too small",
+            ))
+        })?;
     }
 
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
@@ -260,7 +281,12 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
         commitment_scheme.config.fri_config.log_blowup_factor,
     )
     .map_err(VerificationError::ZkCommittedColumnLogSizes)?;
-    let split_composition_log_degree_bound = zk_degree_profile.split_composition_log_degree_bound;
+    let split_composition_log_degree_bound = zk_degree_profile
+        .split_composition_log_degree_bounds
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(zk_degree_profile.split_composition_log_degree_bound);
     tracing::info!(
         "ZK split composition polynomial log degree bound: {}",
         split_composition_log_degree_bound
@@ -303,6 +329,18 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
         &zk_config.metadata,
         &zk_config.column_degree_bounds,
     );
+    if requires_private_stark_activation {
+        let profile = zk_config.quotient_split_mask_profile.ok_or_else(|| {
+            VerificationError::InvalidStructure(String::from(
+                "Missing ZK quotient split mask profile",
+            ))
+        })?;
+        mix_zk_quotient_split_mask_profile(channel, profile).map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Invalid ZK quotient split mask profile",
+            ))
+        })?;
+    }
     let random_coeff = channel.draw_secure_felt();
 
     let Some(&composition_commitment) = proof.0.randomized_pcs_proof.commitments.last() else {
@@ -312,14 +350,13 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     };
     commitment_scheme.commit(
         composition_commitment,
-        &[zk_degree_profile.split_composition_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
+        &zk_degree_profile.split_composition_log_degree_bounds,
         channel,
     );
     let composition_column_log_sizes = &commitment_scheme.trees.last().unwrap().column_log_sizes;
-    validate_zk_composition_column_log_sizes(
+    validate_zk_composition_column_log_sizes_against_bounds(
         composition_column_log_sizes,
-        2 * SECURE_EXTENSION_DEGREE,
-        zk_degree_profile.split_composition_log_degree_bound,
+        &zk_degree_profile.split_composition_log_degree_bounds,
         commitment_scheme.config.fri_config.log_blowup_factor,
     )
     .map_err(|_| {
@@ -327,16 +364,33 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     })?;
 
     let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
-    let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
-        VerificationError::InvalidStructure(String::from("Could not sample a valid ZK OODS point"))
-    })?;
+    let (oods_point, composition_right_sample_point) = if requires_private_stark_activation {
+        draw_zk_oods_point_with_preimage(channel, &oods_exclusion_set, 64).map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Could not sample a valid ZK OODS point",
+            ))
+        })?
+    } else {
+        let point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Could not sample a valid ZK OODS point",
+            ))
+        })?;
+        (point, point)
+    };
 
     let mut sample_points = components.mask_points(
         oods_point,
         max_log_degree_bound,
         include_all_preprocessed_columns,
     );
-    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+    let mut composition_sample_points = vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE];
+    if requires_private_stark_activation {
+        for column_points in &mut composition_sample_points[SECURE_EXTENSION_DEGREE..] {
+            *column_points = vec![composition_right_sample_point];
+        }
+    }
+    sample_points.push(composition_sample_points);
 
     let sample_points_by_column = sample_points.as_cols_ref().flatten();
     tracing::info!("Sampling {} ZK columns.", sample_points_by_column.len());
@@ -356,7 +410,7 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
         })?;
 
     let composition_oods_eval = proof
-        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
+        .extract_composition_oods_eval(oods_point, zk_degree_profile.composition_log_degree_bound)
         .ok_or(VerificationError::InvalidStructure(
             std_shims::ToString::to_string(&"Unexpected ZK sampled_values structure"),
         ))?;

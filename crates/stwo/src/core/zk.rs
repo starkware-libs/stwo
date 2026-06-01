@@ -1460,6 +1460,10 @@ pub fn expected_zk_column_degree_bounds(metadata: &ZkPublicMetadata) -> Vec<ZkCo
 pub enum ZkQuotientSplitMaskProfileBindingError {
     Profile(ZkQuotientSplitMaskProfileValidationError),
     MissingQuotientDegreeBounds,
+    SplitMaskEntropyBelowFullDimension {
+        required: u64,
+        actual: u64,
+    },
     UnexpectedQuotientSplitDegreeBounds {
         expected_range: ZkColumnRange,
         actual_range: Option<ZkColumnRange>,
@@ -1474,12 +1478,55 @@ pub enum ZkQuotientSplitMaskProfileBindingError {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkQuotientSplitMaskQueryBudgetError {
+    QueryCountTooLarge { n_queries: usize },
+    InsufficientMaskDimension { required: u64, actual: u64 },
+}
+
+pub fn validate_zk_quotient_split_mask_query_budget(
+    profile: ZkQuotientSplitMaskProfile,
+    n_queries: usize,
+) -> Result<(), ZkQuotientSplitMaskQueryBudgetError> {
+    let n_queries_u64 = u64::try_from(n_queries)
+        .map_err(|_| ZkQuotientSplitMaskQueryBudgetError::QueryCountTooLarge { n_queries })?;
+    let required = n_queries_u64
+        .checked_mul(2)
+        .and_then(|query_openings| query_openings.checked_add(1))
+        .ok_or(ZkQuotientSplitMaskQueryBudgetError::QueryCountTooLarge { n_queries })?;
+    if profile.h_split < required {
+        return Err(
+            ZkQuotientSplitMaskQueryBudgetError::InsufficientMaskDimension {
+                required,
+                actual: profile.h_split,
+            },
+        );
+    }
+
+    Ok(())
+}
+
 pub fn validate_zk_quotient_split_mask_profile_for_metadata(
     metadata: &ZkPublicMetadata,
     actual: ZkQuotientSplitMaskProfile,
 ) -> Result<(), ZkQuotientSplitMaskProfileBindingError> {
     validate_zk_quotient_split_mask_profile(actual)
         .map_err(ZkQuotientSplitMaskProfileBindingError::Profile)?;
+    let required_h_split = 1u64.checked_shl(actual.split_mask_log_degree_bound).ok_or(
+        ZkQuotientSplitMaskProfileBindingError::Profile(
+            ZkQuotientSplitMaskProfileValidationError::SplitMaskDimensionTooLarge {
+                split_mask_log_degree_bound: actual.split_mask_log_degree_bound,
+            },
+        ),
+    )?;
+    if actual.h_split != required_h_split {
+        return Err(
+            ZkQuotientSplitMaskProfileBindingError::SplitMaskEntropyBelowFullDimension {
+                required: required_h_split,
+                actual: actual.h_split,
+            },
+        );
+    }
     let quotient_degree_bounds = &metadata.quotient_integration.quotient_degree_bounds;
     let quotient_bound = quotient_degree_bounds
         .first()
@@ -1747,6 +1794,44 @@ pub fn validate_zk_composition_column_log_sizes(
     Ok(())
 }
 
+pub fn validate_zk_composition_column_log_sizes_against_bounds(
+    composition_column_log_sizes: &[u32],
+    expected_log_degree_bounds: &[u32],
+    log_blowup_factor: u32,
+) -> Result<(), ZkCompositionColumnLogSizeValidationError> {
+    if composition_column_log_sizes.len() != expected_log_degree_bounds.len() {
+        return Err(
+            ZkCompositionColumnLogSizeValidationError::ColumnCountMismatch {
+                expected: expected_log_degree_bounds.len(),
+                actual: composition_column_log_sizes.len(),
+            },
+        );
+    }
+
+    for (column_index, (&actual_log_size, &expected_log_degree_bound)) in
+        composition_column_log_sizes
+            .iter()
+            .zip(expected_log_degree_bounds)
+            .enumerate()
+    {
+        let expected_log_size = expected_log_degree_bound
+            .checked_add(log_blowup_factor)
+            .ok_or(ZkCompositionColumnLogSizeValidationError::LogSizeOverflow {
+                expected_log_degree_bound,
+                log_blowup_factor,
+            })?;
+        if actual_log_size != expected_log_size {
+            return Err(ZkCompositionColumnLogSizeValidationError::LogSizeMismatch {
+                column_index,
+                expected_log_size,
+                actual_log_size,
+            });
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkSampledValuesShapeValidationError {
     TreeCountMismatch {
@@ -1808,6 +1893,7 @@ pub struct ZkStarkDegreeBoundProfile {
     pub trace_log_degree_bound: u32,
     pub composition_log_degree_bound: u32,
     pub split_composition_log_degree_bound: u32,
+    pub split_composition_log_degree_bounds: ColumnVec<u32>,
     pub fri_first_layer_log_size: u32,
 }
 
@@ -1899,8 +1985,8 @@ fn zk_metadata_has_private_witness_randomization(metadata: &ZkPublicMetadata) ->
             .any(|&byte| byte != 0)
 }
 
-/// Returns true when metadata declares any currently blocked private STARK
-/// witness or quotient integration field.
+/// Returns true when metadata declares any field that requires private STARK
+/// witness or quotient integration activation.
 #[must_use]
 pub fn zk_metadata_requires_private_stark_activation(metadata: &ZkPublicMetadata) -> bool {
     zk_metadata_has_private_witness_randomization(metadata)
@@ -1941,6 +2027,47 @@ fn validate_zk_quotient_degree_bounds_for_stark_profile(
     }
 
     Ok(())
+}
+
+fn zk_split_composition_log_degree_bounds_for_stark_profile(
+    metadata: &ZkPublicMetadata,
+    verifier_config: &ZkVerificationConfig,
+    expected_range: ZkColumnRange,
+    raw_split_composition_log_degree_bound: u32,
+) -> Result<ColumnVec<u32>, ZkStarkDegreeBoundProfileError> {
+    validate_zk_quotient_degree_bounds_for_stark_profile(
+        &metadata.quotient_integration.quotient_degree_bounds,
+        expected_range,
+    )?;
+    let mut split_composition_log_degree_bounds =
+        vec![raw_split_composition_log_degree_bound; expected_range.column_end];
+
+    if let Some(profile) = verifier_config.quotient_split_mask_profile {
+        validate_zk_quotient_split_mask_profile_for_metadata(metadata, profile)
+            .map_err(ZkVerificationConfigValidationError::QuotientSplitMaskProfile)?;
+        if profile.left_range.tree_index != expected_range.tree_index
+            || profile.right_range.tree_index != expected_range.tree_index
+            || profile.left_range.column_start != expected_range.column_start
+            || profile.right_range.column_end != expected_range.column_end
+        {
+            return Err(
+                ZkStarkDegreeBoundProfileError::UnexpectedQuotientDegreeBoundRange {
+                    expected_range,
+                    actual_range: profile.left_range,
+                },
+            );
+        }
+        for column_index in profile.left_range.column_start..profile.left_range.column_end {
+            split_composition_log_degree_bounds[column_index] =
+                profile.left_masked_log_degree_bound;
+        }
+        for column_index in profile.right_range.column_start..profile.right_range.column_end {
+            split_composition_log_degree_bounds[column_index] =
+                profile.right_masked_log_degree_bound;
+        }
+    }
+
+    Ok(split_composition_log_degree_bounds)
 }
 
 fn validate_zk_split_derivation_hash_for_stark_profile(
@@ -2006,10 +2133,6 @@ pub fn derive_zk_stark_degree_bound_profile(
         zk_composition_split_column_count(composition_log_split)?,
     );
     validate_zk_split_derivation_hash_for_stark_profile(metadata, composition_log_split)?;
-    validate_zk_quotient_degree_bounds_for_stark_profile(
-        &metadata.quotient_integration.quotient_degree_bounds,
-        expected_quotient_range,
-    )?;
 
     let column_log_degree_bounds = apply_zk_column_degree_bounds(
         base_column_log_degree_bounds,
@@ -2043,6 +2166,39 @@ pub fn derive_zk_stark_degree_bound_profile(
             },
         );
     }
+    let split_composition_log_degree_bounds =
+        zk_split_composition_log_degree_bounds_for_stark_profile(
+            metadata,
+            verifier_config,
+            expected_quotient_range,
+            zk_split_composition_log_degree_bound,
+        )?;
+    let composition_log_degree_bound =
+        if let Some(profile) = verifier_config.quotient_split_mask_profile {
+            let profile_raw_split_bound = profile
+                .split_identity_log_degree_bound
+                .checked_sub(composition_log_split)
+                .ok_or(ZkStarkDegreeBoundProfileError::CompositionSplitUnderflow {
+                    composition_log_degree_bound: profile.split_identity_log_degree_bound,
+                    composition_log_split,
+                })?;
+            if profile_raw_split_bound < normal_split_composition_log_degree_bound {
+                return Err(
+                    ZkStarkDegreeBoundProfileError::QuotientDegreeBoundShrinksComposition {
+                        normal_split_composition_log_degree_bound,
+                        zk_split_composition_log_degree_bound: profile_raw_split_bound,
+                    },
+                );
+            }
+            profile.split_identity_log_degree_bound
+        } else {
+            zk_split_composition_log_degree_bound
+                .checked_add(composition_log_split)
+                .ok_or(ZkStarkDegreeBoundProfileError::CompositionDegreeOverflow {
+                    split_composition_log_degree_bound: zk_split_composition_log_degree_bound,
+                    composition_log_split,
+                })?
+        };
     if metadata.degree_profile.fri_first_layer_log_size
         != metadata.quotient_integration.fri_first_layer_log_size
     {
@@ -2066,7 +2222,12 @@ pub fn derive_zk_stark_degree_bound_profile(
             },
         );
     }
-    let required_fri_first_layer_log_size = zk_split_composition_log_degree_bound
+    let max_committed_split_composition_log_degree_bound = split_composition_log_degree_bounds
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(zk_split_composition_log_degree_bound);
+    let required_fri_first_layer_log_size = max_committed_split_composition_log_degree_bound
         .checked_add(log_blowup_factor)
         .ok_or(ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
             required: u32::MAX,
@@ -2082,13 +2243,9 @@ pub fn derive_zk_stark_degree_bound_profile(
     Ok(ZkStarkDegreeBoundProfile {
         column_log_degree_bounds,
         trace_log_degree_bound,
-        composition_log_degree_bound: zk_split_composition_log_degree_bound
-            .checked_add(composition_log_split)
-            .ok_or(ZkStarkDegreeBoundProfileError::CompositionDegreeOverflow {
-                split_composition_log_degree_bound: zk_split_composition_log_degree_bound,
-                composition_log_split,
-            })?,
+        composition_log_degree_bound,
         split_composition_log_degree_bound: zk_split_composition_log_degree_bound,
+        split_composition_log_degree_bounds,
         fri_first_layer_log_size: metadata.degree_profile.fri_first_layer_log_size,
     })
 }
@@ -2691,6 +2848,34 @@ pub fn draw_zk_oods_point<C: Channel>(
     })
 }
 
+/// Draws a deterministic ZK OODS point together with a public preimage under
+/// circle doubling.
+///
+/// The active private composition split commits the masked right side at one
+/// lower degree than the masked left side. PCS sampling folds lower-degree
+/// columns one extra time, so right-side composition columns are requested at a
+/// known preimage to make their opened evaluation point match the left side.
+/// Both the semantic OODS point and the preimage are rejected against the
+/// public exclusion set so prover and verifier consume the Fiat-Shamir channel
+/// identically.
+pub fn draw_zk_oods_point_with_preimage<C: Channel>(
+    channel: &mut C,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<(CirclePoint<SecureField>, CirclePoint<SecureField>), ZkOodsSamplingError> {
+    for _ in 0..max_attempts {
+        let preimage = CirclePoint::<SecureField>::get_random_point(channel);
+        let point = preimage.double();
+        if exclusion_set.accepts(preimage) && exclusion_set.accepts(point) {
+            return Ok((point, preimage));
+        }
+    }
+
+    Err(ZkOodsSamplingError::ExhaustedAttempts {
+        attempts: max_attempts,
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkOodsSamplePointValidationError {
     ForbiddenSamplePoint {
@@ -3075,7 +3260,7 @@ impl<H: MerkleHasherLifted> ZkStarkProof<H> {
     pub(crate) fn extract_composition_oods_eval(
         &self,
         oods_point: CirclePoint<SecureField>,
-        max_log_degree_bound: u32,
+        composition_log_degree_bound: u32,
     ) -> Option<SecureField> {
         let [.., left_and_right_composition_mask] = &self.0.randomized_pcs_proof.sampled_values[..]
         else {
@@ -3099,7 +3284,8 @@ impl<H: MerkleHasherLifted> ZkStarkProof<H> {
 
         let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
         let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
-        let value = left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval;
+        let split_factor_log = composition_log_degree_bound.checked_sub(2)?;
+        let value = left_eval + oods_point.repeated_double(split_factor_log).x * right_eval;
         Some(value)
     }
 }
@@ -3377,7 +3563,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_private_stark_activation_detection_covers_blocked_fields() {
+    fn metadata_private_stark_activation_detection_covers_private_fields() {
         assert!(!zk_metadata_requires_private_stark_activation(
             &public_only_metadata(16, 1)
         ));
@@ -3790,6 +3976,18 @@ mod tests {
     }
 
     #[test]
+    fn zk_oods_point_with_preimage_binds_public_double_relation() {
+        let exclusion_set = ZkOodsExclusionSet::empty();
+        let mut channel = Blake2sChannel::default();
+        let (point, preimage) =
+            draw_zk_oods_point_with_preimage(&mut channel, &exclusion_set, 64).unwrap();
+
+        assert_eq!(point, preimage.double());
+        assert!(exclusion_set.accepts(point));
+        assert!(exclusion_set.accepts(preimage));
+    }
+
+    #[test]
     fn zk_oods_sample_points_reject_forbidden_coset_and_degeneracy() {
         let coset = CanonicCoset::new(4).coset;
         let forbidden_point = secure_circle_point(coset.at(0));
@@ -4029,7 +4227,7 @@ mod tests {
             )
             .unwrap_err(),
             ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
-                required: 6,
+                required: 7,
                 actual: 5,
             }
         );
@@ -4306,6 +4504,50 @@ mod tests {
             Err(
                 ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
                     ZkQuotientSplitMaskProfileBindingError::ProfileMismatch { expected, actual }
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_larger_private_quotient_split_right_bound() {
+        let metadata = witness_metadata(6, 1);
+        let mut verifier_config = verification_config(metadata.clone());
+        let expected = verifier_config
+            .quotient_split_mask_profile
+            .expect("witness verifier config must derive split mask profile");
+        let mut actual = expected;
+        actual.right_masked_log_degree_bound += 1;
+        verifier_config.quotient_split_mask_profile = Some(actual);
+
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(&metadata, &verifier_config),
+            Err(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::ProfileMismatch { expected, actual }
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_undercovered_private_quotient_split_entropy() {
+        let metadata = witness_metadata(6, 1);
+        let mut verifier_config = verification_config(metadata.clone());
+        let mut actual = verifier_config
+            .quotient_split_mask_profile
+            .expect("witness verifier config must derive split mask profile");
+        actual.h_split -= 1;
+        verifier_config.quotient_split_mask_profile = Some(actual);
+
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(&metadata, &verifier_config),
+            Err(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::SplitMaskEntropyBelowFullDimension {
+                        required: actual.h_split + 1,
+                        actual: actual.h_split,
+                    }
                 )
             )
         );
@@ -5063,6 +5305,27 @@ mod tests {
                 ZkQuotientSplitMaskProfileValidationError::RightMaskedBoundBelowOriginalSplit {
                     required: 5,
                     actual: 4,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_query_budget_accepts_conservative_openings() {
+        assert_eq!(
+            validate_zk_quotient_split_mask_query_budget(quotient_split_mask_profile(), 15),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_query_budget_rejects_insufficient_mask_dimension() {
+        assert_eq!(
+            validate_zk_quotient_split_mask_query_budget(quotient_split_mask_profile(), 16),
+            Err(
+                ZkQuotientSplitMaskQueryBudgetError::InsufficientMaskDimension {
+                    required: 33,
+                    actual: 32,
                 }
             )
         );

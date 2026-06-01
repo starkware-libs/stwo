@@ -354,7 +354,7 @@ mod tests {
         };
         let quotient_degree_bound = ZkColumnDegreeBound {
             range: quotient_range,
-            log_degree_bound: fri_first_layer_log_size - log_blowup_factor,
+            log_degree_bound: fri_first_layer_log_size - log_blowup_factor - 1,
         };
         let metadata = ZkPublicMetadata {
             version: ZkProofVersion::V1,
