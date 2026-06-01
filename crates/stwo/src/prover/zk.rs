@@ -20,8 +20,8 @@ use crate::core::zk::{
     ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange, ZkFriBatchMaskProof,
     ZkFriBatchMaskQueryValues, ZkMetadataValidationError, ZkPrivacyMap, ZkPrivateColumnScope,
     ZkPrivateColumnScopeValidationError, ZkProofVersion, ZkPublicMetadata, ZkQueryClosure,
-    ZkQueryClosureValidationError, ZkRandomizerRankProfile, ZkRandomizerRankValidationError,
-    ZkSampleMetadataBuildError,
+    ZkQueryClosureKind, ZkQueryClosureValidationError, ZkRandomizerRankProfile,
+    ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
 };
 use crate::core::ColumnVec;
 use crate::prover::backend::{Col, ColumnOps};
@@ -131,6 +131,7 @@ pub enum ZkProvingConfigError {
     PrivateColumnScope(ZkPrivateColumnScopeValidationError),
     QueryClosure(ZkQueryClosureValidationError),
     RandomizerRank(ZkRandomizerRankValidationError),
+    MissingQuotientSplitRankClosure { range: ZkColumnRange },
     SampleMetadata(ZkSampleMetadataBuildError),
     ColumnDegreeBoundsMismatch,
     InsufficientFriBatchMaskQueryDomain,
@@ -331,6 +332,7 @@ impl ZkProvingConfig {
         &self,
     ) -> Result<(), ZkProvingConfigError> {
         self.validate_witness_and_quotient_pre_activation()?;
+        self.validate_quotient_split_rank_closure_present()?;
 
         Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
     }
@@ -486,6 +488,31 @@ impl ZkProvingConfig {
             || derived_randomizer_metadata.randomizer_rank_profile() != randomizer_rank_profile
         {
             return Err(ZkProvingConfigError::DerivedRandomizerMetadataMismatch);
+        }
+
+        Ok(())
+    }
+
+    fn validate_quotient_split_rank_closure_present(&self) -> Result<(), ZkProvingConfigError> {
+        if self
+            .metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty()
+        {
+            return Ok(());
+        }
+
+        let query_closure = self
+            .query_closure
+            .as_ref()
+            .ok_or(ZkProvingConfigError::MissingQueryClosure)?;
+        for &range in &self.privacy_map.private_columns {
+            if !query_closure.entries.iter().any(|entry| {
+                entry.range == range && entry.kind == ZkQueryClosureKind::FutureQuotientComponent
+            }) {
+                return Err(ZkProvingConfigError::MissingQuotientSplitRankClosure { range });
+            }
         }
 
         Ok(())
@@ -680,12 +707,12 @@ mod tests {
     use crate::core::queries::Queries;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::zk::{
-        canonical_zk_private_column_scope_hash, ZkColumnRange, ZkDegreeProfile,
-        ZkFriBatchMaskVerificationError, ZkPrivacyMapHash, ZkPrivateColumnScope,
+        canonical_zk_private_column_scope_hash, encode_zk_query_position, ZkColumnRange,
+        ZkDegreeProfile, ZkFriBatchMaskVerificationError, ZkPrivacyMapHash, ZkPrivateColumnScope,
         ZkPrivateColumnScopeEntry, ZkPrivateColumnScopeValidationError, ZkPrivateColumnUsage,
-        ZkProofVersion, ZkPublicStatementHash, ZkQueryClosureKind, ZkQueryClosureValidationError,
-        ZkQuotientIntegrationProfile, ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
-        ZkWitnessRandomizationProfile,
+        ZkProofVersion, ZkPublicStatementHash, ZkQueryClosureEntry, ZkQueryClosureKind,
+        ZkQueryClosureValidationError, ZkQuotientIntegrationProfile,
+        ZkRandomizerRankValidationError, ZkSampleMetadataBuildError, ZkWitnessRandomizationProfile,
     };
     use crate::prover::backend::CpuBackend;
     use crate::prover::fri::FriProver;
@@ -1208,15 +1235,66 @@ mod tests {
     fn witness_randomization_validation_remains_fail_closed() {
         assert_eq!(
             witness_and_quotient_config().validate_for_witness_randomization(),
+            Err(ZkProvingConfigError::MissingQuotientSplitRankClosure {
+                range: ZkColumnRange::new(0, 0, 1),
+            })
+        );
+    }
+
+    #[test]
+    fn witness_and_quotient_requires_quotient_split_rank_closure() {
+        assert_eq!(
+            witness_and_quotient_config().validate_for_witness_and_quotient_integration(),
+            Err(ZkProvingConfigError::MissingQuotientSplitRankClosure {
+                range: ZkColumnRange::new(0, 0, 1),
+            })
+        );
+    }
+
+    #[test]
+    fn witness_and_quotient_reaches_terminal_block_with_quotient_split_rank_closure() {
+        let mut config = witness_and_quotient_config();
+        let range = ZkColumnRange::new(0, 0, 1);
+        let query_closure = config.query_closure.as_mut().unwrap();
+        let quotient_entry = ZkQueryClosureEntry::new(
+            range,
+            ZkQueryClosureKind::FutureQuotientComponent,
+            0,
+            encode_zk_query_position(0),
+            0,
+        );
+        query_closure.entries.push(quotient_entry);
+        query_closure.canonicalize();
+        config.randomizer_rank_profile.as_mut().unwrap().entries[0].query_count += 1;
+        config.randomizer_rank_profile.as_mut().unwrap().entries[0].rank += 1;
+        if let Some(metadata) = config.derived_randomizer_metadata.as_mut() {
+            metadata.query_closure = query_closure.clone();
+            metadata.randomizer_rank_profile = config.randomizer_rank_profile.clone().unwrap();
+        }
+
+        assert_eq!(
+            config.validate_for_witness_and_quotient_integration(),
             Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
         );
     }
 
     #[test]
-    fn witness_and_quotient_remain_fail_closed_after_reviews_are_present() {
+    fn witness_only_validation_does_not_require_quotient_split_rank_closure() {
+        let mut config = witness_and_quotient_config();
+        config
+            .metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .clear();
+        config.column_degree_bounds = config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .clone();
+
         assert_eq!(
-            witness_and_quotient_config().validate_for_witness_and_quotient_integration(),
-            Err(ZkProvingConfigError::Phase2And3ActivationBlocked)
+            config.validate_quotient_split_rank_closure_present(),
+            Ok(())
         );
     }
 
