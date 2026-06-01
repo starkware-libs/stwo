@@ -592,7 +592,7 @@ pub(crate) struct ZkMaskedCompositionSplitPair<B: PolyOps> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
-pub(crate) enum ZkQuotientSplitMaskError {
+pub enum ZkQuotientSplitMaskError {
     Profile(ZkQuotientSplitMaskProfileValidationError),
     SplitIdentityLogSizeMismatch {
         expected: u32,

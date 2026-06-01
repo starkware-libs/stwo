@@ -17,7 +17,11 @@ use crate::core::zk::{
     ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
-use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
+use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly};
+use crate::prover::zk::{
+    mask_composition_split_pair_from_prover_rng, ZkProvingConfig, ZkProvingConfigError,
+    ZkQuotientSplitMaskError,
+};
 
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Poly, Trace};
@@ -43,6 +47,46 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
     Ok(prove_ex(components, channel, commitment_scheme, false)?.proof)
+}
+
+type SecureCoordinatePolys<B> = [CircleCoefficients<B>; SECURE_EXTENSION_DEGREE];
+
+fn zk_composition_split_coordinate_polys<B, R>(
+    left_comp_poly_half: SecureCirclePoly<B>,
+    right_comp_poly_half: SecureCirclePoly<B>,
+    zk_config: &ZkProvingConfig,
+    rng: &mut R,
+) -> Result<(SecureCoordinatePolys<B>, SecureCoordinatePolys<B>), ProvingError>
+where
+    B: PolyOps,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let requires_private_witness_integration = !zk_config.privacy_map.private_columns.is_empty()
+        || zk_metadata_requires_private_stark_activation(&zk_config.metadata);
+    if requires_private_witness_integration {
+        let profile = zk_config
+            .quotient_split_mask_profile
+            .ok_or(ProvingError::ZkConfig(
+                ZkProvingConfigError::MissingQuotientSplitMaskProfile,
+            ))?;
+        let masked = mask_composition_split_pair_from_prover_rng(
+            left_comp_poly_half,
+            right_comp_poly_half,
+            profile,
+            rng,
+        )
+        .map_err(ProvingError::ZkQuotientSplitMask)?;
+
+        return Ok((
+            masked.left_hat.into_coordinate_polys(),
+            masked.right_hat.into_coordinate_polys(),
+        ));
+    }
+
+    Ok((
+        left_comp_poly_half.into_coordinate_polys(),
+        right_comp_poly_half.into_coordinate_polys(),
+    ))
 }
 
 #[instrument(skip_all)]
@@ -305,9 +349,15 @@ where
 
     let mut tree_builder = commitment_scheme.tree_builder();
     let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
+    let (left_comp_poly_half, right_comp_poly_half) = zk_composition_split_coordinate_polys(
+        left_comp_poly_half,
+        right_comp_poly_half,
+        zk_config,
+        rng,
+    )?;
 
-    tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
-    tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
+    tree_builder.extend_polys(left_comp_poly_half);
+    tree_builder.extend_polys(right_comp_poly_half);
     tree_builder.commit(channel);
     let composition_column_log_sizes = commitment_scheme
         .trees
@@ -415,6 +465,8 @@ pub enum ProvingError {
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK committed column log sizes: {0:?}.")]
     ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
+    #[error("Invalid ZK quotient split mask: {0:?}.")]
+    ZkQuotientSplitMask(ZkQuotientSplitMaskError),
     #[error("Invalid ZK trace geometry.")]
     InvalidZkTraceGeometry,
     #[error("Invalid ZK degree geometry.")]
@@ -684,5 +736,47 @@ mod tests {
             ProvingError::ZkConfig(ZkProvingConfigError::Phase2And3ActivationBlocked)
         ));
         let _ = (zk_verifier_config, zk_verifier_audit);
+    }
+
+    #[test]
+    fn private_composition_split_helper_masks_opened_halves() {
+        let (zk_prover_config, ..) = private_stark_test_configs();
+        let profile = zk_prover_config
+            .quotient_split_mask_profile
+            .expect("private ZK test config must include split profile");
+        let composition_poly = SecureCirclePoly(std::array::from_fn(|coordinate| {
+            crate::prover::backend::cpu::CpuCirclePoly::new(
+                (0..1 << profile.split_identity_log_degree_bound)
+                    .map(|index| M31::from(coordinate as u32 * 10_000 + index as u32))
+                    .collect(),
+            )
+        }));
+        let point = CirclePoint::get_point(37_913);
+        let original_eval = composition_poly.eval_at_point(point);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let raw_left_eval = left.eval_at_point(point);
+        let raw_right_eval = right.eval_at_point(point);
+        let split_factor = point
+            .repeated_double(profile.split_identity_log_degree_bound - 2)
+            .x;
+        let mut rng = StdRng::seed_from_u64(51);
+
+        let (masked_left, masked_right) =
+            zk_composition_split_coordinate_polys(left, right, &zk_prover_config, &mut rng)
+                .unwrap();
+        let masked_left = SecureCirclePoly(masked_left);
+        let masked_right = SecureCirclePoly(masked_right);
+
+        assert_eq!(masked_left.log_size(), profile.left_masked_log_degree_bound);
+        assert_eq!(
+            masked_right.log_size(),
+            profile.right_masked_log_degree_bound
+        );
+        assert_ne!(masked_left.eval_at_point(point), raw_left_eval);
+        assert_ne!(masked_right.eval_at_point(point), raw_right_eval);
+        assert_eq!(
+            masked_left.eval_at_point(point) + split_factor * masked_right.eval_at_point(point),
+            original_eval
+        );
     }
 }
