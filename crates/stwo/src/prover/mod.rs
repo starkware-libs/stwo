@@ -1114,6 +1114,37 @@ mod tests {
     }
 
     #[test]
+    fn private_witness_zk_stark_rejects_tampered_proof_public_metadata() {
+        let (config, verifier_config, verifier_audit, mut proof) =
+            prove_private_stark_test_proof(71, 72);
+        proof.0.public_metadata.public_statement_hash = ZkPublicStatementHash(test_hash(93));
+
+        assert!(
+            verify_private_stark_test_proof(config, proof, &verifier_config, &verifier_audit)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn private_witness_zk_stark_rejects_tampered_fri_batch_mask_query_value() {
+        let (config, verifier_config, verifier_audit, mut proof) =
+            prove_private_stark_test_proof(81, 82);
+        let first_query = proof
+            .0
+            .fri_batch_mask
+            .queried_values
+            .queries
+            .first_mut()
+            .expect("private ZK test proof must open FRI batch mask queries");
+        first_query[0] = first_query[0] + M31::from(1);
+
+        assert!(
+            verify_private_stark_test_proof(config, proof, &verifier_config, &verifier_audit)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn private_composition_split_helper_masks_opened_halves() {
         let (zk_prover_config, ..) = private_stark_test_configs();
         let profile = zk_prover_config
