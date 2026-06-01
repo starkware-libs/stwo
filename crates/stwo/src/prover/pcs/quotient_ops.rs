@@ -178,6 +178,7 @@ mod tests {
     use crate::core::channel::Blake2sChannel;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::M31;
+    use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
     use crate::core::pcs::quotients::PointSample;
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
@@ -267,6 +268,7 @@ mod tests {
                 hash: privacy_map_hash,
             },
             private_column_scope: None,
+            quotient_split_mask_profile: None,
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -317,7 +319,8 @@ mod tests {
         ZkWitnessRandomizationVerifierAudit,
     ) {
         let range = ZkColumnRange::new(private_tree_index, 0, 1);
-        let quotient_range = ZkColumnRange::new(private_tree_index, 1, 2);
+        let quotient_range =
+            ZkColumnRange::new(private_tree_index + 1, 0, 2 * SECURE_EXTENSION_DEGREE);
         let h_witness = 1u64 << trace_log_size;
         let h_batch =
             expected_zk_fri_batch_degree_bound(fri_first_layer_log_size, log_blowup_factor)
@@ -371,11 +374,21 @@ mod tests {
             quotient_integration: ZkQuotientIntegrationProfile {
                 h_batch,
                 fri_first_layer_log_size,
-                split_derivation_hash: canonical_zk_split_derivation_hash(0),
+                split_derivation_hash: canonical_zk_split_derivation_hash(1),
                 quotient_degree_bounds: vec![quotient_degree_bound],
             },
         };
         let column_degree_bounds = vec![private_degree_bound, quotient_degree_bound];
+        let quotient_split_mask_profile =
+            crate::core::zk::stwo_composition_quotient_split_mask_profile(
+                quotient_degree_bound.range.tree_index,
+                quotient_degree_bound.log_degree_bound + 1,
+                quotient_degree_bound.log_degree_bound,
+                1u64 << quotient_degree_bound.log_degree_bound,
+                quotient_degree_bound.log_degree_bound + 1,
+                quotient_degree_bound.log_degree_bound,
+            )
+            .expect("test quotient split mask profile must be valid");
         let privacy_map = ZkPrivacyMap {
             version: ZkProofVersion::V1,
             private_columns: vec![range],
@@ -385,6 +398,7 @@ mod tests {
             metadata: metadata.clone(),
             privacy_map: privacy_map.clone(),
             private_column_scope: Some(private_column_scope.clone()),
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,

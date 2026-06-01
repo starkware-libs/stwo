@@ -598,6 +598,16 @@ mod tests {
             },
         };
         let column_degree_bounds = vec![private_degree_bound, quotient_degree_bound];
+        let quotient_split_mask_profile =
+            crate::core::zk::stwo_composition_quotient_split_mask_profile(
+                quotient_degree_bound.range.tree_index,
+                quotient_degree_bound.log_degree_bound + 1,
+                quotient_degree_bound.log_degree_bound,
+                1u64 << quotient_degree_bound.log_degree_bound,
+                quotient_degree_bound.log_degree_bound + 1,
+                quotient_degree_bound.log_degree_bound,
+            )
+            .expect("test quotient split mask profile must be valid");
         let privacy_map = ZkPrivacyMap {
             version: ZkProofVersion::V1,
             private_columns: vec![private_range],
@@ -607,6 +617,7 @@ mod tests {
             metadata: metadata.clone(),
             privacy_map: privacy_map.clone(),
             private_column_scope: Some(private_column_scope.clone()),
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
