@@ -10,8 +10,9 @@ use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkOodsSamplingError,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    validate_zk_committed_column_log_sizes, zk_oods_exclusion_set, ExtendedZkStarkProof,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
+    ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
@@ -264,6 +265,18 @@ where
         commitment_scheme.config.fri_config.log_blowup_factor,
     )
     .map_err(ProvingError::ZkDegreeProfile)?;
+    let committed_column_log_sizes = commitment_scheme.trees.as_ref().map(|tree| {
+        tree.polynomials
+            .iter()
+            .map(|poly| poly.evals.domain.log_size())
+            .collect()
+    });
+    validate_zk_committed_column_log_sizes(
+        &committed_column_log_sizes,
+        &zk_degree_profile.column_log_degree_bounds,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(ProvingError::ZkCommittedColumnLogSizes)?;
 
     let trace = commitment_scheme.trace();
     zk_config
@@ -390,6 +403,8 @@ pub enum ProvingError {
     ZkOodsSampling(ZkOodsSamplingError),
     #[error("Invalid ZK STARK degree profile: {0:?}.")]
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
+    #[error("Invalid ZK committed column log sizes: {0:?}.")]
+    ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
     #[error("Invalid ZK trace geometry.")]
     InvalidZkTraceGeometry,
     #[error("Invalid ZK degree geometry.")]

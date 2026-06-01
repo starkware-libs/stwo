@@ -17,9 +17,9 @@ use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
     mix_zk_public_metadata, validate_zk_public_metadata_against_verifier_config,
-    validate_zk_public_only_metadata, validate_zk_witness_metadata, zk_fri_batch_mask_fri_config,
-    zk_fri_batch_mask_query_positions, ZkColumnDegreeBound, ZkCommitmentSchemeProof,
-    ZkVerificationConfig,
+    validate_zk_public_only_metadata, validate_zk_sampled_values_shape,
+    validate_zk_witness_metadata, zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
+    ZkColumnDegreeBound, ZkCommitmentSchemeProof, ZkVerificationConfig,
 };
 use crate::core::ColumnVec;
 
@@ -363,6 +363,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 )));
             }
         }
+        validate_zk_sampled_values_shape(&sampled_points, &proof.sampled_values).map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "ZK PCS sampled-value shape does not match sampled points",
+            ))
+        })?;
+
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)

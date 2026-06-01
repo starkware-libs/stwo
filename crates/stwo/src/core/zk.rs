@@ -1293,6 +1293,137 @@ pub fn apply_zk_column_degree_bounds(
     Ok(base_bounds)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkCommittedColumnLogSizeValidationError {
+    TreeCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    ColumnCountMismatch {
+        tree_index: usize,
+        expected: usize,
+        actual: usize,
+    },
+    LogSizeOverflow {
+        tree_index: usize,
+        column_index: usize,
+        expected_log_degree_bound: u32,
+        log_blowup_factor: u32,
+    },
+    LogSizeMismatch {
+        tree_index: usize,
+        column_index: usize,
+        expected_log_size: u32,
+        actual_log_size: u32,
+    },
+}
+
+pub fn validate_zk_committed_column_log_sizes(
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    expected_log_degree_bounds: &TreeVec<ColumnVec<u32>>,
+    log_blowup_factor: u32,
+) -> Result<(), ZkCommittedColumnLogSizeValidationError> {
+    if committed_column_log_sizes.len() != expected_log_degree_bounds.len() {
+        return Err(ZkCommittedColumnLogSizeValidationError::TreeCountMismatch {
+            expected: expected_log_degree_bounds.len(),
+            actual: committed_column_log_sizes.len(),
+        });
+    }
+
+    for (tree_index, (committed_tree, expected_tree)) in committed_column_log_sizes
+        .iter()
+        .zip(expected_log_degree_bounds.iter())
+        .enumerate()
+    {
+        if committed_tree.len() != expected_tree.len() {
+            return Err(
+                ZkCommittedColumnLogSizeValidationError::ColumnCountMismatch {
+                    tree_index,
+                    expected: expected_tree.len(),
+                    actual: committed_tree.len(),
+                },
+            );
+        }
+        for (column_index, (&actual_log_size, &expected_log_degree_bound)) in
+            committed_tree.iter().zip(expected_tree).enumerate()
+        {
+            let expected_log_size = expected_log_degree_bound
+                .checked_add(log_blowup_factor)
+                .ok_or(ZkCommittedColumnLogSizeValidationError::LogSizeOverflow {
+                    tree_index,
+                    column_index,
+                    expected_log_degree_bound,
+                    log_blowup_factor,
+                })?;
+            if actual_log_size != expected_log_size {
+                return Err(ZkCommittedColumnLogSizeValidationError::LogSizeMismatch {
+                    tree_index,
+                    column_index,
+                    expected_log_size,
+                    actual_log_size,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkSampledValuesShapeValidationError {
+    TreeCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    ColumnCountMismatch {
+        tree_index: usize,
+        expected: usize,
+        actual: usize,
+    },
+    SampleCountMismatch {
+        tree_index: usize,
+        column_index: usize,
+        expected: usize,
+        actual: usize,
+    },
+}
+
+pub fn validate_zk_sampled_values_shape(
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    sampled_values: &TreeVec<ColumnVec<Vec<SecureField>>>,
+) -> Result<(), ZkSampledValuesShapeValidationError> {
+    if sampled_values.len() != sampled_points.len() {
+        return Err(ZkSampledValuesShapeValidationError::TreeCountMismatch {
+            expected: sampled_points.len(),
+            actual: sampled_values.len(),
+        });
+    }
+
+    for (tree_index, (point_tree, value_tree)) in
+        sampled_points.iter().zip(sampled_values.iter()).enumerate()
+    {
+        if value_tree.len() != point_tree.len() {
+            return Err(ZkSampledValuesShapeValidationError::ColumnCountMismatch {
+                tree_index,
+                expected: point_tree.len(),
+                actual: value_tree.len(),
+            });
+        }
+        for (column_index, (points, values)) in point_tree.iter().zip(value_tree).enumerate() {
+            if values.len() != points.len() {
+                return Err(ZkSampledValuesShapeValidationError::SampleCountMismatch {
+                    tree_index,
+                    column_index,
+                    expected: points.len(),
+                    actual: values.len(),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 pub struct ZkStarkDegreeBoundProfile {
     pub column_log_degree_bounds: TreeVec<ColumnVec<u32>>,
@@ -1336,6 +1467,10 @@ pub enum ZkStarkDegreeBoundProfileError {
         actual: u32,
     },
     FriFirstLayerBelowTraceDegree {
+        required: u32,
+        actual: u32,
+    },
+    FriFirstLayerBelowCommittedTraceSize {
         required: u32,
         actual: u32,
     },
@@ -1498,10 +1633,17 @@ pub fn derive_zk_stark_degree_bound_profile(
             quotient_integration: metadata.quotient_integration.fri_first_layer_log_size,
         });
     }
-    if metadata.degree_profile.fri_first_layer_log_size < trace_log_degree_bound {
+    let required_committed_trace_log_size =
+        trace_log_degree_bound
+            .checked_add(log_blowup_factor)
+            .ok_or(ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
+                required: u32::MAX,
+                actual: metadata.degree_profile.fri_first_layer_log_size,
+            })?;
+    if metadata.degree_profile.fri_first_layer_log_size < required_committed_trace_log_size {
         return Err(
-            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
-                required: trace_log_degree_bound,
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowCommittedTraceSize {
+                required: required_committed_trace_log_size,
                 actual: metadata.degree_profile.fri_first_layer_log_size,
             },
         );
@@ -2599,6 +2741,13 @@ mod tests {
         }
     }
 
+    fn set_witness_trace_domain(metadata: &mut ZkPublicMetadata, trace_domain_log_size: u32) {
+        let h_witness = 1u64 << trace_domain_log_size;
+        metadata.degree_profile.trace_domain_log_size = trace_domain_log_size;
+        metadata.degree_profile.h_witness = h_witness;
+        metadata.witness_randomization.h_witness = h_witness;
+    }
+
     #[test]
     fn witness_metadata_rejects_invalid_degree_bound_ranges() {
         let mut metadata = witness_metadata(6, 1);
@@ -2763,6 +2912,122 @@ mod tests {
     }
 
     #[test]
+    fn zk_committed_column_log_sizes_accept_expected_blowup() {
+        assert_eq!(
+            validate_zk_committed_column_log_sizes(
+                &TreeVec(vec![vec![6, 7], vec![8]]),
+                &TreeVec(vec![vec![5, 6], vec![7]]),
+                1,
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn zk_committed_column_log_sizes_reject_shape_mismatch() {
+        assert_eq!(
+            validate_zk_committed_column_log_sizes(
+                &TreeVec(vec![vec![6]]),
+                &TreeVec(vec![vec![5], vec![7]]),
+                1,
+            ),
+            Err(ZkCommittedColumnLogSizeValidationError::TreeCountMismatch {
+                expected: 2,
+                actual: 1,
+            })
+        );
+
+        assert_eq!(
+            validate_zk_committed_column_log_sizes(
+                &TreeVec(vec![vec![6]]),
+                &TreeVec(vec![vec![5, 6]]),
+                1,
+            ),
+            Err(
+                ZkCommittedColumnLogSizeValidationError::ColumnCountMismatch {
+                    tree_index: 0,
+                    expected: 2,
+                    actual: 1,
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn zk_committed_column_log_sizes_reject_degree_mismatch() {
+        assert_eq!(
+            validate_zk_committed_column_log_sizes(
+                &TreeVec(vec![vec![6, 9]]),
+                &TreeVec(vec![vec![5, 6]]),
+                1,
+            ),
+            Err(ZkCommittedColumnLogSizeValidationError::LogSizeMismatch {
+                tree_index: 0,
+                column_index: 1,
+                expected_log_size: 7,
+                actual_log_size: 9,
+            })
+        );
+    }
+
+    #[test]
+    fn zk_sampled_values_shape_accepts_exact_nested_shape() {
+        let point = CirclePoint::<SecureField>::zero();
+
+        assert_eq!(
+            validate_zk_sampled_values_shape(
+                &TreeVec(vec![vec![vec![point, point]], vec![vec![point]]]),
+                &TreeVec(vec![
+                    vec![vec![SecureField::zero(), SecureField::one()]],
+                    vec![vec![SecureField::zero()]],
+                ]),
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn zk_sampled_values_shape_rejects_mismatches() {
+        let point = CirclePoint::<SecureField>::zero();
+
+        assert_eq!(
+            validate_zk_sampled_values_shape(
+                &TreeVec(vec![vec![vec![point]]]),
+                &TreeVec(vec![vec![vec![SecureField::zero()]], vec![]]),
+            ),
+            Err(ZkSampledValuesShapeValidationError::TreeCountMismatch {
+                expected: 1,
+                actual: 2,
+            })
+        );
+
+        assert_eq!(
+            validate_zk_sampled_values_shape(
+                &TreeVec(vec![vec![vec![point], vec![point]]]),
+                &TreeVec(vec![vec![vec![SecureField::zero()]]]),
+            ),
+            Err(ZkSampledValuesShapeValidationError::ColumnCountMismatch {
+                tree_index: 0,
+                expected: 2,
+                actual: 1,
+            })
+        );
+
+        assert_eq!(
+            validate_zk_sampled_values_shape(
+                &TreeVec(vec![vec![vec![point, point]]]),
+                &TreeVec(vec![vec![vec![SecureField::zero()]]]),
+            ),
+            Err(ZkSampledValuesShapeValidationError::SampleCountMismatch {
+                tree_index: 0,
+                column_index: 0,
+                expected: 2,
+                actual: 1,
+            })
+        );
+    }
+
+    #[test]
     fn zk_stark_degree_profile_uses_normal_public_only_bounds() {
         let metadata = public_only_metadata(6, 1);
         let verifier_config = verification_config(metadata);
@@ -2785,14 +3050,17 @@ mod tests {
 
     #[test]
     fn zk_stark_degree_profile_applies_private_and_quotient_bounds() {
-        let metadata = witness_metadata(6, 1);
+        let mut metadata = witness_metadata(7, 1);
+        set_witness_trace_domain(&mut metadata, 5);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 6;
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
         let verifier_config = verification_config(metadata);
         let profile = derive_zk_stark_degree_bound_profile(
             TreeVec(vec![vec![5], vec![5]]),
             6,
             1,
             &verifier_config,
-            6,
+            7,
             1,
         )
         .unwrap();
@@ -2801,12 +3069,15 @@ mod tests {
         assert_eq!(profile.trace_log_degree_bound, 6);
         assert_eq!(profile.split_composition_log_degree_bound, 5);
         assert_eq!(profile.composition_log_degree_bound, 6);
-        assert_eq!(profile.fri_first_layer_log_size, 6);
+        assert_eq!(profile.fri_first_layer_log_size, 7);
     }
 
     #[test]
     fn zk_stark_degree_profile_accepts_unsplit_quotient_width() {
-        let mut metadata = witness_metadata(6, 1);
+        let mut metadata = witness_metadata(7, 1);
+        set_witness_trace_domain(&mut metadata, 5);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 6;
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE);
         let verifier_config = verification_config(metadata);
@@ -2815,7 +3086,7 @@ mod tests {
             5,
             0,
             &verifier_config,
-            6,
+            7,
             1,
         )
         .unwrap();
@@ -2824,12 +3095,15 @@ mod tests {
         assert_eq!(profile.trace_log_degree_bound, 6);
         assert_eq!(profile.split_composition_log_degree_bound, 5);
         assert_eq!(profile.composition_log_degree_bound, 5);
-        assert_eq!(profile.fri_first_layer_log_size, 6);
+        assert_eq!(profile.fri_first_layer_log_size, 7);
     }
 
     #[test]
     fn zk_stark_degree_profile_accepts_wider_quotient_split_width() {
-        let mut metadata = witness_metadata(7, 1);
+        let mut metadata = witness_metadata(8, 1);
+        set_witness_trace_domain(&mut metadata, 6);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 7;
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 6;
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, 4 * SECURE_EXTENSION_DEGREE);
         let verifier_config = verification_config(metadata);
@@ -2838,7 +3112,7 @@ mod tests {
             6,
             2,
             &verifier_config,
-            7,
+            8,
             1,
         )
         .unwrap();
@@ -2847,7 +3121,7 @@ mod tests {
         assert_eq!(profile.trace_log_degree_bound, 7);
         assert_eq!(profile.split_composition_log_degree_bound, 6);
         assert_eq!(profile.composition_log_degree_bound, 8);
-        assert_eq!(profile.fri_first_layer_log_size, 7);
+        assert_eq!(profile.fri_first_layer_log_size, 8);
     }
 
     #[test]
@@ -2900,6 +3174,8 @@ mod tests {
     #[test]
     fn zk_stark_degree_profile_rejects_small_fri_layer() {
         let mut metadata = witness_metadata(5, 1);
+        set_witness_trace_domain(&mut metadata, 3);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 4;
         metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
         let verifier_config = verification_config(metadata);
 
@@ -2935,8 +3211,8 @@ mod tests {
                 1,
             )
             .unwrap_err(),
-            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
-                required: 7,
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowCommittedTraceSize {
+                required: 8,
                 actual: 6,
             }
         );
@@ -2957,7 +3233,51 @@ mod tests {
                 1,
             )
             .unwrap_err(),
-            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowCommittedTraceSize {
+                required: 8,
+                actual: 6,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_public_committed_trace_above_fri_layer() {
+        let metadata = public_only_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![6], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowCommittedTraceSize {
+                required: 7,
+                actual: 6,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_private_committed_trace_above_fri_layer() {
+        let metadata = witness_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![6], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowCommittedTraceSize {
                 required: 7,
                 actual: 6,
             }
@@ -2988,14 +3308,17 @@ mod tests {
 
     #[test]
     fn zk_stark_degree_profile_expands_to_larger_quotient_bound() {
-        let metadata = witness_metadata(7, 1);
+        let mut metadata = witness_metadata(8, 1);
+        set_witness_trace_domain(&mut metadata, 6);
+        metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 7;
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 6;
         let verifier_config = verification_config(metadata);
         let profile = derive_zk_stark_degree_bound_profile(
             TreeVec(vec![vec![5], vec![5]]),
             6,
             1,
             &verifier_config,
-            7,
+            8,
             1,
         )
         .unwrap();
@@ -3004,7 +3327,7 @@ mod tests {
         assert_eq!(profile.trace_log_degree_bound, 7);
         assert_eq!(profile.split_composition_log_degree_bound, 6);
         assert_eq!(profile.composition_log_degree_bound, 7);
-        assert_eq!(profile.fri_first_layer_log_size, 7);
+        assert_eq!(profile.fri_first_layer_log_size, 8);
     }
 
     #[test]

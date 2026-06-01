@@ -12,8 +12,10 @@ use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_public_metadata_against_verifier_config, zk_oods_exclusion_set,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    validate_zk_committed_column_log_sizes, validate_zk_public_metadata_against_verifier_config,
+    validate_zk_sampled_values_shape, zk_oods_exclusion_set,
+    ZkCommittedColumnLogSizeValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
+    ZkVerificationConfig,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -193,6 +195,16 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         commitment_scheme.config.fri_config.log_blowup_factor,
     )
     .map_err(VerificationError::ZkDegreeProfile)?;
+    let committed_column_log_sizes = commitment_scheme
+        .trees
+        .as_ref()
+        .map(|tree| tree.column_log_sizes.clone());
+    validate_zk_committed_column_log_sizes(
+        &committed_column_log_sizes,
+        &zk_degree_profile.column_log_degree_bounds,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(VerificationError::ZkCommittedColumnLogSizes)?;
     let split_composition_log_degree_bound = zk_degree_profile.split_composition_log_degree_bound;
     tracing::info!(
         "ZK split composition polynomial log degree bound: {}",
@@ -283,6 +295,13 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         sample_points_by_column.into_iter().flatten().count()
     );
 
+    validate_zk_sampled_values_shape(&sample_points, &proof.0.randomized_pcs_proof.sampled_values)
+        .map_err(|_| {
+            VerificationError::InvalidStructure(String::from(
+                "Unexpected ZK sampled_values structure",
+            ))
+        })?;
+
     let composition_oods_eval = proof
         .extract_composition_oods_eval(oods_point, max_log_degree_bound)
         .ok_or(VerificationError::InvalidStructure(
@@ -316,6 +335,8 @@ pub enum VerificationError {
     OodsNotMatching,
     #[error("Invalid ZK STARK degree profile: {0:?}.")]
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
+    #[error("Invalid ZK committed column log sizes: {0:?}.")]
+    ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]
