@@ -13,7 +13,8 @@ use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
 use crate::core::zk::{
-    build_zk_randomizer_matrices_from_stwo_sample_metadata, validate_zk_column_degree_bound_ranges,
+    build_zk_randomizer_matrices_from_stwo_sample_metadata,
+    canonical_zk_quotient_split_mask_profile_hash, validate_zk_column_degree_bound_ranges,
     validate_zk_private_column_scope_for_witness_randomization, validate_zk_public_only_metadata,
     validate_zk_query_closure_for_witness_randomization, validate_zk_quotient_split_mask_profile,
     validate_zk_randomizer_rank_profile_for_witness_randomization, zk_trace_domain_half_coset,
@@ -670,6 +671,76 @@ fn mask_right_split_coordinate<B: PolyOps>(
     CircleCoefficients::new(coeffs)
 }
 
+struct ZkQuotientSplitMaskStream {
+    rng: StdRng,
+}
+
+impl ZkQuotientSplitMaskStream {
+    fn from_prover_rng<R>(
+        rng: &mut R,
+        profile: ZkQuotientSplitMaskProfile,
+    ) -> Result<Self, ZkQuotientSplitMaskError>
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        validate_zk_quotient_split_mask_profile(profile)
+            .map_err(ZkQuotientSplitMaskError::Profile)?;
+        validate_masked_split_log_size(profile.split_mask_log_degree_bound)?;
+
+        let mut prover_seed = [0u8; 32];
+        rng.fill_bytes(&mut prover_seed);
+
+        let mut hasher = Blake2sHasher::new();
+        hasher.update(b"stwo.zk.quotient-split-mask.stream.v1");
+        hasher.update(&canonical_zk_quotient_split_mask_profile_hash(profile));
+        hasher.update(&prover_seed);
+
+        Ok(Self {
+            rng: StdRng::from_seed(hasher.finalize().into()),
+        })
+    }
+
+    fn sample_base_field(&mut self) -> BaseField {
+        sample_base_field(&mut self.rng)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn sample_quotient_split_mask<B, R>(
+    profile: ZkQuotientSplitMaskProfile,
+    rng: &mut R,
+) -> Result<SecureCirclePoly<B>, ZkQuotientSplitMaskError>
+where
+    B: PolyOps,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let mut stream = ZkQuotientSplitMaskStream::from_prover_rng(rng, profile)?;
+    let coefficient_count = 1usize
+        .checked_shl(profile.split_mask_log_degree_bound)
+        .ok_or(ZkQuotientSplitMaskError::MaskedSplitBoundTooLarge {
+            log_size: profile.split_mask_log_degree_bound,
+            max_coefficients: ZK_RANDOMIZER_MATRIX_MAX_DIMENSION as usize,
+        })?;
+    let h_split = usize::try_from(profile.h_split)
+        .expect("validated split mask entropy must fit in usize after dimension check");
+    let coordinate_polys = core::array::from_fn(|_| {
+        use num_traits::Zero;
+
+        let coeffs: Col<B, BaseField> = (0..coefficient_count)
+            .map(|index| {
+                if index < h_split {
+                    stream.sample_base_field()
+                } else {
+                    BaseField::zero()
+                }
+            })
+            .collect();
+        CircleCoefficients::<B>::new(coeffs)
+    });
+
+    Ok(SecureCirclePoly(coordinate_polys))
+}
+
 #[allow(dead_code)]
 pub(crate) fn mask_composition_split_pair<B: PolyOps>(
     left: SecureCirclePoly<B>,
@@ -755,6 +826,21 @@ pub(crate) fn mask_composition_split_pair<B: PolyOps>(
         right_hat,
         profile,
     })
+}
+
+#[allow(dead_code)]
+pub(crate) fn mask_composition_split_pair_from_prover_rng<B, R>(
+    left: SecureCirclePoly<B>,
+    right: SecureCirclePoly<B>,
+    profile: ZkQuotientSplitMaskProfile,
+    rng: &mut R,
+) -> Result<ZkMaskedCompositionSplitPair<B>, ZkQuotientSplitMaskError>
+where
+    B: PolyOps,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let split_mask = sample_quotient_split_mask(profile, rng)?;
+    mask_composition_split_pair(left, right, split_mask, profile)
 }
 
 /// Forms the Protocol 2 FRI input `H_batch = raw_quotient + R`.
@@ -1696,6 +1782,76 @@ mod tests {
                 + split_factor * masked0.right_hat.eval_at_point(point),
             masked1.left_hat.eval_at_point(point)
                 + split_factor * masked1.right_hat.eval_at_point(point)
+        );
+    }
+
+    #[test]
+    fn quotient_split_mask_sampler_respects_entropy_budget() {
+        use num_traits::Zero;
+
+        use crate::prover::backend::{Column, CpuBackend};
+
+        let mut profile = quotient_split_mask_helper_profile();
+        profile.split_mask_log_degree_bound = 3;
+        profile.h_split = 3;
+        let mut rng = DeterministicTestCryptoRng::seed_from_u64(101);
+
+        let mask = sample_quotient_split_mask::<CpuBackend, _>(profile, &mut rng).unwrap();
+
+        for coordinate in &mask.0 {
+            assert_eq!(coordinate.log_size(), profile.split_mask_log_degree_bound);
+            for index in usize::try_from(profile.h_split).unwrap()..coordinate.coeffs.len() {
+                assert!(coordinate.coeffs.at(index).is_zero());
+            }
+        }
+    }
+
+    #[test]
+    fn quotient_split_mask_sampler_is_domain_separated_by_profile() {
+        let profile0 = quotient_split_mask_helper_profile();
+        let mut profile1 = profile0;
+        profile1.left_range.tree_index += 1;
+        profile1.right_range.tree_index += 1;
+        let mut rng0 = DeterministicTestCryptoRng::seed_from_u64(103);
+        let mut rng1 = DeterministicTestCryptoRng::seed_from_u64(103);
+
+        let mask0 = sample_quotient_split_mask::<crate::prover::backend::CpuBackend, _>(
+            profile0, &mut rng0,
+        )
+        .unwrap();
+        let mask1 = sample_quotient_split_mask::<crate::prover::backend::CpuBackend, _>(
+            profile1, &mut rng1,
+        )
+        .unwrap();
+        let point = CirclePoint::get_point(41411);
+
+        assert_ne!(mask0.eval_at_point(point), mask1.eval_at_point(point));
+    }
+
+    #[test]
+    fn quotient_split_mask_from_prover_rng_preserves_recombination_identity() {
+        let profile = quotient_split_mask_helper_profile();
+        let composition_poly =
+            quotient_split_test_poly(profile.split_identity_log_degree_bound, 107);
+        let (left, right) = SecureCirclePoly(composition_poly.clone()).split_at_mid();
+        let mut rng = DeterministicTestCryptoRng::seed_from_u64(109);
+
+        let masked = mask_composition_split_pair_from_prover_rng(
+            SecureCirclePoly(left.clone()),
+            SecureCirclePoly(right.clone()),
+            profile,
+            &mut rng,
+        )
+        .unwrap();
+        let point = CirclePoint::get_point(32773);
+        let split_factor = point
+            .repeated_double(profile.split_identity_log_degree_bound - 2)
+            .x;
+
+        assert_eq!(
+            masked.left_hat.eval_at_point(point)
+                + split_factor * masked.right_hat.eval_at_point(point),
+            left.eval_at_point(point) + split_factor * right.eval_at_point(point)
         );
     }
 
