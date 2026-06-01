@@ -278,6 +278,7 @@ mod tests {
         let verifier_config = ZkVerificationConfig {
             metadata,
             column_degree_bounds: Vec::new(),
+            quotient_split_mask_profile: None,
         };
 
         (prover_config, verifier_config)
@@ -408,6 +409,7 @@ mod tests {
         let verifier_config = ZkVerificationConfig {
             metadata,
             column_degree_bounds,
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
         };
         let verifier_audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,

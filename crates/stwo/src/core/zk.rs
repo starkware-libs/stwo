@@ -1356,6 +1356,7 @@ pub struct ZkWitnessRandomizationVerifierAudit {
 pub struct ZkVerificationConfig {
     pub metadata: ZkPublicMetadata,
     pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
+    pub quotient_split_mask_profile: Option<ZkQuotientSplitMaskProfile>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1432,6 +1433,9 @@ pub enum ZkMetadataValidationError {
 pub enum ZkVerificationConfigValidationError {
     PublicMetadataMismatch,
     ColumnDegreeBoundsMismatch,
+    UnexpectedQuotientSplitMaskProfileForPublicOnly,
+    MissingQuotientSplitMaskProfile,
+    QuotientSplitMaskProfile(ZkQuotientSplitMaskProfileBindingError),
     UnexpectedColumnDegreeBoundsForPhase1,
     Metadata(ZkMetadataValidationError),
 }
@@ -1450,6 +1454,76 @@ pub fn expected_zk_column_degree_bounds(metadata: &ZkPublicMetadata) -> Vec<ZkCo
         .clone();
     expected.extend(metadata.quotient_integration.quotient_degree_bounds.clone());
     expected
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkQuotientSplitMaskProfileBindingError {
+    Profile(ZkQuotientSplitMaskProfileValidationError),
+    MissingQuotientDegreeBounds,
+    UnexpectedQuotientSplitDegreeBounds {
+        expected_range: ZkColumnRange,
+        actual_range: Option<ZkColumnRange>,
+        actual_count: usize,
+    },
+    QuotientSplitDegreeBoundOverflow {
+        log_degree_bound: u32,
+    },
+    ProfileMismatch {
+        expected: ZkQuotientSplitMaskProfile,
+        actual: ZkQuotientSplitMaskProfile,
+    },
+}
+
+pub fn validate_zk_quotient_split_mask_profile_for_metadata(
+    metadata: &ZkPublicMetadata,
+    actual: ZkQuotientSplitMaskProfile,
+) -> Result<(), ZkQuotientSplitMaskProfileBindingError> {
+    validate_zk_quotient_split_mask_profile(actual)
+        .map_err(ZkQuotientSplitMaskProfileBindingError::Profile)?;
+    let quotient_degree_bounds = &metadata.quotient_integration.quotient_degree_bounds;
+    let quotient_bound = quotient_degree_bounds
+        .first()
+        .copied()
+        .ok_or(ZkQuotientSplitMaskProfileBindingError::MissingQuotientDegreeBounds)?;
+    let expected_quotient_range = ZkColumnRange::new(
+        quotient_bound.range.tree_index,
+        0,
+        2 * SECURE_EXTENSION_DEGREE,
+    );
+    if quotient_degree_bounds.len() != 1 || quotient_bound.range != expected_quotient_range {
+        return Err(
+            ZkQuotientSplitMaskProfileBindingError::UnexpectedQuotientSplitDegreeBounds {
+                expected_range: expected_quotient_range,
+                actual_range: Some(quotient_bound.range),
+                actual_count: quotient_degree_bounds.len(),
+            },
+        );
+    }
+
+    let split_identity_log_degree_bound = quotient_bound.log_degree_bound.checked_add(1).ok_or(
+        ZkQuotientSplitMaskProfileBindingError::QuotientSplitDegreeBoundOverflow {
+            log_degree_bound: quotient_bound.log_degree_bound,
+        },
+    )?;
+    let expected = ZkQuotientSplitMaskProfile {
+        split_index: 0,
+        split_identity_log_degree_bound,
+        split_mask_log_degree_bound: quotient_bound.log_degree_bound,
+        h_split: actual.h_split,
+        left_range: ZkColumnRange::new(quotient_bound.range.tree_index, 0, SECURE_EXTENSION_DEGREE),
+        right_range: ZkColumnRange::new(
+            quotient_bound.range.tree_index,
+            SECURE_EXTENSION_DEGREE,
+            2 * SECURE_EXTENSION_DEGREE,
+        ),
+        left_masked_log_degree_bound: split_identity_log_degree_bound,
+        right_masked_log_degree_bound: quotient_bound.log_degree_bound,
+    };
+    if actual != expected {
+        return Err(ZkQuotientSplitMaskProfileBindingError::ProfileMismatch { expected, actual });
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2030,6 +2104,43 @@ pub fn validate_zk_public_metadata_against_verifier_config(
         != expected_zk_column_degree_bounds(&verifier_config.metadata)
     {
         return Err(ZkVerificationConfigValidationError::ColumnDegreeBoundsMismatch);
+    }
+    let requires_quotient_split_mask_profile = !verifier_config
+        .metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .is_empty()
+        && !verifier_config
+            .metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty();
+    if requires_quotient_split_mask_profile {
+        validate_zk_column_degree_bound_ranges(
+            &verifier_config
+                .metadata
+                .quotient_integration
+                .quotient_degree_bounds,
+        )
+        .map_err(ZkVerificationConfigValidationError::Metadata)?;
+    }
+    match (
+        requires_quotient_split_mask_profile,
+        verifier_config.quotient_split_mask_profile,
+    ) {
+        (false, None) => {}
+        (false, Some(_)) => {
+            return Err(
+                ZkVerificationConfigValidationError::UnexpectedQuotientSplitMaskProfileForPublicOnly,
+            );
+        }
+        (true, None) => {
+            return Err(ZkVerificationConfigValidationError::MissingQuotientSplitMaskProfile);
+        }
+        (true, Some(profile)) => {
+            validate_zk_quotient_split_mask_profile_for_metadata(&verifier_config.metadata, profile)
+                .map_err(ZkVerificationConfigValidationError::QuotientSplitMaskProfile)?
+        }
     }
 
     Ok(())
@@ -3096,9 +3207,37 @@ mod tests {
 
     fn verification_config(metadata: ZkPublicMetadata) -> ZkVerificationConfig {
         let column_degree_bounds = expected_zk_column_degree_bounds(&metadata);
+        let quotient_split_mask_profile = if metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .is_empty()
+            || metadata
+                .quotient_integration
+                .quotient_degree_bounds
+                .is_empty()
+        {
+            None
+        } else {
+            metadata
+                .quotient_integration
+                .quotient_degree_bounds
+                .first()
+                .and_then(|bound| {
+                    stwo_composition_quotient_split_mask_profile(
+                        bound.range.tree_index,
+                        bound.log_degree_bound + 1,
+                        bound.log_degree_bound,
+                        1u64 << bound.log_degree_bound,
+                        bound.log_degree_bound + 1,
+                        bound.log_degree_bound,
+                    )
+                    .ok()
+                })
+        };
         ZkVerificationConfig {
             metadata,
             column_degree_bounds,
+            quotient_split_mask_profile,
         }
     }
 
@@ -3731,7 +3870,7 @@ mod tests {
     }
 
     #[test]
-    fn zk_stark_degree_profile_accepts_unsplit_quotient_width() {
+    fn zk_stark_degree_profile_rejects_unsplit_private_quotient_width() {
         let mut metadata = witness_metadata(7, 1);
         set_witness_trace_domain(&mut metadata, 5);
         metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 6;
@@ -3740,25 +3879,31 @@ mod tests {
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE);
         let verifier_config = verification_config(metadata);
-        let profile = derive_zk_stark_degree_bound_profile(
-            TreeVec(vec![vec![5], vec![5]]),
-            5,
-            0,
-            &verifier_config,
-            7,
-            1,
-        )
-        .unwrap();
 
-        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![6]]);
-        assert_eq!(profile.trace_log_degree_bound, 6);
-        assert_eq!(profile.split_composition_log_degree_bound, 5);
-        assert_eq!(profile.composition_log_degree_bound, 5);
-        assert_eq!(profile.fri_first_layer_log_size, 7);
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                5,
+                0,
+                &verifier_config,
+                7,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::VerificationConfig(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::UnexpectedQuotientSplitDegreeBounds {
+                        expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
+                        actual_range: Some(ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE)),
+                        actual_count: 1,
+                    }
+                )
+            )
+        );
     }
 
     #[test]
-    fn zk_stark_degree_profile_accepts_wider_quotient_split_width() {
+    fn zk_stark_degree_profile_rejects_wider_private_quotient_split_width() {
         let mut metadata = witness_metadata(8, 1);
         set_witness_trace_domain(&mut metadata, 6);
         metadata.witness_randomization.private_column_degree_bounds[0].log_degree_bound = 7;
@@ -3767,21 +3912,27 @@ mod tests {
         metadata.quotient_integration.quotient_degree_bounds[0].range =
             ZkColumnRange::new(2, 0, 4 * SECURE_EXTENSION_DEGREE);
         let verifier_config = verification_config(metadata);
-        let profile = derive_zk_stark_degree_bound_profile(
-            TreeVec(vec![vec![5], vec![5]]),
-            6,
-            2,
-            &verifier_config,
-            8,
-            1,
-        )
-        .unwrap();
 
-        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![7]]);
-        assert_eq!(profile.trace_log_degree_bound, 7);
-        assert_eq!(profile.split_composition_log_degree_bound, 6);
-        assert_eq!(profile.composition_log_degree_bound, 8);
-        assert_eq!(profile.fri_first_layer_log_size, 8);
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                2,
+                &verifier_config,
+                8,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::VerificationConfig(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::UnexpectedQuotientSplitDegreeBounds {
+                        expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
+                        actual_range: Some(ZkColumnRange::new(2, 0, 4 * SECURE_EXTENSION_DEGREE)),
+                        actual_count: 1,
+                    }
+                )
+            )
+        );
     }
 
     #[test]
@@ -3849,10 +4000,12 @@ mod tests {
                 1,
             )
             .unwrap_err(),
-            ZkStarkDegreeBoundProfileError::Metadata(
-                ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
-                    range: ZkColumnRange::new(2, 0, 0),
-                },
+            ZkStarkDegreeBoundProfileError::VerificationConfig(
+                ZkVerificationConfigValidationError::Metadata(
+                    ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
+                        range: ZkColumnRange::new(2, 0, 0),
+                    },
+                ),
             )
         );
     }
@@ -4059,10 +4212,15 @@ mod tests {
                 1,
             )
             .unwrap_err(),
-            ZkStarkDegreeBoundProfileError::NonCanonicalQuotientDegreeBounds {
-                expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
-                actual_count: 2,
-            }
+            ZkStarkDegreeBoundProfileError::VerificationConfig(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::UnexpectedQuotientSplitDegreeBounds {
+                        expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
+                        actual_range: Some(ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE)),
+                        actual_count: 2,
+                    }
+                )
+            )
         );
     }
 
@@ -4075,6 +4233,7 @@ mod tests {
                 range: ZkColumnRange::new(0, 0, 1),
                 log_degree_bound: 5,
             }],
+            quotient_split_mask_profile: None,
         };
 
         assert_eq!(
@@ -4101,6 +4260,7 @@ mod tests {
         let verifier_config = ZkVerificationConfig {
             metadata,
             column_degree_bounds: Vec::new(),
+            quotient_split_mask_profile: None,
         };
 
         assert_eq!(
@@ -4115,6 +4275,62 @@ mod tests {
     }
 
     #[test]
+    fn verifier_config_requires_private_quotient_split_mask_profile() {
+        let metadata = witness_metadata(6, 1);
+        let verifier_config = ZkVerificationConfig {
+            metadata: metadata.clone(),
+            column_degree_bounds: expected_zk_column_degree_bounds(&metadata),
+            quotient_split_mask_profile: None,
+        };
+
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(&metadata, &verifier_config),
+            Err(ZkVerificationConfigValidationError::MissingQuotientSplitMaskProfile)
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_wrong_private_quotient_split_mask_profile() {
+        let metadata = witness_metadata(6, 1);
+        let mut verifier_config = verification_config(metadata.clone());
+        let expected = verifier_config
+            .quotient_split_mask_profile
+            .expect("witness verifier config must derive split mask profile");
+        let mut actual = expected;
+        actual.left_range.tree_index += 1;
+        actual.right_range.tree_index += 1;
+        verifier_config.quotient_split_mask_profile = Some(actual);
+
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(&metadata, &verifier_config),
+            Err(
+                ZkVerificationConfigValidationError::QuotientSplitMaskProfile(
+                    ZkQuotientSplitMaskProfileBindingError::ProfileMismatch { expected, actual }
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn verifier_config_rejects_public_only_quotient_split_mask_profile() {
+        let metadata = public_only_metadata(16, 1);
+        let verifier_config = ZkVerificationConfig {
+            metadata: metadata.clone(),
+            column_degree_bounds: Vec::new(),
+            quotient_split_mask_profile: Some(
+                stwo_composition_quotient_split_mask_profile(1, 6, 5, 32, 6, 5).unwrap(),
+            ),
+        };
+
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(&metadata, &verifier_config),
+            Err(
+                ZkVerificationConfigValidationError::UnexpectedQuotientSplitMaskProfileForPublicOnly
+            )
+        );
+    }
+
+    #[test]
     fn verifier_config_rejects_public_only_column_degree_bounds() {
         let metadata = public_only_metadata(16, 1);
         let verifier_config = ZkVerificationConfig {
@@ -4123,6 +4339,7 @@ mod tests {
                 range: ZkColumnRange::new(0, 0, 1),
                 log_degree_bound: 15,
             }],
+            quotient_split_mask_profile: None,
         };
 
         assert_eq!(
@@ -4378,6 +4595,7 @@ mod tests {
         let verifier_config = ZkVerificationConfig {
             metadata,
             column_degree_bounds: vec![private_degree_bound],
+            quotient_split_mask_profile: None,
         };
         let audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,

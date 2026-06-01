@@ -240,6 +240,7 @@ where
     let zk_verification_config = ZkVerificationConfig {
         metadata: zk_config.metadata.clone(),
         column_degree_bounds: zk_config.column_degree_bounds.clone(),
+        quotient_split_mask_profile: zk_config.quotient_split_mask_profile,
     };
     let zk_degree_profile = derive_zk_stark_degree_bound_profile(
         base_column_log_degree_bounds,
@@ -627,6 +628,7 @@ mod tests {
         let verifier_config = ZkVerificationConfig {
             metadata,
             column_degree_bounds,
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
         };
         let verifier_audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,
