@@ -6,7 +6,7 @@ use crate::core::channel::Channel;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::ComplexConjugate;
 use crate::core::fri::{FriConfig, FriProof, FriProofAux};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
@@ -1575,6 +1575,39 @@ impl ZkOodsExclusionSet {
     }
 }
 
+fn push_full_circle_domain_cosets(forbidden_cosets: &mut Vec<Coset>, half_coset: Coset) {
+    forbidden_cosets.push(half_coset);
+    forbidden_cosets.push(half_coset.conjugate());
+}
+
+/// Returns the public OODS exclusion set shared by the explicit ZK prover and
+/// verifier paths.
+///
+/// This covers the trace domain and first FRI layer commitment domain. More
+/// specialized translated/query-domain exclusions remain separate degree-gated
+/// work; both prover and verifier must use this helper so the Fiat-Shamir
+/// rejection rule cannot diverge.
+#[must_use]
+pub fn zk_oods_exclusion_set(
+    trace_domain_log_size: u32,
+    fri_first_layer_log_size: u32,
+) -> Result<ZkOodsExclusionSet, crate::core::poly::circle::InvalidCanonicCosetLogSize> {
+    let mut forbidden_cosets = Vec::new();
+    push_full_circle_domain_cosets(
+        &mut forbidden_cosets,
+        CanonicCoset::try_new(trace_domain_log_size)?.coset,
+    );
+    push_full_circle_domain_cosets(
+        &mut forbidden_cosets,
+        CanonicCoset::try_new(fri_first_layer_log_size)?.coset,
+    );
+
+    Ok(ZkOodsExclusionSet {
+        forbidden_cosets,
+        reject_line_degeneracy: true,
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkOodsSamplingError {
     ExhaustedAttempts { attempts: usize },
@@ -1943,6 +1976,41 @@ pub struct ExtendedZkCommitmentSchemeProof<H: MerkleHasherLifted> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkStarkProof<H: MerkleHasherLifted>(pub ZkCommitmentSchemeProof<H>);
+
+impl<H: MerkleHasherLifted> ZkStarkProof<H> {
+    /// Extracts the randomized composition trace Out-Of-Domain-Sample
+    /// evaluation from the ZK PCS sampled values.
+    pub(crate) fn extract_composition_oods_eval(
+        &self,
+        oods_point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
+    ) -> Option<SecureField> {
+        let [.., left_and_right_composition_mask] = &self.0.randomized_pcs_proof.sampled_values[..]
+        else {
+            return None;
+        };
+        let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
+            left_and_right_composition_mask
+                .iter()
+                .map(|columns| {
+                    let &[eval] = &columns[..] else {
+                        return None;
+                    };
+                    Some(eval)
+                })
+                .collect::<Option<Vec<_>>>()?
+                .try_into()
+                .ok()?;
+
+        let (left_coordinate_evals, right_coordinate_evals) =
+            left_and_right_coordinate_evals.split_at(SECURE_EXTENSION_DEGREE);
+
+        let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
+        let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
+        let value = left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval;
+        Some(value)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExtendedZkStarkProof<H: MerkleHasherLifted> {

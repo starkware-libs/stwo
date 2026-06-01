@@ -247,6 +247,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 .witness_randomization
                 .private_column_degree_bounds,
         )?;
+        if proof.randomized_pcs_proof.commitments.len() != self.trees.len()
+            || proof
+                .randomized_pcs_proof
+                .commitments
+                .iter()
+                .zip(self.trees.iter())
+                .any(|(commitment, tree)| commitment != &tree.root)
+        {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK PCS proof commitments do not match verifier commitment state",
+            )));
+        }
 
         let ZkCommitmentSchemeProof {
             randomized_pcs_proof: proof,
@@ -333,6 +345,24 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 })
                 .collect::<Vec<_>>(),
         );
+        if proof.decommitments.len() != self.trees.len()
+            || proof.queried_values.len() != self.trees.len()
+            || sampled_points.len() != self.trees.len()
+            || proof.sampled_values.len() != self.trees.len()
+        {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK PCS proof tree structure does not match verifier state",
+            )));
+        }
+        for (tree_index, tree) in self.trees.iter().enumerate() {
+            if sampled_points[tree_index].len() != tree.column_log_sizes.len()
+                || proof.sampled_values[tree_index].len() != tree.column_log_sizes.len()
+            {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "ZK PCS sampled-value column structure does not match verifier state",
+                )));
+            }
+        }
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)

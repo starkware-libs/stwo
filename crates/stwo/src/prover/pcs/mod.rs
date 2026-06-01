@@ -619,8 +619,13 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         self.commitment_scheme.commit(self.polys, channel);
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn commit_zk_witness_randomized<R>(
+    /// Commits this tree for the explicit ZK path, randomizing the columns
+    /// selected by `zk_config.privacy_map` before the Merkle root is mixed.
+    ///
+    /// The randomizer coefficients remain prover-private. This method must be
+    /// used only for witness/private trees selected by the verifier-owned
+    /// privacy map; unselected trees follow the normal [`Self::commit`] path.
+    pub fn commit_zk_witness_randomized<R>(
         mut self,
         zk_config: &ZkProvingConfig,
         rng: &mut R,

@@ -10,6 +10,11 @@ use crate::core::pcs::utils::try_get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
+use crate::core::zk::{
+    draw_zk_oods_point, mix_zk_public_metadata,
+    validate_zk_public_metadata_against_verifier_config, validate_zk_public_only_metadata,
+    zk_oods_exclusion_set, ZkStarkProof, ZkVerificationConfig,
+};
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
 // TODO(Leo): remove this once the composition poly split can be dependant on a config instead of
@@ -119,6 +124,178 @@ pub fn verify_ex<MC: MerkleChannel>(
         return Err(VerificationError::OodsNotMatching);
     }
     commitment_scheme.verify_values(sample_points, proof.0, channel)
+}
+
+pub fn verify_zk<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: ZkStarkProof<MC::H>,
+    zk_config: &ZkVerificationConfig,
+) -> Result<(), VerificationError> {
+    let include_all_preprocessed_columns = false;
+    verify_zk_ex(
+        components,
+        channel,
+        commitment_scheme,
+        proof,
+        zk_config,
+        include_all_preprocessed_columns,
+    )
+}
+
+pub fn verify_zk_ex<MC: MerkleChannel>(
+    components: &[&dyn Component],
+    channel: &mut MC::C,
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: ZkStarkProof<MC::H>,
+    zk_config: &ZkVerificationConfig,
+    include_all_preprocessed_columns: bool,
+) -> Result<(), VerificationError> {
+    if !zk_config
+        .metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .is_empty()
+        || !zk_config
+            .metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty()
+    {
+        return Err(VerificationError::InvalidStructure(String::from(
+            "ZK private witness STARK verification is blocked until degree/OODS integration lands",
+        )));
+    }
+
+    validate_zk_public_metadata_against_verifier_config(&zk_config.metadata, zk_config).map_err(
+        |_| {
+            VerificationError::InvalidStructure(String::from(
+                "Invalid ZK verifier metadata or degree bounds",
+            ))
+        },
+    )?;
+
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+        .column_log_sizes
+        .len();
+
+    let components = Components {
+        components: components.to_vec(),
+        n_preprocessed_columns,
+    };
+    let split_composition_log_degree_bound =
+        components.composition_log_degree_bound() - COMPOSITION_LOG_SPLIT;
+    tracing::info!(
+        "ZK split composition polynomial log degree bound: {}",
+        split_composition_log_degree_bound
+    );
+
+    let lifting_log_size = try_get_lifting_log_size(
+        &commitment_scheme.config,
+        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
+    )?;
+    if include_all_preprocessed_columns {
+        let preprocessed_trace_height = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height;
+        if lifting_log_size < preprocessed_trace_height {
+            Err(crate::core::pcs::utils::InvalidLiftingLogSizeError {
+                lifting_log_size,
+                min_log_size: preprocessed_trace_height,
+            })?;
+        }
+    }
+
+    let max_log_degree_bound =
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
+    let mut actual_trace_domain_log_size = None;
+    for tree in commitment_scheme.trees.iter() {
+        for &column_log_size in &tree.column_log_sizes {
+            let Some(trace_log_size) =
+                column_log_size.checked_sub(commitment_scheme.config.fri_config.log_blowup_factor)
+            else {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "Invalid ZK committed trace geometry",
+                )));
+            };
+            actual_trace_domain_log_size = Some(
+                actual_trace_domain_log_size
+                    .map_or(trace_log_size, |actual: u32| actual.max(trace_log_size)),
+            );
+        }
+    }
+    let actual_trace_domain_log_size = actual_trace_domain_log_size.ok_or_else(|| {
+        VerificationError::InvalidStructure(String::from("Invalid ZK committed trace geometry"))
+    })?;
+    if zk_config.metadata.degree_profile.trace_domain_log_size != actual_trace_domain_log_size {
+        return Err(VerificationError::InvalidStructure(String::from(
+            "ZK trace domain metadata does not match committed trace geometry",
+        )));
+    }
+    validate_zk_public_only_metadata(
+        &zk_config.metadata,
+        lifting_log_size,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(|_| {
+        VerificationError::InvalidStructure(String::from("Invalid public-only ZK metadata"))
+    })?;
+
+    mix_zk_public_metadata(
+        channel,
+        &zk_config.metadata,
+        &zk_config.column_degree_bounds,
+    );
+    let random_coeff = channel.draw_secure_felt();
+
+    let Some(&composition_commitment) = proof.0.randomized_pcs_proof.commitments.last() else {
+        return Err(VerificationError::InvalidStructure(String::from(
+            "ZK proof is missing composition commitment",
+        )));
+    };
+    commitment_scheme.commit(
+        composition_commitment,
+        &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
+        channel,
+    );
+
+    let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
+    let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
+        VerificationError::InvalidStructure(String::from("Could not sample a valid ZK OODS point"))
+    })?;
+
+    let mut sample_points = components.mask_points(
+        oods_point,
+        max_log_degree_bound,
+        include_all_preprocessed_columns,
+    );
+    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+
+    let sample_points_by_column = sample_points.as_cols_ref().flatten();
+    tracing::info!("Sampling {} ZK columns.", sample_points_by_column.len());
+    tracing::info!(
+        "Total ZK sample points: {}.",
+        sample_points_by_column.into_iter().flatten().count()
+    );
+
+    let composition_oods_eval = proof
+        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
+        .ok_or(VerificationError::InvalidStructure(
+            std_shims::ToString::to_string(&"Unexpected ZK sampled_values structure"),
+        ))?;
+
+    if composition_oods_eval
+        != components.eval_composition_polynomial_at_point(
+            oods_point,
+            &proof.0.randomized_pcs_proof.sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        )
+    {
+        return Err(VerificationError::OodsNotMatching);
+    }
+
+    commitment_scheme.verify_values_zk(sample_points, proof.0, zk_config, channel)
 }
 
 #[derive(Clone, Debug, Error)]

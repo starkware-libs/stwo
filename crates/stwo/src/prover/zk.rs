@@ -1406,7 +1406,7 @@ mod tests {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ZkWitnessRandomizationError {
+pub enum ZkWitnessRandomizationError {
     MissingRankProfileEntry {
         range: ZkColumnRange,
     },

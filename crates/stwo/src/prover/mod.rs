@@ -1,3 +1,4 @@
+use rand::{CryptoRng, RngCore};
 use thiserror::Error;
 use tracing::{info, instrument, span, Level};
 
@@ -7,7 +8,12 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::pcs::utils::{try_get_lifting_log_size, InvalidLiftingLogSizeError};
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
+use crate::core::zk::{
+    draw_zk_oods_point, mix_zk_public_metadata, zk_oods_exclusion_set, ExtendedZkStarkProof,
+    ZkOodsSamplingError, ZkStarkProof,
+};
 use crate::prover::backend::BackendForChannel;
+use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
 
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Poly, Trace};
@@ -152,10 +158,219 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     })
 }
 
+/// Convenience wrapper for [`prove_zk_ex`] using the default preprocessed-column
+/// sampling policy.
+///
+/// This is an explicit ZK API. It does not change [`prove`]. At this stage,
+/// STARK-level private witness mode is fail-closed until the reviewed Phase 3
+/// degree/OODS integration is wired; public-only FRI batch masking remains
+/// available through this API.
+pub fn prove_zk<B, MC, R>(
+    components: &[&dyn ComponentProver<B>],
+    channel: &mut MC::C,
+    commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
+    zk_config: &ZkProvingConfig,
+    rng: &mut R,
+) -> Result<ZkStarkProof<MC::H>, ProvingError>
+where
+    B: BackendForChannel<MC>,
+    MC: MerkleChannel,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    Ok(prove_zk_ex(
+        components,
+        channel,
+        commitment_scheme,
+        zk_config,
+        rng,
+        false,
+    )?
+    .proof)
+}
+
+/// Produces an explicit ZK STARK proof using the paper-aligned PCS ZK path.
+///
+/// This API does not alter the default [`prove_ex`] transcript or proof format.
+/// It currently rejects private witness metadata until the Phase 3
+/// STARK-level degree and OODS derivation is implemented.
+#[instrument(skip_all)]
+pub fn prove_zk_ex<B, MC, R>(
+    components: &[&dyn ComponentProver<B>],
+    channel: &mut MC::C,
+    mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
+    zk_config: &ZkProvingConfig,
+    rng: &mut R,
+    include_all_preprocessed_columns: bool,
+) -> Result<ExtendedZkStarkProof<MC::H>, ProvingError>
+where
+    B: BackendForChannel<MC>,
+    MC: MerkleChannel,
+    R: RngCore + CryptoRng + ?Sized,
+{
+    if !zk_config.privacy_map.private_columns.is_empty()
+        || !zk_config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .is_empty()
+        || !zk_config
+            .metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty()
+    {
+        return Err(ProvingError::ZkConfig(
+            ZkProvingConfigError::Phase2And3ActivationBlocked,
+        ));
+    }
+
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+        .polynomials
+        .len();
+    let component_provers = ComponentProvers {
+        components: components.to_vec(),
+        n_preprocessed_columns,
+    };
+
+    let actual_trace_domain_log_size = commitment_scheme
+        .trees
+        .iter()
+        .flat_map(|tree| tree.polynomials.iter())
+        .map(|poly| {
+            poly.evals
+                .domain
+                .log_size()
+                .checked_sub(commitment_scheme.config.fri_config.log_blowup_factor)
+        })
+        .collect::<Option<Vec<_>>>()
+        .and_then(|log_sizes| log_sizes.into_iter().max())
+        .ok_or(ProvingError::InvalidZkTraceGeometry)?;
+    if zk_config.metadata.degree_profile.trace_domain_log_size != actual_trace_domain_log_size {
+        return Err(ProvingError::InvalidZkTraceGeometry);
+    }
+
+    let trace = commitment_scheme.trace();
+    zk_config
+        .validate_for_fri_batch_mask_only(
+            zk_config.metadata.degree_profile.fri_first_layer_log_size,
+            commitment_scheme.config.fri_config.log_blowup_factor,
+        )
+        .map_err(ProvingError::ZkConfig)?;
+    mix_zk_public_metadata(
+        channel,
+        &zk_config.metadata,
+        &zk_config.column_degree_bounds,
+    );
+
+    // Evaluate and commit on composition polynomial. In the explicit ZK path,
+    // `commitment_scheme.trace()` reflects any prior ZK-randomized private
+    // witness tree commits.
+    let random_coeff = channel.draw_secure_felt();
+
+    let span = span!(Level::INFO, "ZK Composition", class = "Composition").entered();
+    let span1 = span!(
+        Level::INFO,
+        "ZK Generation",
+        class = "CompositionPolynomialGeneration"
+    )
+    .entered();
+
+    let composition_poly = component_provers.compute_composition_polynomial(
+        random_coeff,
+        &trace,
+        commitment_scheme.twiddles,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    );
+    span1.exit();
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
+
+    tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
+    tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
+    tree_builder.commit(channel);
+    span.exit();
+
+    let split_composition_log_size = commitment_scheme
+        .trees
+        .last()
+        .unwrap()
+        .commitment
+        .layers
+        .len() as u32
+        - 1;
+
+    let lifting_log_size =
+        try_get_lifting_log_size(&commitment_scheme.config, split_composition_log_size)?;
+    if include_all_preprocessed_columns {
+        let preprocessed_log_size = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        if lifting_log_size < preprocessed_log_size {
+            Err(InvalidLiftingLogSizeError {
+                lifting_log_size,
+                min_log_size: preprocessed_log_size,
+            })?;
+        }
+    }
+    let max_log_degree_bound =
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
+    zk_config
+        .validate_for_fri_batch_mask_only(
+            lifting_log_size,
+            commitment_scheme.config.fri_config.log_blowup_factor,
+        )
+        .map_err(ProvingError::ZkConfig)?;
+    let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
+    let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64)
+        .map_err(ProvingError::ZkOodsSampling)?;
+
+    let mut sample_points = component_provers.components().mask_points(
+        oods_point,
+        max_log_degree_bound,
+        include_all_preprocessed_columns,
+    );
+    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+
+    let commitment_scheme_proof = commitment_scheme
+        .prove_values_zk(sample_points, zk_config, rng, channel)
+        .map_err(ProvingError::ZkConfig)?;
+    let proof = ZkStarkProof(commitment_scheme_proof.proof);
+
+    if proof
+        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
+        .unwrap()
+        != component_provers
+            .components()
+            .eval_composition_polynomial_at_point(
+                oods_point,
+                &proof.0.randomized_pcs_proof.sampled_values,
+                random_coeff,
+                max_log_degree_bound,
+            )
+    {
+        return Err(ProvingError::ConstraintsNotSatisfied);
+    }
+
+    Ok(ExtendedZkStarkProof {
+        proof,
+        aux: commitment_scheme_proof.aux,
+    })
+}
+
 #[derive(Clone, Copy, Debug, Error)]
 pub enum ProvingError {
     #[error("Constraints not satisfied.")]
     ConstraintsNotSatisfied,
+    #[error("Invalid ZK proving config: {0:?}.")]
+    ZkConfig(ZkProvingConfigError),
+    #[error("Could not sample a valid ZK OODS point: {0:?}.")]
+    ZkOodsSampling(ZkOodsSamplingError),
+    #[error("Invalid ZK trace geometry.")]
+    InvalidZkTraceGeometry,
     #[error(transparent)]
     InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
     #[error(transparent)]
