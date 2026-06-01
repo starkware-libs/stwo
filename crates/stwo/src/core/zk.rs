@@ -1293,6 +1293,234 @@ pub fn apply_zk_column_degree_bounds(
     Ok(base_bounds)
 }
 
+#[derive(Clone, Debug)]
+pub struct ZkStarkDegreeBoundProfile {
+    pub column_log_degree_bounds: TreeVec<ColumnVec<u32>>,
+    pub trace_log_degree_bound: u32,
+    pub composition_log_degree_bound: u32,
+    pub split_composition_log_degree_bound: u32,
+    pub fri_first_layer_log_size: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkStarkDegreeBoundProfileError {
+    VerificationConfig(ZkVerificationConfigValidationError),
+    Metadata(ZkMetadataValidationError),
+    ColumnDegreeBounds(ZkColumnDegreeBoundApplicationError),
+    EmptyTraceDegreeProfile,
+    CompositionSplitUnderflow {
+        composition_log_degree_bound: u32,
+        composition_log_split: u32,
+    },
+    CompositionDegreeOverflow {
+        split_composition_log_degree_bound: u32,
+        composition_log_split: u32,
+    },
+    QuotientColumnCountOverflow {
+        composition_log_split: u32,
+    },
+    UnexpectedQuotientDegreeBoundRange {
+        expected_range: ZkColumnRange,
+        actual_range: ZkColumnRange,
+    },
+    NonCanonicalQuotientDegreeBounds {
+        expected_range: ZkColumnRange,
+        actual_count: usize,
+    },
+    QuotientDegreeBoundShrinksComposition {
+        normal_split_composition_log_degree_bound: u32,
+        zk_split_composition_log_degree_bound: u32,
+    },
+    FriFirstLayerTooSmall {
+        required: u32,
+        actual: u32,
+    },
+    FriFirstLayerMismatch {
+        degree_profile: u32,
+        quotient_integration: u32,
+    },
+}
+
+impl From<ZkColumnDegreeBoundApplicationError> for ZkStarkDegreeBoundProfileError {
+    fn from(error: ZkColumnDegreeBoundApplicationError) -> Self {
+        Self::ColumnDegreeBounds(error)
+    }
+}
+
+impl From<ZkVerificationConfigValidationError> for ZkStarkDegreeBoundProfileError {
+    fn from(error: ZkVerificationConfigValidationError) -> Self {
+        Self::VerificationConfig(error)
+    }
+}
+
+impl From<ZkMetadataValidationError> for ZkStarkDegreeBoundProfileError {
+    fn from(error: ZkMetadataValidationError) -> Self {
+        Self::Metadata(error)
+    }
+}
+
+fn zk_metadata_has_private_witness_randomization(metadata: &ZkPublicMetadata) -> bool {
+    metadata.degree_profile.h_witness != 0
+        || metadata.witness_randomization.h_witness != 0
+        || !metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .is_empty()
+        || metadata
+            .witness_randomization
+            .randomizer_space_hash
+            .iter()
+            .any(|&byte| byte != 0)
+        || metadata
+            .witness_randomization
+            .private_column_scope_hash
+            .iter()
+            .any(|&byte| byte != 0)
+}
+
+fn validate_zk_quotient_degree_bounds_for_stark_profile(
+    bounds: &[ZkColumnDegreeBound],
+    expected_range: ZkColumnRange,
+) -> Result<(), ZkStarkDegreeBoundProfileError> {
+    validate_zk_column_degree_bound_ranges(bounds)?;
+    if bounds.is_empty() {
+        return Ok(());
+    }
+    if bounds.len() != 1 {
+        return Err(
+            ZkStarkDegreeBoundProfileError::NonCanonicalQuotientDegreeBounds {
+                expected_range,
+                actual_count: bounds.len(),
+            },
+        );
+    }
+    if bounds[0].range != expected_range {
+        return Err(
+            ZkStarkDegreeBoundProfileError::UnexpectedQuotientDegreeBoundRange {
+                expected_range,
+                actual_range: bounds[0].range,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn zk_composition_split_column_count(
+    composition_log_split: u32,
+) -> Result<usize, ZkStarkDegreeBoundProfileError> {
+    let split_count = 1usize.checked_shl(composition_log_split).ok_or(
+        ZkStarkDegreeBoundProfileError::QuotientColumnCountOverflow {
+            composition_log_split,
+        },
+    )?;
+    split_count.checked_mul(SECURE_EXTENSION_DEGREE).ok_or(
+        ZkStarkDegreeBoundProfileError::QuotientColumnCountOverflow {
+            composition_log_split,
+        },
+    )
+}
+
+/// Derives the public ZK STARK degree profile used by Phase 3 wiring.
+///
+/// Public-only metadata returns the normal STARK composition split profile.
+/// Private-witness metadata must carry verifier-owned quotient degree bounds;
+/// those bounds are treated as the source of truth for the split composition
+/// bound and may only increase the normal bound. This helper is deliberately
+/// conservative and does not activate private-witness STARK ZK by itself.
+pub fn derive_zk_stark_degree_bound_profile(
+    base_column_log_degree_bounds: TreeVec<ColumnVec<u32>>,
+    normal_composition_log_degree_bound: u32,
+    composition_log_split: u32,
+    verifier_config: &ZkVerificationConfig,
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Result<ZkStarkDegreeBoundProfile, ZkStarkDegreeBoundProfileError> {
+    let metadata = &verifier_config.metadata;
+    validate_zk_public_metadata_against_verifier_config(metadata, verifier_config)?;
+    if zk_metadata_has_private_witness_randomization(metadata) {
+        validate_zk_witness_metadata(metadata, lifting_log_size, log_blowup_factor)?;
+    } else {
+        validate_zk_public_only_metadata(metadata, lifting_log_size, log_blowup_factor)?;
+    }
+
+    let expected_quotient_range = ZkColumnRange::new(
+        base_column_log_degree_bounds.0.len(),
+        0,
+        zk_composition_split_column_count(composition_log_split)?,
+    );
+    validate_zk_quotient_degree_bounds_for_stark_profile(
+        &metadata.quotient_integration.quotient_degree_bounds,
+        expected_quotient_range,
+    )?;
+
+    let column_log_degree_bounds = apply_zk_column_degree_bounds(
+        base_column_log_degree_bounds,
+        &metadata.witness_randomization.private_column_degree_bounds,
+    )?;
+    let trace_log_degree_bound = column_log_degree_bounds
+        .iter()
+        .flatten()
+        .copied()
+        .max()
+        .ok_or(ZkStarkDegreeBoundProfileError::EmptyTraceDegreeProfile)?;
+    let normal_split_composition_log_degree_bound = normal_composition_log_degree_bound
+        .checked_sub(composition_log_split)
+        .ok_or(ZkStarkDegreeBoundProfileError::CompositionSplitUnderflow {
+            composition_log_degree_bound: normal_composition_log_degree_bound,
+            composition_log_split,
+        })?;
+
+    let zk_split_composition_log_degree_bound = metadata
+        .quotient_integration
+        .quotient_degree_bounds
+        .iter()
+        .map(|bound| bound.log_degree_bound)
+        .max()
+        .unwrap_or(normal_split_composition_log_degree_bound);
+    if zk_split_composition_log_degree_bound < normal_split_composition_log_degree_bound {
+        return Err(
+            ZkStarkDegreeBoundProfileError::QuotientDegreeBoundShrinksComposition {
+                normal_split_composition_log_degree_bound,
+                zk_split_composition_log_degree_bound,
+            },
+        );
+    }
+    if metadata.degree_profile.fri_first_layer_log_size
+        != metadata.quotient_integration.fri_first_layer_log_size
+    {
+        return Err(ZkStarkDegreeBoundProfileError::FriFirstLayerMismatch {
+            degree_profile: metadata.degree_profile.fri_first_layer_log_size,
+            quotient_integration: metadata.quotient_integration.fri_first_layer_log_size,
+        });
+    }
+    let required_fri_first_layer_log_size = zk_split_composition_log_degree_bound
+        .checked_add(log_blowup_factor)
+        .ok_or(ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
+            required: u32::MAX,
+            actual: metadata.degree_profile.fri_first_layer_log_size,
+        })?;
+    if metadata.degree_profile.fri_first_layer_log_size < required_fri_first_layer_log_size {
+        return Err(ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
+            required: required_fri_first_layer_log_size,
+            actual: metadata.degree_profile.fri_first_layer_log_size,
+        });
+    }
+
+    Ok(ZkStarkDegreeBoundProfile {
+        column_log_degree_bounds,
+        trace_log_degree_bound,
+        composition_log_degree_bound: zk_split_composition_log_degree_bound
+            .checked_add(composition_log_split)
+            .ok_or(ZkStarkDegreeBoundProfileError::CompositionDegreeOverflow {
+                split_composition_log_degree_bound: zk_split_composition_log_degree_bound,
+                composition_log_split,
+            })?,
+        split_composition_log_degree_bound: zk_split_composition_log_degree_bound,
+        fri_first_layer_log_size: metadata.degree_profile.fri_first_layer_log_size,
+    })
+}
+
 pub fn validate_zk_public_metadata_against_verifier_config(
     proof_metadata: &ZkPublicMetadata,
     verifier_config: &ZkVerificationConfig,
@@ -2214,6 +2442,14 @@ mod tests {
         }
     }
 
+    fn verification_config(metadata: ZkPublicMetadata) -> ZkVerificationConfig {
+        let column_degree_bounds = expected_zk_column_degree_bounds(&metadata);
+        ZkVerificationConfig {
+            metadata,
+            column_degree_bounds,
+        }
+    }
+
     #[test]
     fn public_only_metadata_accepts_public_only_profile() {
         let metadata = public_only_metadata(16, 1);
@@ -2344,7 +2580,7 @@ mod tests {
                 fri_first_layer_log_size: lifting_log_size,
                 split_derivation_hash: nonzero_hash(),
                 quotient_degree_bounds: vec![ZkColumnDegreeBound {
-                    range: ZkColumnRange::new(2, 0, 1),
+                    range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
                     log_degree_bound: lifting_log_size - log_blowup_factor,
                 }],
             },
@@ -2511,6 +2747,284 @@ mod tests {
                 base_log_degree_bound: 4,
                 zk_log_degree_bound: 3,
             }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_uses_normal_public_only_bounds() {
+        let metadata = public_only_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+        let profile = derive_zk_stark_degree_bound_profile(
+            TreeVec(vec![vec![5], vec![5]]),
+            6,
+            1,
+            &verifier_config,
+            6,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![5]]);
+        assert_eq!(profile.trace_log_degree_bound, 5);
+        assert_eq!(profile.split_composition_log_degree_bound, 5);
+        assert_eq!(profile.composition_log_degree_bound, 6);
+        assert_eq!(profile.fri_first_layer_log_size, 6);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_applies_private_and_quotient_bounds() {
+        let metadata = witness_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+        let profile = derive_zk_stark_degree_bound_profile(
+            TreeVec(vec![vec![5], vec![5]]),
+            6,
+            1,
+            &verifier_config,
+            6,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![6]]);
+        assert_eq!(profile.trace_log_degree_bound, 6);
+        assert_eq!(profile.split_composition_log_degree_bound, 5);
+        assert_eq!(profile.composition_log_degree_bound, 6);
+        assert_eq!(profile.fri_first_layer_log_size, 6);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_accepts_unsplit_quotient_width() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].range =
+            ZkColumnRange::new(2, 0, SECURE_EXTENSION_DEGREE);
+        let verifier_config = verification_config(metadata);
+        let profile = derive_zk_stark_degree_bound_profile(
+            TreeVec(vec![vec![5], vec![5]]),
+            5,
+            0,
+            &verifier_config,
+            6,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![6]]);
+        assert_eq!(profile.trace_log_degree_bound, 6);
+        assert_eq!(profile.split_composition_log_degree_bound, 5);
+        assert_eq!(profile.composition_log_degree_bound, 5);
+        assert_eq!(profile.fri_first_layer_log_size, 6);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_accepts_wider_quotient_split_width() {
+        let mut metadata = witness_metadata(7, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].range =
+            ZkColumnRange::new(2, 0, 4 * SECURE_EXTENSION_DEGREE);
+        let verifier_config = verification_config(metadata);
+        let profile = derive_zk_stark_degree_bound_profile(
+            TreeVec(vec![vec![5], vec![5]]),
+            6,
+            2,
+            &verifier_config,
+            7,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![7]]);
+        assert_eq!(profile.trace_log_degree_bound, 7);
+        assert_eq!(profile.split_composition_log_degree_bound, 6);
+        assert_eq!(profile.composition_log_degree_bound, 8);
+        assert_eq!(profile.fri_first_layer_log_size, 7);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_shrinking_quotient_bound() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 4;
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::QuotientDegreeBoundShrinksComposition {
+                normal_split_composition_log_degree_bound: 5,
+                zk_split_composition_log_degree_bound: 4,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_invalid_quotient_range() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].range = ZkColumnRange::new(2, 0, 0);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::Metadata(
+                ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
+                    range: ZkColumnRange::new(2, 0, 0),
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_small_fri_layer() {
+        let mut metadata = witness_metadata(5, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].log_degree_bound = 5;
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![4], vec![4]]),
+                5,
+                1,
+                &verifier_config,
+                5,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
+                required: 6,
+                actual: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_requires_quotient_bounds_for_private_witness() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds.clear();
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::Metadata(
+                ZkMetadataValidationError::MissingQuotientDegreeBounds,
+            )
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_expands_to_larger_quotient_bound() {
+        let metadata = witness_metadata(7, 1);
+        let verifier_config = verification_config(metadata);
+        let profile = derive_zk_stark_degree_bound_profile(
+            TreeVec(vec![vec![5], vec![5]]),
+            6,
+            1,
+            &verifier_config,
+            7,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(profile.column_log_degree_bounds.0, vec![vec![5], vec![7]]);
+        assert_eq!(profile.trace_log_degree_bound, 7);
+        assert_eq!(profile.split_composition_log_degree_bound, 6);
+        assert_eq!(profile.composition_log_degree_bound, 7);
+        assert_eq!(profile.fri_first_layer_log_size, 7);
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_wrong_quotient_tree() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].range =
+            ZkColumnRange::new(3, 0, 2 * SECURE_EXTENSION_DEGREE);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::UnexpectedQuotientDegreeBoundRange {
+                expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
+                actual_range: ZkColumnRange::new(3, 0, 2 * SECURE_EXTENSION_DEGREE),
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_noncanonical_quotient_bounds() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .push(metadata.quotient_integration.quotient_degree_bounds[0]);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::NonCanonicalQuotientDegreeBounds {
+                expected_range: ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE),
+                actual_count: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_verifier_config_bound_mismatch() {
+        let metadata = public_only_metadata(6, 1);
+        let verifier_config = ZkVerificationConfig {
+            metadata,
+            column_degree_bounds: vec![ZkColumnDegreeBound {
+                range: ZkColumnRange::new(0, 0, 1),
+                log_degree_bound: 5,
+            }],
+        };
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![5], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::VerificationConfig(
+                ZkVerificationConfigValidationError::ColumnDegreeBoundsMismatch,
+            )
         );
     }
 
