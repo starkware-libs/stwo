@@ -42,6 +42,16 @@ pub trait Component {
         max_log_degree_bound: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
+    /// Returns the integer mask offsets used by [`Component::mask_points`].
+    ///
+    /// Offsets are relative to the generator of the canonical coset with the caller's
+    /// `max_log_degree_bound`. Private-witness ZK uses these offsets to derive
+    /// verifier-owned PCS preimage sample points for lifted commitments. Components
+    /// that do not expose structured offsets are rejected by the private ZK path.
+    fn mask_offsets(&self) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
+        None
+    }
+
     fn preprocessed_column_indices(&self) -> ColumnVec<usize>;
 
     /// Evaluates the lifted constraint quotients accumulation of the component at `point`.
@@ -52,4 +62,25 @@ pub trait Component {
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         max_log_degree_bound: u32,
     );
+
+    /// Evaluates private-ZK semantic constraint quotients at `point`.
+    ///
+    /// The default preserves the normal STWO verifier behavior. Components with
+    /// ZK-randomized committed domains may override this to evaluate the AIR
+    /// quotient against the original semantic trace domain while PCS openings are
+    /// supplied through lifted preimage sample points.
+    fn evaluate_zk_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        max_log_degree_bound: u32,
+    ) {
+        self.evaluate_constraint_quotients_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            max_log_degree_bound,
+        );
+    }
 }

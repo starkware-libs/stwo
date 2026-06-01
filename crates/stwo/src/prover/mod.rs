@@ -9,15 +9,16 @@ use crate::core::pcs::utils::{try_get_lifting_log_size, InvalidLiftingLogSizeErr
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
-    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_point_with_preimage,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_sample_point_plan,
     mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
     validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_witness_metadata,
     zk_metadata_requires_private_stark_activation, zk_oods_exclusion_set,
     zk_trace_domain_log_size_from_column_bounds, ExtendedZkStarkProof,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError, ZkOodsSamplingError,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointPlanningError,
+    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
+    ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly};
@@ -450,27 +451,43 @@ where
     )
     .map_err(ProvingError::ZkConfig)?;
     let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
-    let (oods_point, composition_right_sample_point) = if requires_private_witness_integration {
-        draw_zk_oods_point_with_preimage(channel, &oods_exclusion_set, 64)
-            .map_err(ProvingError::ZkOodsSampling)?
-    } else {
-        let point = draw_zk_oods_point(channel, &oods_exclusion_set, 64)
-            .map_err(ProvingError::ZkOodsSampling)?;
-        (point, point)
-    };
+    let (oods_point, sample_points) = if requires_private_witness_integration {
+        let mut mask_offsets = component_provers
+            .components()
+            .mask_offsets(include_all_preprocessed_columns)
+            .ok_or(ProvingError::MissingZkMaskOffsets)?;
+        mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-    let mut sample_points = component_provers.components().mask_points(
-        oods_point,
-        max_log_degree_bound,
-        include_all_preprocessed_columns,
-    );
-    let mut composition_sample_points = vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE];
-    if requires_private_witness_integration {
-        for column_points in &mut composition_sample_points[SECURE_EXTENSION_DEGREE..] {
-            *column_points = vec![composition_right_sample_point];
-        }
-    }
-    sample_points.push(composition_sample_points);
+        let mut zk_committed_column_log_sizes = committed_column_log_sizes.clone();
+        zk_committed_column_log_sizes.push(composition_column_log_sizes.clone());
+        let sample_point_plan = draw_zk_oods_sample_point_plan(
+            channel,
+            &mask_offsets,
+            &zk_committed_column_log_sizes,
+            lifting_log_size,
+            max_log_degree_bound,
+            &oods_exclusion_set,
+            64,
+        )
+        .map_err(ProvingError::ZkOodsSamplePointPlan)?;
+
+        (
+            sample_point_plan.semantic_oods_point,
+            sample_point_plan.pcs_sample_points,
+        )
+    } else {
+        let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64)
+            .map_err(ProvingError::ZkOodsSampling)?;
+        let mut sample_points = component_provers.components().mask_points(
+            oods_point,
+            max_log_degree_bound,
+            include_all_preprocessed_columns,
+        );
+        let composition_sample_points = vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE];
+        sample_points.push(composition_sample_points);
+
+        (oods_point, sample_points)
+    };
     validate_zk_sample_points_outside_exclusion_set(&sample_points, &oods_exclusion_set)
         .map_err(ProvingError::ZkOodsSamplePoint)?;
 
@@ -479,18 +496,26 @@ where
         .map_err(ProvingError::ZkConfig)?;
     let proof = ZkStarkProof(commitment_scheme_proof.proof);
 
-    if proof
+    let extracted_composition_eval = proof
         .extract_composition_oods_eval(oods_point, zk_degree_profile.composition_log_degree_bound)
-        .unwrap()
-        != component_provers
-            .components()
-            .eval_composition_polynomial_at_point(
-                oods_point,
-                &proof.0.randomized_pcs_proof.sampled_values,
-                random_coeff,
-                max_log_degree_bound,
-            )
-    {
+        .unwrap();
+    let components = component_provers.components();
+    let component_composition_eval = if requires_private_witness_integration {
+        components.eval_zk_composition_polynomial_at_point(
+            oods_point,
+            &proof.0.randomized_pcs_proof.sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        )
+    } else {
+        components.eval_composition_polynomial_at_point(
+            oods_point,
+            &proof.0.randomized_pcs_proof.sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        )
+    };
+    if extracted_composition_eval != component_composition_eval {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
 
@@ -510,6 +535,8 @@ pub enum ProvingError {
     ZkOodsSampling(ZkOodsSamplingError),
     #[error("Invalid ZK OODS sample point: {0:?}.")]
     ZkOodsSamplePoint(ZkOodsSamplePointValidationError),
+    #[error("Invalid ZK OODS sample point plan: {0:?}.")]
+    ZkOodsSamplePointPlan(ZkOodsSamplePointPlanningError),
     #[error("Invalid ZK STARK degree profile: {0:?}.")]
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK committed column log sizes: {0:?}.")]
@@ -520,6 +547,8 @@ pub enum ProvingError {
     InvalidZkTraceGeometry,
     #[error("Invalid ZK degree geometry.")]
     InvalidZkDegreeGeometry,
+    #[error("Private ZK component does not expose structured mask offsets.")]
+    MissingZkMaskOffsets,
     #[error(transparent)]
     InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
     #[error(transparent)]
@@ -578,6 +607,10 @@ mod tests {
             _max_log_degree_bound: u32,
         ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
             TreeVec(vec![vec![vec![point]], vec![vec![point]]])
+        }
+
+        fn mask_offsets(&self) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
+            Some(TreeVec(vec![vec![vec![0]], vec![vec![0]]]))
         }
 
         fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
@@ -845,20 +878,35 @@ mod tests {
         (config, zk_verifier_config, zk_verifier_audit, proof)
     }
 
+    fn verify_private_stark_test_proof_with_component(
+        config: PcsConfig,
+        component: &dyn Component,
+        proof: ZkStarkProof<<Blake2sMerkleChannel as crate::core::channel::MerkleChannel>::H>,
+        verifier_config: &ZkVerificationConfig,
+        verifier_audit: &ZkWitnessRandomizationVerifierAudit,
+    ) -> Result<(), crate::core::verifier::VerificationError> {
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof);
+
+        crate::core::verifier::verify_zk_with_witness_randomization_audit::<Blake2sMerkleChannel>(
+            &[component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof,
+            verifier_config,
+            verifier_audit,
+        )
+    }
+
     fn verify_private_stark_test_proof(
         config: PcsConfig,
         proof: ZkStarkProof<<Blake2sMerkleChannel as crate::core::channel::MerkleChannel>::H>,
         verifier_config: &ZkVerificationConfig,
         verifier_audit: &ZkWitnessRandomizationVerifierAudit,
     ) -> Result<(), crate::core::verifier::VerificationError> {
-        let component = NoConstraintPrivateComponent;
-        let (mut verifier_channel, mut verifier) =
-            verifier_for_private_stark_test_proof(config, &proof);
-
-        crate::core::verifier::verify_zk_with_witness_randomization_audit::<Blake2sMerkleChannel>(
-            &[&component],
-            &mut verifier_channel,
-            &mut verifier,
+        verify_private_stark_test_proof_with_component(
+            config,
+            &NoConstraintPrivateComponent,
             proof,
             verifier_config,
             verifier_audit,

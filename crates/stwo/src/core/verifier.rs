@@ -11,7 +11,7 @@ use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
-    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_point_with_preimage,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, draw_zk_oods_sample_point_plan,
     mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
     validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
@@ -19,9 +19,9 @@ use crate::core::zk::{
     validate_zk_quotient_split_mask_query_budget, validate_zk_sample_points_outside_exclusion_set,
     validate_zk_sampled_values_shape, zk_metadata_requires_private_stark_activation,
     zk_oods_exclusion_set, zk_trace_domain_log_size_from_column_bounds,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
-    ZkWitnessRandomizationVerifierAudit,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointPlanningError,
+    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
+    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -364,33 +364,51 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     })?;
 
     let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
-    let (oods_point, composition_right_sample_point) = if requires_private_stark_activation {
-        draw_zk_oods_point_with_preimage(channel, &oods_exclusion_set, 64).map_err(|_| {
-            VerificationError::InvalidStructure(String::from(
-                "Could not sample a valid ZK OODS point",
-            ))
-        })?
+    let (oods_point, sample_points) = if requires_private_stark_activation {
+        let mut mask_offsets = components
+            .mask_offsets(include_all_preprocessed_columns)
+            .ok_or_else(|| {
+                VerificationError::InvalidStructure(String::from(
+                    "Private ZK component does not expose structured mask offsets",
+                ))
+            })?;
+        mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
+
+        let zk_committed_column_log_sizes = commitment_scheme
+            .trees
+            .as_ref()
+            .map(|tree| tree.column_log_sizes.clone());
+        let sample_point_plan = draw_zk_oods_sample_point_plan(
+            channel,
+            &mask_offsets,
+            &zk_committed_column_log_sizes,
+            lifting_log_size,
+            max_log_degree_bound,
+            &oods_exclusion_set,
+            64,
+        )
+        .map_err(VerificationError::ZkOodsSamplePointPlan)?;
+
+        (
+            sample_point_plan.semantic_oods_point,
+            sample_point_plan.pcs_sample_points,
+        )
     } else {
-        let point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
+        let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
             VerificationError::InvalidStructure(String::from(
                 "Could not sample a valid ZK OODS point",
             ))
         })?;
-        (point, point)
-    };
+        let mut sample_points = components.mask_points(
+            oods_point,
+            max_log_degree_bound,
+            include_all_preprocessed_columns,
+        );
+        let composition_sample_points = vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE];
+        sample_points.push(composition_sample_points);
 
-    let mut sample_points = components.mask_points(
-        oods_point,
-        max_log_degree_bound,
-        include_all_preprocessed_columns,
-    );
-    let mut composition_sample_points = vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE];
-    if requires_private_stark_activation {
-        for column_points in &mut composition_sample_points[SECURE_EXTENSION_DEGREE..] {
-            *column_points = vec![composition_right_sample_point];
-        }
-    }
-    sample_points.push(composition_sample_points);
+        (oods_point, sample_points)
+    };
 
     let sample_points_by_column = sample_points.as_cols_ref().flatten();
     tracing::info!("Sampling {} ZK columns.", sample_points_by_column.len());
@@ -415,14 +433,22 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
             std_shims::ToString::to_string(&"Unexpected ZK sampled_values structure"),
         ))?;
 
-    if composition_oods_eval
-        != components.eval_composition_polynomial_at_point(
+    let component_composition_eval = if requires_private_stark_activation {
+        components.eval_zk_composition_polynomial_at_point(
             oods_point,
             &proof.0.randomized_pcs_proof.sampled_values,
             random_coeff,
             max_log_degree_bound,
         )
-    {
+    } else {
+        components.eval_composition_polynomial_at_point(
+            oods_point,
+            &proof.0.randomized_pcs_proof.sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        )
+    };
+    if composition_oods_eval != component_composition_eval {
         return Err(VerificationError::OodsNotMatching);
     }
 
@@ -456,6 +482,8 @@ pub enum VerificationError {
     ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
     #[error("Invalid ZK OODS sample point: {0:?}.")]
     ZkOodsSamplePoint(ZkOodsSamplePointValidationError),
+    #[error("Invalid ZK OODS sample point plan: {0:?}.")]
+    ZkOodsSamplePointPlan(ZkOodsSamplePointPlanningError),
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]

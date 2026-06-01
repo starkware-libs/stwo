@@ -54,6 +54,32 @@ impl Components<'_> {
         mask_points
     }
 
+    pub fn mask_offsets(
+        &self,
+        include_all_preprocessed_columns: bool,
+    ) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
+        let component_mask_offsets = self
+            .components
+            .iter()
+            .map(|component| component.mask_offsets())
+            .collect::<Option<Vec<_>>>()?;
+        let mut mask_offsets = TreeVec::concat_cols(component_mask_offsets.into_iter());
+
+        let preprocessed_mask_offsets = &mut mask_offsets[PREPROCESSED_TRACE_IDX];
+        if include_all_preprocessed_columns {
+            *preprocessed_mask_offsets = vec![vec![0]; self.n_preprocessed_columns];
+        } else {
+            *preprocessed_mask_offsets = vec![vec![]; self.n_preprocessed_columns];
+            for component in &self.components {
+                for idx in component.preprocessed_column_indices() {
+                    preprocessed_mask_offsets[idx] = vec![0];
+                }
+            }
+        }
+
+        Some(mask_offsets)
+    }
+
     pub fn eval_composition_polynomial_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -64,6 +90,25 @@ impl Components<'_> {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         for component in &self.components {
             component.evaluate_constraint_quotients_at_point(
+                point,
+                mask_values,
+                &mut evaluation_accumulator,
+                max_log_degree_bound,
+            )
+        }
+        evaluation_accumulator.finalize()
+    }
+
+    pub fn eval_zk_composition_polynomial_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask_values: &TreeVec<Vec<Vec<SecureField>>>,
+        random_coeff: SecureField,
+        max_log_degree_bound: u32,
+    ) -> SecureField {
+        let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
+        for component in &self.components {
+            component.evaluate_zk_constraint_quotients_at_point(
                 point,
                 mask_values,
                 &mut evaluation_accumulator,

@@ -231,6 +231,10 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         })
     }
 
+    fn mask_offsets(&self) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
+        Some(self.info.mask_offsets.clone())
+    }
+
     fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
         self.preprocessed_column_indices.clone()
     }
@@ -255,6 +259,31 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             mask_points,
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse(),
+            self.eval.log_size(),
+            self.claimed_sum,
+        ));
+    }
+
+    fn evaluate_zk_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _max_log_degree_bound: u32,
+    ) {
+        let preprocessed_mask = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| &mask[PREPROCESSED_TRACE_IDX][*idx])
+            .collect_vec();
+
+        let mut mask_points = mask.sub_tree(&self.trace_locations);
+        mask_points[PREPROCESSED_TRACE_IDX] = preprocessed_mask;
+
+        self.eval.evaluate(PointEvaluator::new(
+            mask_points,
+            evaluation_accumulator,
+            coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
             self.eval.log_size(),
             self.claimed_sum,
         ));

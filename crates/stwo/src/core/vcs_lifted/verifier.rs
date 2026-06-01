@@ -106,6 +106,12 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
+        if self.column_log_sizes.is_empty() {
+            if queried_values.is_empty() && decommitment.hash_witness.is_empty() {
+                return Ok(());
+            }
+            return Err(MerkleVerificationError::WitnessTooLong);
+        }
         if self.height == 0 {
             return Ok(());
         };

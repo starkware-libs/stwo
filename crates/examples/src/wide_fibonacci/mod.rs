@@ -104,23 +104,36 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
 mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sM31Channel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::channel::Poseidon252Channel;
     use stwo::core::fields::m31::BaseField;
-    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
     use stwo::core::fri::FriConfig;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
-    use stwo::core::verifier::verify;
+    use stwo::core::verifier::{verify, verify_zk_with_witness_randomization_audit};
+    use stwo::core::zk::{
+        canonical_zk_private_column_scope_hash, canonical_zk_randomizer_space_hash,
+        canonical_zk_split_derivation_hash, expected_zk_fri_batch_degree_bound,
+        stwo_composition_quotient_split_mask_profile, zk_trace_domain_half_coset,
+        ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange, ZkDegreeProfile, ZkPrivacyMap,
+        ZkPrivacyMapHash, ZkPrivateColumnScope, ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage,
+        ZkProofVersion, ZkPublicMetadata, ZkPublicStatementHash, ZkQuotientIntegrationProfile,
+        ZkRandomizerSpaceEntry, ZkVerificationConfig, ZkWitnessRandomizationProfile,
+        ZkWitnessRandomizationVerifierAudit,
+    };
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::{Column, CpuBackend};
     use stwo::prover::poly::circle::PolyOps;
-    use stwo::prover::{prove, CommitmentSchemeProver};
+    use stwo::prover::zk::{ZkDerivationGate, ZkDerivationReview, ZkProvingConfig};
+    use stwo::prover::{prove, prove_zk, CommitmentSchemeProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -129,6 +142,10 @@ mod tests {
     use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
+    const ZK_FIB_SEQUENCE_LENGTH: usize = 3;
+    const ZK_FIB_LOG_N_INSTANCES: u32 = 5;
+    const ZK_FIB_RANDOMIZED_LOG_DEGREE: u32 = ZK_FIB_LOG_N_INSTANCES + 1;
+    const ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE: u32 = ZK_FIB_RANDOMIZED_LOG_DEGREE + 3;
 
     fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
         (0..1 << log_n_instances)
@@ -141,6 +158,149 @@ mod tests {
 
     fn fibonacci_constraint_evaluator<const N: u32>(eval: AssertEvaluator<'_>) {
         WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: N }.evaluate(eval);
+    }
+
+    fn test_hash(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
+
+    fn test_derivation_reviews() -> Vec<ZkDerivationReview> {
+        [
+            ZkDerivationGate::StwoSplitQueryExpansion,
+            ZkDerivationGate::CircleRandomizerSpace,
+            ZkDerivationGate::OodsDomainExclusion,
+            ZkDerivationGate::ZkAwareDegreeMetadata,
+            ZkDerivationGate::FriBatchMaskDegree,
+            ZkDerivationGate::PrivateLookupPermutationExclusion,
+            ZkDerivationGate::ProofDataSecrecy,
+            ZkDerivationGate::ZkPerformanceControls,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, gate)| ZkDerivationReview {
+            gate,
+            review_hash: test_hash(index as u8 + 30),
+        })
+        .collect()
+    }
+
+    fn private_wide_fibonacci_zk_configs() -> (
+        ZkProvingConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+    ) {
+        let private_ranges = (0..ZK_FIB_SEQUENCE_LENGTH)
+            .map(|column| ZkColumnRange::new(1, column, column + 1))
+            .collect_vec();
+        let quotient_range = ZkColumnRange::new(2, 0, 2 * SECURE_EXTENSION_DEGREE);
+        let privacy_map_hash = ZkPrivacyMapHash(test_hash(1));
+        let mut private_column_scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: [0; 32],
+            entries: private_ranges
+                .iter()
+                .copied()
+                .map(|range| ZkPrivateColumnScopeEntry {
+                    range,
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                })
+                .collect(),
+        };
+        private_column_scope.hash = canonical_zk_private_column_scope_hash(&private_column_scope);
+
+        let trace_domain = CanonicCoset::new(ZK_FIB_LOG_N_INSTANCES).coset;
+        let h_witness = 1u64 << ZK_FIB_LOG_N_INSTANCES;
+        let randomizer_space_entries = private_ranges
+            .iter()
+            .copied()
+            .map(|range| ZkRandomizerSpaceEntry {
+                range,
+                trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                randomized_log_degree: ZK_FIB_RANDOMIZED_LOG_DEGREE,
+                randomizer_dimension: h_witness,
+            })
+            .collect_vec();
+        let randomizer_space_hash = canonical_zk_randomizer_space_hash(
+            private_column_scope.hash,
+            &randomizer_space_entries,
+        );
+        let private_degree_bounds = private_ranges
+            .iter()
+            .copied()
+            .map(|range| ZkColumnDegreeBound {
+                range,
+                log_degree_bound: ZK_FIB_RANDOMIZED_LOG_DEGREE,
+            })
+            .collect_vec();
+        let quotient_degree_bound = ZkColumnDegreeBound {
+            range: quotient_range,
+            log_degree_bound: ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE - 2,
+        };
+        let h_batch = expected_zk_fri_batch_degree_bound(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE, 1)
+            .expect("test FRI layer has a valid batch-mask degree");
+        let metadata = ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash,
+            public_statement_hash: ZkPublicStatementHash(test_hash(2)),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: ZK_FIB_LOG_N_INSTANCES,
+                h_witness,
+                h_batch,
+                fri_first_layer_log_size: ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness,
+                randomizer_space_hash,
+                private_column_scope_hash: private_column_scope.hash,
+                private_column_degree_bounds: private_degree_bounds.clone(),
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch,
+                fri_first_layer_log_size: ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE,
+                split_derivation_hash: canonical_zk_split_derivation_hash(
+                    stwo::core::verifier::COMPOSITION_LOG_SPLIT,
+                ),
+                quotient_degree_bounds: vec![quotient_degree_bound],
+            },
+        };
+        let mut column_degree_bounds = private_degree_bounds;
+        column_degree_bounds.push(quotient_degree_bound);
+        let quotient_split_mask_profile = stwo_composition_quotient_split_mask_profile(
+            quotient_degree_bound.range.tree_index,
+            quotient_degree_bound.log_degree_bound + 1,
+            quotient_degree_bound.log_degree_bound,
+            1u64 << quotient_degree_bound.log_degree_bound,
+            quotient_degree_bound.log_degree_bound + 1,
+            quotient_degree_bound.log_degree_bound,
+        )
+        .expect("test quotient split mask profile must be valid");
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: private_ranges,
+            hash: privacy_map_hash,
+        };
+        let prover_config = ZkProvingConfig {
+            metadata: metadata.clone(),
+            privacy_map: privacy_map.clone(),
+            private_column_scope: Some(private_column_scope.clone()),
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            query_closure: None,
+            randomizer_rank_profile: None,
+            derived_randomizer_metadata: None,
+            column_degree_bounds: column_degree_bounds.clone(),
+            derivation_reviews: test_derivation_reviews(),
+        };
+        let verifier_config = ZkVerificationConfig {
+            metadata,
+            column_degree_bounds,
+            quotient_split_mask_profile: Some(quotient_split_mask_profile),
+        };
+        let verifier_audit = ZkWitnessRandomizationVerifierAudit {
+            privacy_map,
+            private_column_scope,
+        };
+
+        (prover_config, verifier_config, verifier_audit)
     }
 
     #[test]
@@ -241,6 +401,185 @@ mod tests {
             commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
             commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        }
+    }
+
+    #[test_log::test]
+    fn test_wide_fib_zk_private_witness_prove_with_blake() {
+        let config = PcsConfig {
+            fri_config: FriConfig::new(1, 1, 3, 1),
+            lifting_log_size: Some(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE),
+            ..PcsConfig::default()
+        };
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let prover_channel = &mut Blake2sM31Channel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_wide_fibonacci_zk_configs();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(prover_channel);
+
+        let trace = generate_trace::<ZK_FIB_SEQUENCE_LENGTH, CpuBackend>(&generate_test_inputs(
+            ZK_FIB_LOG_N_INSTANCES,
+        ));
+        let mut witness_rng = StdRng::seed_from_u64(101);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, prover_channel)
+            .unwrap();
+
+        let component = WideFibonacciComponent::new(
+            &mut TraceLocationAllocator::default(),
+            WideFibonacciEval::<ZK_FIB_SEQUENCE_LENGTH> {
+                log_n_rows: ZK_FIB_LOG_N_INSTANCES,
+            },
+            SecureField::zero(),
+        );
+        let mut proof_rng = StdRng::seed_from_u64(102);
+        let proof = prove_zk::<CpuBackend, Blake2sM31MerkleChannel, _>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+        )
+        .unwrap();
+
+        let verifier_channel = &mut Blake2sM31Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[0],
+            &[],
+            verifier_channel,
+        );
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[1],
+            &vec![ZK_FIB_RANDOMIZED_LOG_DEGREE; ZK_FIB_SEQUENCE_LENGTH],
+            verifier_channel,
+        );
+
+        verify_zk_with_witness_randomization_audit(
+            &[&component],
+            verifier_channel,
+            commitment_scheme,
+            proof,
+            &zk_verifier_config,
+            &zk_verifier_audit,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_wide_fib_zk_private_witness_repeated_proofs_hide_private_material() {
+        let config = PcsConfig {
+            fri_config: FriConfig::new(1, 1, 3, 1),
+            lifting_log_size: Some(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE),
+            ..PcsConfig::default()
+        };
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_wide_fibonacci_zk_configs();
+        let component = WideFibonacciComponent::new(
+            &mut TraceLocationAllocator::default(),
+            WideFibonacciEval::<ZK_FIB_SEQUENCE_LENGTH> {
+                log_n_rows: ZK_FIB_LOG_N_INSTANCES,
+            },
+            SecureField::zero(),
+        );
+
+        let prove_once = |witness_rng_seed: u64, proof_rng_seed: u64| {
+            let prover_channel = &mut Blake2sM31Channel::default();
+            let mut commitment_scheme =
+                CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(
+                    config, &twiddles,
+                );
+            commitment_scheme.set_store_polynomials_coefficients();
+
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(vec![]);
+            tree_builder.commit(prover_channel);
+
+            let trace = generate_trace::<ZK_FIB_SEQUENCE_LENGTH, CpuBackend>(
+                &generate_test_inputs(ZK_FIB_LOG_N_INSTANCES),
+            );
+            let mut witness_rng = StdRng::seed_from_u64(witness_rng_seed);
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(trace);
+            tree_builder
+                .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, prover_channel)
+                .unwrap();
+
+            let mut proof_rng = StdRng::seed_from_u64(proof_rng_seed);
+            prove_zk::<CpuBackend, Blake2sM31MerkleChannel, _>(
+                &[&component],
+                prover_channel,
+                commitment_scheme,
+                &zk_prover_config,
+                &mut proof_rng,
+            )
+            .unwrap()
+        };
+
+        let proof_a = prove_once(201, 202);
+        let proof_b = prove_once(301, 302);
+
+        assert_eq!(proof_a.0.public_metadata, proof_b.0.public_metadata);
+        assert_eq!(
+            proof_a.0.randomized_pcs_proof.commitments[0],
+            proof_b.0.randomized_pcs_proof.commitments[0]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[1],
+            proof_b.0.randomized_pcs_proof.commitments[1]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[2],
+            proof_b.0.randomized_pcs_proof.commitments[2]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.sampled_values[1],
+            proof_b.0.randomized_pcs_proof.sampled_values[1]
+        );
+        assert_ne!(
+            proof_a.0.fri_batch_mask.commitment,
+            proof_b.0.fri_batch_mask.commitment
+        );
+
+        for proof in [proof_a, proof_b] {
+            let verifier_channel = &mut Blake2sM31Channel::default();
+            let commitment_scheme =
+                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+            commitment_scheme.commit(
+                proof.0.randomized_pcs_proof.commitments[0],
+                &[],
+                verifier_channel,
+            );
+            commitment_scheme.commit(
+                proof.0.randomized_pcs_proof.commitments[1],
+                &vec![ZK_FIB_RANDOMIZED_LOG_DEGREE; ZK_FIB_SEQUENCE_LENGTH],
+                verifier_channel,
+            );
+
+            verify_zk_with_witness_randomization_audit(
+                &[&component],
+                verifier_channel,
+                commitment_scheme,
+                proof,
+                &zk_verifier_config,
+                &zk_verifier_audit,
+            )
+            .unwrap();
         }
     }
 

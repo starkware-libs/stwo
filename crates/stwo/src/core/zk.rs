@@ -2876,6 +2876,275 @@ pub fn draw_zk_oods_point_with_preimage<C: Channel>(
     })
 }
 
+/// Conservative public cap on the extra kernel exposed by sampling a deepest
+/// Fiat-Shamir point and doubling it into mixed-degree semantic OODS points.
+pub const ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA: u32 = 8;
+
+#[derive(Clone, Debug)]
+pub struct ZkOodsSamplePointPlan {
+    pub semantic_oods_point: CirclePoint<SecureField>,
+    pub semantic_sample_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    pub pcs_sample_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    pub max_delta: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkOodsSamplePointPlanError {
+    TreeCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    ColumnCountMismatch {
+        tree_index: usize,
+        expected: usize,
+        actual: usize,
+    },
+    ColumnLogSizeAboveLifting {
+        tree_index: usize,
+        column_index: usize,
+        column_log_size: u32,
+        lifting_log_size: u32,
+    },
+    SamplePointLiftDeltaTooLarge {
+        tree_index: usize,
+        column_index: usize,
+        delta: u32,
+        max: u32,
+    },
+    SamplePointLiftDomainOverflow {
+        max_log_degree_bound: u32,
+        delta: u32,
+    },
+    InvalidSamplePointLiftDomain {
+        log_size: u32,
+    },
+    SamplePointLiftDeltaUnderflow {
+        max_delta: u32,
+        delta: u32,
+    },
+    ForbiddenDeepestPoint,
+    ForbiddenSemanticOodsPoint,
+    ForbiddenSemanticPoint {
+        tree_index: usize,
+        column_index: usize,
+        sample_index: usize,
+    },
+    ForbiddenPcsPoint {
+        tree_index: usize,
+        column_index: usize,
+        sample_index: usize,
+    },
+    LiftRelationMismatch {
+        tree_index: usize,
+        column_index: usize,
+        sample_index: usize,
+    },
+}
+
+impl ZkOodsSamplePointPlanError {
+    #[must_use]
+    pub const fn is_sampling_rejection(self) -> bool {
+        matches!(
+            self,
+            Self::ForbiddenDeepestPoint
+                | Self::ForbiddenSemanticOodsPoint
+                | Self::ForbiddenSemanticPoint { .. }
+                | Self::ForbiddenPcsPoint { .. }
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkOodsSamplePointPlanningError {
+    Sampling(ZkOodsSamplingError),
+    Plan(ZkOodsSamplePointPlanError),
+}
+
+/// Derives semantic AIR sample points and PCS preimage sample points for mixed
+/// committed column log sizes in the private-witness ZK path.
+///
+/// The channel supplies a deepest public point `u`. For each committed column
+/// with `delta_i = lifting_log_size - committed_log_size_i`, the semantic AIR
+/// point is built over `z = double^max_delta(u)`, while the PCS point is built
+/// over `double^(max_delta - delta_i)(u)` and the deeper canonical step. This
+/// enforces `double^delta_i(pcs_point_i) == semantic_point_i`.
+pub fn plan_zk_oods_sample_points(
+    deepest_point: CirclePoint<SecureField>,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    max_log_degree_bound: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
+    if mask_offsets.len() != committed_column_log_sizes.len() {
+        return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
+            expected: committed_column_log_sizes.len(),
+            actual: mask_offsets.len(),
+        });
+    }
+
+    let mut max_delta = 0;
+    let mut column_deltas = TreeVec(Vec::with_capacity(mask_offsets.len()));
+    for (tree_index, (offset_tree, log_size_tree)) in mask_offsets
+        .iter()
+        .zip(committed_column_log_sizes.iter())
+        .enumerate()
+    {
+        if offset_tree.len() != log_size_tree.len() {
+            return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
+                tree_index,
+                expected: log_size_tree.len(),
+                actual: offset_tree.len(),
+            });
+        }
+
+        let mut tree_deltas = Vec::with_capacity(offset_tree.len());
+        for (column_index, &column_log_size) in log_size_tree.iter().enumerate() {
+            let delta = lifting_log_size.checked_sub(column_log_size).ok_or(
+                ZkOodsSamplePointPlanError::ColumnLogSizeAboveLifting {
+                    tree_index,
+                    column_index,
+                    column_log_size,
+                    lifting_log_size,
+                },
+            )?;
+            if delta > ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA {
+                return Err(ZkOodsSamplePointPlanError::SamplePointLiftDeltaTooLarge {
+                    tree_index,
+                    column_index,
+                    delta,
+                    max: ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA,
+                });
+            }
+            max_delta = max_delta.max(delta);
+            tree_deltas.push(delta);
+        }
+        column_deltas.push(tree_deltas);
+    }
+
+    if !exclusion_set.accepts(deepest_point) {
+        return Err(ZkOodsSamplePointPlanError::ForbiddenDeepestPoint);
+    }
+    let semantic_oods_point = deepest_point.repeated_double(max_delta);
+    if !exclusion_set.accepts(semantic_oods_point) {
+        return Err(ZkOodsSamplePointPlanError::ForbiddenSemanticOodsPoint);
+    }
+
+    let semantic_step = CanonicCoset::try_new(max_log_degree_bound)
+        .map_err(
+            |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                log_size: max_log_degree_bound,
+            },
+        )?
+        .step();
+    let mut semantic_sample_points = TreeVec(Vec::with_capacity(mask_offsets.len()));
+    let mut pcs_sample_points = TreeVec(Vec::with_capacity(mask_offsets.len()));
+
+    for (tree_index, (offset_tree, delta_tree)) in
+        mask_offsets.iter().zip(column_deltas.iter()).enumerate()
+    {
+        let mut semantic_tree = Vec::with_capacity(offset_tree.len());
+        let mut pcs_tree = Vec::with_capacity(offset_tree.len());
+        for (column_index, (column_offsets, &delta)) in
+            offset_tree.iter().zip(delta_tree.iter()).enumerate()
+        {
+            let pcs_base_doubles = max_delta.checked_sub(delta).ok_or(
+                ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow { max_delta, delta },
+            )?;
+            let pcs_base = deepest_point.repeated_double(pcs_base_doubles);
+            let pcs_step_log_size = max_log_degree_bound.checked_add(delta).ok_or(
+                ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                    max_log_degree_bound,
+                    delta,
+                },
+            )?;
+            let pcs_step = CanonicCoset::try_new(pcs_step_log_size)
+                .map_err(
+                    |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                        log_size: pcs_step_log_size,
+                    },
+                )?
+                .step();
+
+            let mut semantic_column = Vec::with_capacity(column_offsets.len());
+            let mut pcs_column = Vec::with_capacity(column_offsets.len());
+            for (sample_index, &offset) in column_offsets.iter().enumerate() {
+                let semantic_point =
+                    semantic_oods_point + semantic_step.mul_signed(offset).into_ef();
+                let pcs_point = pcs_base + pcs_step.mul_signed(offset).into_ef();
+
+                if !exclusion_set.accepts(semantic_point) {
+                    return Err(ZkOodsSamplePointPlanError::ForbiddenSemanticPoint {
+                        tree_index,
+                        column_index,
+                        sample_index,
+                    });
+                }
+                if !exclusion_set.accepts(pcs_point) {
+                    return Err(ZkOodsSamplePointPlanError::ForbiddenPcsPoint {
+                        tree_index,
+                        column_index,
+                        sample_index,
+                    });
+                }
+                if pcs_point.repeated_double(delta) != semantic_point {
+                    return Err(ZkOodsSamplePointPlanError::LiftRelationMismatch {
+                        tree_index,
+                        column_index,
+                        sample_index,
+                    });
+                }
+
+                semantic_column.push(semantic_point);
+                pcs_column.push(pcs_point);
+            }
+            semantic_tree.push(semantic_column);
+            pcs_tree.push(pcs_column);
+        }
+        semantic_sample_points.push(semantic_tree);
+        pcs_sample_points.push(pcs_tree);
+    }
+
+    Ok(ZkOodsSamplePointPlan {
+        semantic_oods_point,
+        semantic_sample_points,
+        pcs_sample_points,
+        max_delta,
+    })
+}
+
+pub fn draw_zk_oods_sample_point_plan<C: Channel>(
+    channel: &mut C,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    max_log_degree_bound: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanningError> {
+    for _ in 0..max_attempts {
+        let deepest_point = CirclePoint::<SecureField>::get_random_point(channel);
+        match plan_zk_oods_sample_points(
+            deepest_point,
+            mask_offsets,
+            committed_column_log_sizes,
+            lifting_log_size,
+            max_log_degree_bound,
+            exclusion_set,
+        ) {
+            Ok(plan) => return Ok(plan),
+            Err(error) if error.is_sampling_rejection() => {}
+            Err(error) => return Err(ZkOodsSamplePointPlanningError::Plan(error)),
+        }
+    }
+
+    Err(ZkOodsSamplePointPlanningError::Sampling(
+        ZkOodsSamplingError::ExhaustedAttempts {
+            attempts: max_attempts,
+        },
+    ))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkOodsSamplePointValidationError {
     ForbiddenSamplePoint {
@@ -3985,6 +4254,135 @@ mod tests {
         assert_eq!(point, preimage.double());
         assert!(exclusion_set.accepts(point));
         assert!(exclusion_set.accepts(preimage));
+    }
+
+    #[test]
+    fn zk_oods_sample_point_plan_handles_mixed_lifts_and_offsets() {
+        let deepest_point = CirclePoint::<SecureField>::get_point(17);
+        let mask_offsets = TreeVec(vec![vec![vec![0, 2], vec![-1]], vec![vec![0]]]);
+        let committed_log_sizes = TreeVec(vec![vec![7, 8], vec![9]]);
+        let plan = plan_zk_oods_sample_points(
+            deepest_point,
+            &mask_offsets,
+            &committed_log_sizes,
+            9,
+            6,
+            &ZkOodsExclusionSet {
+                forbidden_cosets: vec![],
+                reject_line_degeneracy: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(plan.max_delta, 2);
+        assert_eq!(plan.semantic_oods_point, deepest_point.repeated_double(2));
+        for (tree_index, tree_points) in plan.pcs_sample_points.iter().enumerate() {
+            for (column_index, column_points) in tree_points.iter().enumerate() {
+                let delta = 9 - committed_log_sizes[tree_index][column_index];
+                for (sample_index, &point) in column_points.iter().enumerate() {
+                    assert_eq!(
+                        point.repeated_double(delta),
+                        plan.semantic_sample_points[tree_index][column_index][sample_index]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn zk_oods_sample_point_plan_rejects_forbidden_deepest_point() {
+        assert!(matches!(
+            plan_zk_oods_sample_points(
+                CirclePoint::<SecureField>::zero(),
+                &TreeVec(vec![vec![vec![0]]]),
+                &TreeVec(vec![vec![4]]),
+                4,
+                3,
+                &ZkOodsExclusionSet::empty(),
+            ),
+            Err(ZkOodsSamplePointPlanError::ForbiddenDeepestPoint)
+        ));
+    }
+
+    #[test]
+    fn zk_oods_sample_point_plan_rejects_invalid_geometry() {
+        assert!(matches!(
+            plan_zk_oods_sample_points(
+                CirclePoint::<SecureField>::get_point(17),
+                &TreeVec(vec![vec![vec![0]]]),
+                &TreeVec(vec![vec![16]]),
+                15,
+                6,
+                &ZkOodsExclusionSet {
+                    forbidden_cosets: vec![],
+                    reject_line_degeneracy: false,
+                },
+            ),
+            Err(ZkOodsSamplePointPlanError::ColumnLogSizeAboveLifting {
+                tree_index: 0,
+                column_index: 0,
+                column_log_size: 16,
+                lifting_log_size: 15,
+            })
+        ));
+
+        assert!(matches!(
+            plan_zk_oods_sample_points(
+                CirclePoint::<SecureField>::get_point(17),
+                &TreeVec(vec![vec![vec![0]]]),
+                &TreeVec(vec![vec![1]]),
+                10,
+                6,
+                &ZkOodsExclusionSet {
+                    forbidden_cosets: vec![],
+                    reject_line_degeneracy: false,
+                },
+            ),
+            Err(ZkOodsSamplePointPlanError::SamplePointLiftDeltaTooLarge {
+                tree_index: 0,
+                column_index: 0,
+                delta: 9,
+                max: ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA,
+            })
+        ));
+    }
+
+    #[test]
+    fn zk_oods_sample_point_plan_is_deterministic() {
+        let deepest_point = CirclePoint::<SecureField>::get_point(17);
+        let mask_offsets = TreeVec(vec![vec![vec![0, 1]], vec![vec![0]]]);
+        let committed_log_sizes = TreeVec(vec![vec![8], vec![9]]);
+        let exclusion_set = ZkOodsExclusionSet {
+            forbidden_cosets: vec![],
+            reject_line_degeneracy: false,
+        };
+
+        let first = plan_zk_oods_sample_points(
+            deepest_point,
+            &mask_offsets,
+            &committed_log_sizes,
+            9,
+            6,
+            &exclusion_set,
+        )
+        .unwrap();
+        let second = plan_zk_oods_sample_points(
+            deepest_point,
+            &mask_offsets,
+            &committed_log_sizes,
+            9,
+            6,
+            &exclusion_set,
+        )
+        .unwrap();
+
+        assert_eq!(first.semantic_oods_point, second.semantic_oods_point);
+        assert_eq!(first.max_delta, second.max_delta);
+        assert_eq!(
+            first.semantic_sample_points.0,
+            second.semantic_sample_points.0
+        );
+        assert_eq!(first.pcs_sample_points.0, second.pcs_sample_points.0);
     }
 
     #[test]

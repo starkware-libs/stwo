@@ -75,6 +75,7 @@ fn get_trace_columns<'a, B: Backend>(
 /// Constructs the inputs needed for constraint quotient evaluation from a component and trace.
 /// Computes the eval/trace domains, prepares trace columns (borrowing or extending as needed),
 /// and precomputes denominator inverses.
+#[allow(dead_code)]
 fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
     component: &FrameworkComponent<E>,
     trace: &'a Trace<'a, B>,
