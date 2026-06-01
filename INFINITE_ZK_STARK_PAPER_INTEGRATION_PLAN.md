@@ -100,6 +100,31 @@ STWO-specific blocker:
   `COMPOSITION_LOG_SPLIT`, `2`, or `2^COMPOSITION_LOG_SPLIT`. The paper's `d`
   is not currently mapped to STWO.
 
+Reviewed blocker resolution:
+
+- Do not satisfy quotient/split coverage by emitting placeholder
+  `FutureQuotientComponent` witness-randomizer rows. STWO's `split_at_mid`
+  openings are not currently proven equivalent to the paper's univariate
+  FFT-fiber openings, so counting them as ordinary witness point evaluations
+  can undercount leakage.
+- Use independent quotient-split masking for the STWO split identity instead.
+  For the committed composition split
+  `p(z) = left(z) + Pi_L(z.x) * right(z)`, sample a prover-secret split mask
+  `t` and commit/open only
+  `left_hat = left + Pi_L * t` and `right_hat = right - t`.
+- The verifier recombination is unchanged:
+  `left_hat(z) + Pi_L(z.x) * right_hat(z) = left(z) + Pi_L(z.x) * right(z)`.
+  The split mask hides the additional decomposition leakage from observing
+  `left` and `right` separately. Privacy of the recombined value remains the
+  responsibility of the witness-randomization rank audit, because the
+  recombined value is deterministic post-processing of randomized witness
+  openings and public challenges.
+- `Pi_L` must be derived from the original STWO split identity bound, not from
+  any inflated committed degree bound used for masked split columns.
+- Raw `left`, raw `right`, and `t` must never be serialized, logged, opened, or
+  passed to the verifier. Private STARK activation remains fail-closed until
+  this independent split-mask path is implemented and reviewed end-to-end.
+
 Required derivation deliverable:
 
 - Document STWO's exact trace domain `H`, commitment domain `D`, translated
@@ -114,6 +139,16 @@ Required derivation deliverable:
 - FRI query openings.
   - FRI last-layer publication.
 - Define the initial accepted `h_witness` strategy after the STWO query-expansion
+  review.
+- Define a separate quotient-split mask profile:
+  - split identity bound used to compute `Pi_L`;
+  - masked left/right committed degree bounds;
+  - split-mask entropy budget `h_split`;
+  - commitment-tree position and side semantics;
+  - transcript binding before OODS, FRI queries, and batch-FRI lambda.
+- Prove that leaking the recombined composition value is safe under the
+  witness-randomization rank audit, and that the independent split mask covers
+  the extra information from opening split components separately.
   derivation is reviewed. The recommended first implementation candidate is
   conservative, `h = |H|`, but it is not accepted until the STWO-specific bound
   proves it sufficient.
@@ -661,13 +696,25 @@ Deliverables:
 - Updated composition split degree handling.
 - Updated PCS/Fri degree bounds for randomized witnesses and `R`.
 - OODS rejection/exclusion checks for trace and commitment domains.
+- Independent STWO quotient-split masking:
+  - sample prover-secret split masks from a CSPRNG with domain separation;
+  - commit/open only `left_hat = left + Pi_L * t` and
+    `right_hat = right - t`;
+  - bind split-mask metadata before OODS, FRI query, and batch-FRI challenges;
+  - reject mixed masked/unmasked quotient split modes;
+  - keep raw split components and mask coefficients out of proof, logs, audit
+    data, and verifier APIs.
 
 Exit criteria:
 
 - Verifier rejects inconsistent randomized OODS values.
 - Verifier rejects wrong degree profile / wrong privacy map hash.
 - Math Reviewer signs off that STWO's circle split preserves the paper
-  invariant.
+  invariant or that independent quotient-split masking replaces the blocked
+  FFT-fiber dependency.
+- Security reviewer signs off that recombined composition values are protected
+  by witness randomization and that split masks cover only the additional
+  decomposition leakage.
 
 ### Phase 4: End-to-end ZK STARK API
 
@@ -741,6 +788,12 @@ Required vector tests:
 - Original sampled values unchanged for original APIs.
 - Original FRI query indices unchanged for original APIs.
 - ZK proof bytes intentionally differ across repeated proofs.
+- Masked quotient split commitments differ across repeated private ZK proofs
+  while verifier recombination remains unchanged.
+- Tampering either masked split side rejects unless all PCS openings,
+  recombination checks, and degree bounds remain valid.
+- Private STARK verifier rejects missing split-mask metadata, wrong `h_split`,
+  wrong masked split degree bounds, and mixed masked/unmasked split modes.
 
 ## 9. Staff review matrix
 
@@ -762,7 +815,9 @@ These are expected plan risks, not excuses to implement an unsound shortcut.
 
 - STWO's circle FFT-basis composition split is not identical to the paper's
   univariate split. This is the main math blocker before witness
-  randomization code.
+  randomization code. The accepted implementation path is independent
+  quotient-split masking for STWO's `left + Pi_L * right` identity, not fake
+  witness-randomizer query rows.
 - OODS sampling currently uses random circle points; the ZK path must document
   and enforce exclusion from trace and commitment domains.
 - Choosing `h = |H|` is simpler but can increase private commitment degree and
