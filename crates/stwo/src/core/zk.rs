@@ -1345,6 +1345,23 @@ pub enum ZkCommittedColumnLogSizeValidationError {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkCompositionColumnLogSizeValidationError {
+    ColumnCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    LogSizeOverflow {
+        expected_log_degree_bound: u32,
+        log_blowup_factor: u32,
+    },
+    LogSizeMismatch {
+        column_index: usize,
+        expected_log_size: u32,
+        actual_log_size: u32,
+    },
+}
+
 pub fn validate_zk_committed_column_log_sizes(
     committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
     expected_log_degree_bounds: &TreeVec<ColumnVec<u32>>,
@@ -1390,6 +1407,40 @@ pub fn validate_zk_committed_column_log_sizes(
                     actual_log_size,
                 });
             }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_zk_composition_column_log_sizes(
+    composition_column_log_sizes: &[u32],
+    expected_column_count: usize,
+    expected_log_degree_bound: u32,
+    log_blowup_factor: u32,
+) -> Result<(), ZkCompositionColumnLogSizeValidationError> {
+    if composition_column_log_sizes.len() != expected_column_count {
+        return Err(
+            ZkCompositionColumnLogSizeValidationError::ColumnCountMismatch {
+                expected: expected_column_count,
+                actual: composition_column_log_sizes.len(),
+            },
+        );
+    }
+
+    let expected_log_size = expected_log_degree_bound
+        .checked_add(log_blowup_factor)
+        .ok_or(ZkCompositionColumnLogSizeValidationError::LogSizeOverflow {
+            expected_log_degree_bound,
+            log_blowup_factor,
+        })?;
+    for (column_index, &actual_log_size) in composition_column_log_sizes.iter().enumerate() {
+        if actual_log_size != expected_log_size {
+            return Err(ZkCompositionColumnLogSizeValidationError::LogSizeMismatch {
+                column_index,
+                expected_log_size,
+                actual_log_size,
+            });
         }
     }
 
@@ -3142,6 +3193,35 @@ mod tests {
                 expected_log_size: 7,
                 actual_log_size: 9,
             })
+        );
+    }
+
+    #[test]
+    fn zk_composition_column_log_sizes_accept_expected_split_bound() {
+        assert_eq!(
+            validate_zk_composition_column_log_sizes(&[6; 2 * SECURE_EXTENSION_DEGREE], 8, 5, 1),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn zk_composition_column_log_sizes_reject_wrong_split_bound() {
+        assert_eq!(
+            validate_zk_composition_column_log_sizes(&[7; 2 * SECURE_EXTENSION_DEGREE], 8, 5, 1),
+            Err(ZkCompositionColumnLogSizeValidationError::LogSizeMismatch {
+                column_index: 0,
+                expected_log_size: 6,
+                actual_log_size: 7,
+            })
+        );
+        assert_eq!(
+            validate_zk_composition_column_log_sizes(&[6; SECURE_EXTENSION_DEGREE], 8, 5, 1),
+            Err(
+                ZkCompositionColumnLogSizeValidationError::ColumnCountMismatch {
+                    expected: 8,
+                    actual: 4,
+                },
+            )
         );
     }
 

@@ -10,10 +10,10 @@ use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_committed_column_log_sizes, validate_zk_sample_points_outside_exclusion_set,
-    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkCommittedColumnLogSizeValidationError,
-    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
-    ZkStarkProof, ZkVerificationConfig,
+    validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
+    validate_zk_sample_points_outside_exclusion_set, zk_oods_exclusion_set, ExtendedZkStarkProof,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError, ZkOodsSamplingError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
@@ -319,6 +319,21 @@ where
     tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
     tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
+    let composition_column_log_sizes = commitment_scheme
+        .trees
+        .last()
+        .unwrap()
+        .polynomials
+        .iter()
+        .map(|poly| poly.evals.domain.log_size())
+        .collect::<Vec<_>>();
+    validate_zk_composition_column_log_sizes(
+        &composition_column_log_sizes,
+        2 * SECURE_EXTENSION_DEGREE,
+        zk_degree_profile.split_composition_log_degree_bound,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(|_| ProvingError::InvalidZkDegreeGeometry)?;
     span.exit();
 
     let split_composition_log_size = commitment_scheme

@@ -12,7 +12,8 @@ use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_committed_column_log_sizes, validate_zk_public_metadata_against_verifier_config,
+    validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
+    validate_zk_public_metadata_against_verifier_config,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
     zk_oods_exclusion_set, ZkCommittedColumnLogSizeValidationError,
     ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
@@ -333,9 +334,19 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     };
     commitment_scheme.commit(
         composition_commitment,
-        &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
+        &[zk_degree_profile.split_composition_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
         channel,
     );
+    let composition_column_log_sizes = &commitment_scheme.trees.last().unwrap().column_log_sizes;
+    validate_zk_composition_column_log_sizes(
+        composition_column_log_sizes,
+        2 * SECURE_EXTENSION_DEGREE,
+        zk_degree_profile.split_composition_log_degree_bound,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(|_| {
+        VerificationError::InvalidStructure(String::from("Invalid ZK composition column log sizes"))
+    })?;
 
     let oods_exclusion_set = zk_oods_exclusion_set(actual_trace_domain_log_size, lifting_log_size)?;
     let oods_point = draw_zk_oods_point(channel, &oods_exclusion_set, 64).map_err(|_| {
