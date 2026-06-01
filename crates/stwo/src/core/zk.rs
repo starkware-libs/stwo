@@ -1599,6 +1599,22 @@ fn zk_metadata_has_private_witness_randomization(metadata: &ZkPublicMetadata) ->
             .any(|&byte| byte != 0)
 }
 
+/// Returns true when metadata declares any currently blocked private STARK
+/// witness or quotient integration field.
+#[must_use]
+pub fn zk_metadata_requires_private_stark_activation(metadata: &ZkPublicMetadata) -> bool {
+    zk_metadata_has_private_witness_randomization(metadata)
+        || !metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .is_empty()
+        || metadata
+            .quotient_integration
+            .split_derivation_hash
+            .iter()
+            .any(|&byte| byte != 0)
+}
+
 fn validate_zk_quotient_degree_bounds_for_stark_profile(
     bounds: &[ZkColumnDegreeBound],
     expected_range: ZkColumnRange,
@@ -2930,6 +2946,64 @@ mod tests {
             validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedQuotientDegreeBoundsForPhase1)
         );
+    }
+
+    #[test]
+    fn metadata_private_witness_detection_covers_all_private_fields() {
+        assert!(!zk_metadata_has_private_witness_randomization(
+            &public_only_metadata(16, 1)
+        ));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.degree_profile.h_witness = 1;
+        assert!(zk_metadata_has_private_witness_randomization(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.witness_randomization.h_witness = 1;
+        assert!(zk_metadata_has_private_witness_randomization(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .push(ZkColumnDegreeBound {
+                range: ZkColumnRange::new(0, 0, 1),
+                log_degree_bound: 15,
+            });
+        assert!(zk_metadata_has_private_witness_randomization(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.witness_randomization.randomizer_space_hash = nonzero_hash();
+        assert!(zk_metadata_has_private_witness_randomization(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.witness_randomization.private_column_scope_hash = nonzero_hash();
+        assert!(zk_metadata_has_private_witness_randomization(&metadata));
+    }
+
+    #[test]
+    fn metadata_private_stark_activation_detection_covers_blocked_fields() {
+        assert!(!zk_metadata_requires_private_stark_activation(
+            &public_only_metadata(16, 1)
+        ));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.witness_randomization.h_witness = 1;
+        assert!(zk_metadata_requires_private_stark_activation(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata
+            .quotient_integration
+            .quotient_degree_bounds
+            .push(ZkColumnDegreeBound {
+                range: ZkColumnRange::new(0, 0, 1),
+                log_degree_bound: 15,
+            });
+        assert!(zk_metadata_requires_private_stark_activation(&metadata));
+
+        let mut metadata = public_only_metadata(16, 1);
+        metadata.quotient_integration.split_derivation_hash = nonzero_hash();
+        assert!(zk_metadata_requires_private_stark_activation(&metadata));
     }
 
     fn witness_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {

@@ -11,9 +11,10 @@ use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
     validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
-    validate_zk_sample_points_outside_exclusion_set, zk_oods_exclusion_set, ExtendedZkStarkProof,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError, ZkOodsSamplingError,
-    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    validate_zk_sample_points_outside_exclusion_set, zk_metadata_requires_private_stark_activation,
+    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkCommittedColumnLogSizeValidationError,
+    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
+    ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
@@ -211,17 +212,11 @@ where
     R: RngCore + CryptoRng + ?Sized,
 {
     if !zk_config.privacy_map.private_columns.is_empty()
-        || !zk_config
-            .metadata
-            .witness_randomization
-            .private_column_degree_bounds
-            .is_empty()
-        || !zk_config
-            .metadata
-            .quotient_integration
-            .quotient_degree_bounds
-            .is_empty()
+        || zk_metadata_requires_private_stark_activation(&zk_config.metadata)
     {
+        zk_config
+            .validate_witness_and_quotient_pre_activation()
+            .map_err(ProvingError::ZkConfig)?;
         return Err(ProvingError::ZkConfig(
             ZkProvingConfigError::Phase2And3ActivationBlocked,
         ));

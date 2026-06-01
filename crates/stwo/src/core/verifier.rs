@@ -15,9 +15,10 @@ use crate::core::zk::{
     validate_zk_committed_column_log_sizes, validate_zk_composition_column_log_sizes,
     validate_zk_public_metadata_against_verifier_config,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_sampled_values_shape,
-    zk_oods_exclusion_set, ZkCommittedColumnLogSizeValidationError,
-    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
-    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    zk_metadata_requires_private_stark_activation, zk_oods_exclusion_set,
+    ZkCommittedColumnLogSizeValidationError, ZkOodsSamplePointValidationError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -216,22 +217,6 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     witness_randomization_audit: Option<&ZkWitnessRandomizationVerifierAudit>,
     include_all_preprocessed_columns: bool,
 ) -> Result<(), VerificationError> {
-    if !zk_config
-        .metadata
-        .witness_randomization
-        .private_column_degree_bounds
-        .is_empty()
-        || !zk_config
-            .metadata
-            .quotient_integration
-            .quotient_degree_bounds
-            .is_empty()
-    {
-        return Err(VerificationError::InvalidStructure(String::from(
-            "ZK private witness STARK verification is blocked until degree/OODS integration lands",
-        )));
-    }
-
     validate_zk_public_metadata_against_verifier_config(&zk_config.metadata, zk_config).map_err(
         |_| {
             VerificationError::InvalidStructure(String::from(
@@ -239,6 +224,12 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
             ))
         },
     )?;
+
+    if zk_metadata_requires_private_stark_activation(&zk_config.metadata) {
+        return Err(VerificationError::InvalidStructure(String::from(
+            "ZK private witness STARK verification is blocked until degree/OODS integration lands",
+        )));
+    }
 
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .column_log_sizes
