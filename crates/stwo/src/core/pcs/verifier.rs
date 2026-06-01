@@ -16,8 +16,10 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
-    mix_zk_public_metadata, validate_zk_public_only_metadata, zk_fri_batch_mask_fri_config,
-    zk_fri_batch_mask_query_positions, ZkCommitmentSchemeProof, ZkVerificationConfig,
+    mix_zk_public_metadata, validate_zk_public_metadata_against_verifier_config,
+    validate_zk_public_only_metadata, validate_zk_witness_metadata, zk_fri_batch_mask_fri_config,
+    zk_fri_batch_mask_query_positions, ZkColumnDegreeBound, ZkCommitmentSchemeProof,
+    ZkVerificationConfig,
 };
 use crate::core::ColumnVec;
 
@@ -41,6 +43,42 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         self.trees
             .as_ref()
             .map(|tree| tree.column_log_sizes.clone())
+    }
+
+    fn validate_zk_private_column_degree_bounds(
+        &self,
+        bounds: &[ZkColumnDegreeBound],
+    ) -> Result<(), VerificationError> {
+        for bound in bounds {
+            let Some(tree) = self.trees.0.get(bound.range.tree_index) else {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "ZK private column degree bound references a missing commitment tree",
+                )));
+            };
+            if bound.range.column_start >= bound.range.column_end
+                || bound.range.column_end > tree.column_log_sizes.len()
+            {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "ZK private column degree bound references missing commitment columns",
+                )));
+            }
+            for column_index in bound.range.column_start..bound.range.column_end {
+                let Some(committed_log_degree) = tree.column_log_sizes[column_index]
+                    .checked_sub(self.config.fri_config.log_blowup_factor)
+                else {
+                    return Err(VerificationError::InvalidStructure(String::from(
+                        "ZK private column commitment log size is below PCS blowup",
+                    )));
+                };
+                if committed_log_degree != bound.log_degree_bound {
+                    return Err(VerificationError::InvalidStructure(String::from(
+                        "ZK private column degree bound does not match committed PCS column",
+                    )));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Reads a commitment from the prover.
@@ -157,19 +195,58 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         }
 
         let lifting_log_size = self.trees.last().unwrap().height;
-        validate_zk_public_only_metadata(
-            &zk_config.metadata,
-            lifting_log_size,
-            self.config.fri_config.log_blowup_factor,
-        )
-        .map_err(|_| {
-            VerificationError::InvalidStructure(String::from("Invalid ZK phase 1 public metadata"))
-        })?;
-        if !zk_config.column_degree_bounds.is_empty() {
+        validate_zk_public_metadata_against_verifier_config(&proof.public_metadata, zk_config)
+            .map_err(|_| {
+                VerificationError::InvalidStructure(String::from(
+                    "Invalid ZK public metadata or degree bounds",
+                ))
+            })?;
+        if zk_config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .is_empty()
+            && zk_config
+                .metadata
+                .quotient_integration
+                .quotient_degree_bounds
+                .is_empty()
+        {
+            validate_zk_public_only_metadata(
+                &zk_config.metadata,
+                lifting_log_size,
+                self.config.fri_config.log_blowup_factor,
+            )
+            .map_err(|_| {
+                VerificationError::InvalidStructure(String::from("Invalid ZK public metadata"))
+            })?;
+        } else {
+            validate_zk_witness_metadata(
+                &zk_config.metadata,
+                lifting_log_size,
+                self.config.fri_config.log_blowup_factor,
+            )
+            .map_err(|_| {
+                VerificationError::InvalidStructure(String::from("Invalid ZK witness metadata"))
+            })?;
+        }
+        if zk_config.metadata.degree_profile.fri_first_layer_log_size != lifting_log_size
+            || zk_config
+                .metadata
+                .quotient_integration
+                .fri_first_layer_log_size
+                != lifting_log_size
+        {
             return Err(VerificationError::InvalidStructure(String::from(
-                "ZK phase 1 verifier config must not contain private column degree bounds",
+                "ZK FRI first-layer domain does not match PCS lifting domain",
             )));
         }
+        self.validate_zk_private_column_degree_bounds(
+            &zk_config
+                .metadata
+                .witness_randomization
+                .private_column_degree_bounds,
+        )?;
 
         let ZkCommitmentSchemeProof {
             randomized_pcs_proof: proof,
@@ -230,6 +307,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             lifting_log_size,
             self.trees[0].height,
         );
+        if zk_config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .any(|bound| bound.range.tree_index == 0)
+            && preprocessed_query_positions != query_positions
+        {
+            return Err(VerificationError::InvalidStructure(String::from(
+                "ZK private witness columns in tree 0 require matching query positions",
+            )));
+        }
 
         let query_positions_tree = TreeVec::new(
             self.trees

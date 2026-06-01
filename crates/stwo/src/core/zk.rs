@@ -11,7 +11,7 @@ use crate::core::fields::ComplexConjugate;
 use crate::core::fri::{FriConfig, FriProof, FriProofAux};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
 use crate::core::pcs::utils::TreeVec;
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::get_folding_alphas;
 use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::blake2_hash::Blake2sHasher;
@@ -175,6 +175,17 @@ impl From<Coset> for ZkCircleCosetEncoding {
             step: coset.step.into(),
         }
     }
+}
+
+#[must_use]
+pub fn zk_trace_domain_half_coset(trace_domain: Coset) -> Coset {
+    assert!(trace_domain.log_size() > 0);
+    Coset::new(trace_domain.initial_index, trace_domain.log_size() - 1)
+}
+
+#[must_use]
+pub fn zk_trace_domain_circle_domain(trace_domain: Coset) -> CircleDomain {
+    CircleDomain::new(zk_trace_domain_half_coset(trace_domain))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -979,7 +990,9 @@ fn build_zk_randomizer_matrix_row(
     ambient_log_dimension: usize,
     functional: ZkRandomizerQueryFunctional,
 ) -> Vec<BaseField> {
-    let vanishing = coset_vanishing(trace_domain, functional.point);
+    let trace_domain = zk_trace_domain_half_coset(trace_domain);
+    let vanishing = coset_vanishing(trace_domain, functional.point)
+        * coset_vanishing(trace_domain.conjugate(), functional.point);
     let folding_alphas = get_folding_alphas(functional.point, ambient_log_dimension);
     let coordinate_index = functional.coordinate_index as usize;
 
@@ -1123,12 +1136,48 @@ pub struct ZkVerificationConfig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkMetadataValidationError {
-    UnsupportedProofVersion { actual: u32 },
+    UnsupportedProofVersion {
+        actual: u32,
+    },
     InvalidFriBatchDegreeBound,
-    FriFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
-    QuotientFirstLayerLogSizeMismatch { expected: u32, actual: u32 },
-    FriBatchDegreeMismatch { expected: u64, actual: u64 },
-    QuotientFriBatchDegreeMismatch { expected: u64, actual: u64 },
+    FriFirstLayerLogSizeMismatch {
+        expected: u32,
+        actual: u32,
+    },
+    QuotientFirstLayerLogSizeMismatch {
+        expected: u32,
+        actual: u32,
+    },
+    FriBatchDegreeMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    QuotientFriBatchDegreeMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    WitnessRandomizationDegreeMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    MissingPrivateColumnDegreeBounds,
+    MissingQuotientDegreeBounds,
+    EmptyRandomizerSpaceHash,
+    EmptyPrivateColumnScopeHash,
+    EmptySplitDerivationHash,
+    EmptyWitnessRandomizer,
+    WitnessRandomizerDimensionTooLarge {
+        dimension: u64,
+    },
+    WitnessRandomizedDomainNotLarger {
+        trace_domain_log_size: u32,
+        randomized_log_degree: u32,
+    },
+    WitnessRandomizedDomainTooSmall {
+        trace_domain_size: u64,
+        randomizer_coefficient_count: u64,
+        randomized_domain_size: u64,
+    },
     UnexpectedWitnessRandomizationForPhase1,
     UnexpectedPrivateColumnDegreeBoundsForPhase1,
     UnexpectedQuotientDegreeBoundsForPhase1,
@@ -1191,6 +1240,138 @@ pub fn validate_zk_public_only_metadata_against_verifier_config(
     )?;
     if !verifier_config.column_degree_bounds.is_empty() {
         return Err(ZkVerificationConfigValidationError::UnexpectedColumnDegreeBoundsForPhase1);
+    }
+
+    Ok(())
+}
+
+pub fn validate_zk_witness_metadata(
+    metadata: &ZkPublicMetadata,
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Result<(), ZkMetadataValidationError> {
+    if metadata.version != ZkProofVersion::V1 {
+        return Err(ZkMetadataValidationError::UnsupportedProofVersion {
+            actual: metadata.version.0,
+        });
+    }
+    if metadata.degree_profile.fri_first_layer_log_size != lifting_log_size {
+        return Err(ZkMetadataValidationError::FriFirstLayerLogSizeMismatch {
+            expected: lifting_log_size,
+            actual: metadata.degree_profile.fri_first_layer_log_size,
+        });
+    }
+    if metadata.quotient_integration.fri_first_layer_log_size != lifting_log_size {
+        return Err(
+            ZkMetadataValidationError::QuotientFirstLayerLogSizeMismatch {
+                expected: lifting_log_size,
+                actual: metadata.quotient_integration.fri_first_layer_log_size,
+            },
+        );
+    }
+    let expected_h_batch = expected_zk_fri_batch_degree_bound(lifting_log_size, log_blowup_factor)
+        .ok_or(ZkMetadataValidationError::InvalidFriBatchDegreeBound)?;
+    if metadata.degree_profile.h_batch != expected_h_batch {
+        return Err(ZkMetadataValidationError::FriBatchDegreeMismatch {
+            expected: expected_h_batch,
+            actual: metadata.degree_profile.h_batch,
+        });
+    }
+    if metadata.quotient_integration.h_batch != expected_h_batch {
+        return Err(ZkMetadataValidationError::QuotientFriBatchDegreeMismatch {
+            expected: expected_h_batch,
+            actual: metadata.quotient_integration.h_batch,
+        });
+    }
+    if metadata.degree_profile.h_witness != metadata.witness_randomization.h_witness {
+        return Err(
+            ZkMetadataValidationError::WitnessRandomizationDegreeMismatch {
+                expected: metadata.degree_profile.h_witness,
+                actual: metadata.witness_randomization.h_witness,
+            },
+        );
+    }
+    if metadata.witness_randomization.h_witness == 0 {
+        return Err(ZkMetadataValidationError::EmptyWitnessRandomizer);
+    }
+    let randomizer_coefficient_count = metadata
+        .witness_randomization
+        .h_witness
+        .checked_next_power_of_two()
+        .ok_or(
+            ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
+                dimension: metadata.witness_randomization.h_witness,
+            },
+        )?;
+    let trace_domain_size = 1u64
+        .checked_shl(metadata.degree_profile.trace_domain_log_size)
+        .ok_or(
+            ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
+                dimension: metadata.witness_randomization.h_witness,
+            },
+        )?;
+    if metadata
+        .witness_randomization
+        .private_column_degree_bounds
+        .is_empty()
+    {
+        return Err(ZkMetadataValidationError::MissingPrivateColumnDegreeBounds);
+    }
+    if metadata
+        .quotient_integration
+        .quotient_degree_bounds
+        .is_empty()
+    {
+        return Err(ZkMetadataValidationError::MissingQuotientDegreeBounds);
+    }
+    if metadata
+        .witness_randomization
+        .randomizer_space_hash
+        .iter()
+        .all(|&byte| byte == 0)
+    {
+        return Err(ZkMetadataValidationError::EmptyRandomizerSpaceHash);
+    }
+    if metadata
+        .witness_randomization
+        .private_column_scope_hash
+        .iter()
+        .all(|&byte| byte == 0)
+    {
+        return Err(ZkMetadataValidationError::EmptyPrivateColumnScopeHash);
+    }
+    if metadata
+        .quotient_integration
+        .split_derivation_hash
+        .iter()
+        .all(|&byte| byte == 0)
+    {
+        return Err(ZkMetadataValidationError::EmptySplitDerivationHash);
+    }
+    for bound in &metadata.witness_randomization.private_column_degree_bounds {
+        if bound.log_degree_bound <= metadata.degree_profile.trace_domain_log_size {
+            return Err(
+                ZkMetadataValidationError::WitnessRandomizedDomainNotLarger {
+                    trace_domain_log_size: metadata.degree_profile.trace_domain_log_size,
+                    randomized_log_degree: bound.log_degree_bound,
+                },
+            );
+        }
+        let randomized_domain_size = 1u64.checked_shl(bound.log_degree_bound).ok_or(
+            ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
+                dimension: metadata.witness_randomization.h_witness,
+            },
+        )?;
+        if trace_domain_size
+            .checked_add(randomizer_coefficient_count)
+            .is_none_or(|required| required > randomized_domain_size)
+        {
+            return Err(ZkMetadataValidationError::WitnessRandomizedDomainTooSmall {
+                trace_domain_size,
+                randomizer_coefficient_count,
+                randomized_domain_size,
+            });
+        }
     }
 
     Ok(())

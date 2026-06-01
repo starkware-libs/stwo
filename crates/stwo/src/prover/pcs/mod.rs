@@ -20,8 +20,9 @@ use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::core::zk::{
-    mix_zk_public_metadata, zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
-    ExtendedZkCommitmentSchemeProof, ZkCommitmentSchemeProof, ZkCommitmentSchemeProofAux,
+    mix_zk_public_metadata, validate_zk_witness_metadata, zk_fri_batch_mask_fri_config,
+    zk_fri_batch_mask_query_positions, ExtendedZkCommitmentSchemeProof, ZkColumnRange,
+    ZkCommitmentSchemeProof, ZkCommitmentSchemeProofAux,
 };
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
@@ -34,8 +35,8 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 use crate::prover::zk::{
-    add_fri_batch_mask, sample_fri_batch_mask_evaluation, ZkFriBatchMaskOracleProver,
-    ZkProvingConfig, ZkProvingConfigError,
+    add_fri_batch_mask, sample_fri_batch_mask_evaluation, PrecommitZkWitnessRandomizationContext,
+    ZkFriBatchMaskOracleProver, ZkProvingConfig, ZkProvingConfigError, ZkWitnessRandomizationError,
 };
 
 pub mod quotient_ops;
@@ -48,6 +49,8 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     pub store_polynomials_coefficients: bool,
     /// Pre-allocated base field column pool for polynomial evaluation during commit.
     pub base_column_pool: MaybeOwned<'a, BaseColumnPool<B>>,
+    zk_witness_randomization_contexts: Vec<PrecommitZkWitnessRandomizationContext<B>>,
+    zk_witness_randomized_ranges: Vec<ZkColumnRange>,
 }
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
     /// Creates a new empty commitment scheme prover with the given configuration and twiddles. The
@@ -59,6 +62,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             twiddles,
             store_polynomials_coefficients: false,
             base_column_pool: MaybeOwned::Owned(BaseColumnPool::new()),
+            zk_witness_randomization_contexts: Vec::new(),
+            zk_witness_randomized_ranges: Vec::new(),
         }
     }
 
@@ -73,6 +78,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             twiddles,
             store_polynomials_coefficients: false,
             base_column_pool: MaybeOwned::Borrowed(base_column_pool),
+            zk_witness_randomization_contexts: Vec::new(),
+            zk_witness_randomized_ranges: Vec::new(),
         }
     }
 
@@ -351,10 +358,30 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         .entered();
 
         let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
-        zk_config.validate_for_fri_batch_mask_only(
-            lifting_log_size,
-            self.config.fri_config.log_blowup_factor,
-        )?;
+        let has_private_witness_columns = !zk_config.privacy_map.private_columns.is_empty();
+        if has_private_witness_columns {
+            if self.zk_witness_randomization_contexts.is_empty() {
+                return Err(ZkProvingConfigError::MissingWitnessRandomizationContext);
+            }
+            validate_zk_witness_metadata(
+                &zk_config.metadata,
+                lifting_log_size,
+                self.config.fri_config.log_blowup_factor,
+            )
+            .map_err(ZkProvingConfigError::Metadata)?;
+            let mut expected_ranges = zk_config.privacy_map.private_columns.clone();
+            expected_ranges.sort_unstable();
+            let mut randomized_ranges = self.zk_witness_randomized_ranges.clone();
+            randomized_ranges.sort_unstable();
+            if randomized_ranges != expected_ranges {
+                return Err(ZkProvingConfigError::WitnessRandomizationRangeMismatch);
+            }
+        } else {
+            zk_config.validate_for_fri_batch_mask_only(
+                lifting_log_size,
+                self.config.fri_config.log_blowup_factor,
+            )?;
+        }
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
@@ -443,6 +470,34 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
+        let preprocessed_query_positions = prepare_preprocessed_query_positions(
+            &query_positions,
+            lifting_log_size,
+            self.trees[0].commitment.layers.len() as u32 - 1,
+        );
+        if has_private_witness_columns {
+            if zk_config
+                .privacy_map
+                .private_columns
+                .iter()
+                .any(|range| range.tree_index == 0)
+                && preprocessed_query_positions != query_positions
+            {
+                return Err(ZkProvingConfigError::WitnessRandomization);
+            }
+            let mut audit_config = zk_config.clone();
+            audit_config.derive_randomizer_metadata_from_stwo_samples(
+                CanonicCoset::new(audit_config.metadata.degree_profile.trace_domain_log_size).coset,
+                &sampled_points,
+                &query_positions,
+                lifting_log_size,
+            )?;
+            for context in &self.zk_witness_randomization_contexts {
+                context
+                    .validate_post_sampling_audit(&audit_config, &sampled_points, &query_positions)
+                    .map_err(|_| ZkProvingConfigError::WitnessRandomization)?;
+            }
+        }
         let fri_batch_mask_query_positions = zk_fri_batch_mask_query_positions(
             channel,
             lifting_log_size,
@@ -459,11 +514,6 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             fri_batch_mask_oracle.root(),
             fri_batch_mask_fri_proof.proof.first_layer.commitment,
             "FRI batch mask opening commitment must match its low-degree FRI commitment"
-        );
-        let preprocessed_query_positions = prepare_preprocessed_query_positions(
-            &query_positions,
-            lifting_log_size,
-            self.trees[0].commitment.layers.len() as u32 - 1,
         );
         let query_positions_tree = TreeVec::new(
             self.trees
@@ -567,6 +617,78 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
     pub fn commit(self, channel: &mut MC::C) {
         let _span = span!(Level::INFO, "Commitment").entered();
         self.commitment_scheme.commit(self.polys, channel);
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn commit_zk_witness_randomized<R>(
+        mut self,
+        zk_config: &ZkProvingConfig,
+        rng: &mut R,
+        channel: &mut MC::C,
+    ) -> Result<(), ZkWitnessRandomizationError>
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let private_ranges = zk_config
+            .privacy_map
+            .private_columns
+            .iter()
+            .copied()
+            .filter(|range| range.tree_index == self.tree_index)
+            .collect_vec();
+        if private_ranges.is_empty() {
+            self.commit(channel);
+            return Ok(());
+        }
+
+        let Some(randomized_log_degree) = zk_config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .find(|bound| private_ranges.contains(&bound.range))
+            .map(|bound| bound.log_degree_bound)
+        else {
+            return Err(ZkWitnessRandomizationError::Config(
+                ZkProvingConfigError::MissingPrivateColumnDegreeBounds,
+            ));
+        };
+        let trace_domain =
+            CanonicCoset::new(zk_config.metadata.degree_profile.trace_domain_log_size)
+                .circle_domain();
+        let randomized_domain = CanonicCoset::new(randomized_log_degree).circle_domain();
+        let context = PrecommitZkWitnessRandomizationContext::<B>::new(
+            zk_config,
+            trace_domain,
+            randomized_domain,
+        )?;
+
+        for &range in &private_ranges {
+            if range.column_end > self.polys.len() {
+                return Err(ZkWitnessRandomizationError::PrivateRangeOutOfBounds {
+                    range,
+                    column_count: self.polys.len(),
+                });
+            }
+        }
+
+        let mut randomized_polys = core::mem::take(&mut self.polys);
+        for &range in &private_ranges {
+            for column_index in range.column_start..range.column_end {
+                randomized_polys[column_index] =
+                    context.randomize_range(range, &randomized_polys[column_index], rng)?;
+            }
+        }
+        self.polys = randomized_polys;
+        self.commitment_scheme
+            .zk_witness_randomized_ranges
+            .extend(private_ranges.iter().copied());
+        self.commitment_scheme
+            .zk_witness_randomization_contexts
+            .push(context);
+
+        self.commit(channel);
+        Ok(())
     }
 }
 
