@@ -11,9 +11,9 @@ use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
-    draw_zk_oods_point, mix_zk_public_metadata,
-    validate_zk_public_metadata_against_verifier_config, validate_zk_public_only_metadata,
-    zk_oods_exclusion_set, ZkStarkProof, ZkVerificationConfig,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
+    validate_zk_public_metadata_against_verifier_config, zk_oods_exclusion_set,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -184,8 +184,16 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
-    let split_composition_log_degree_bound =
-        components.composition_log_degree_bound() - COMPOSITION_LOG_SPLIT;
+    let zk_degree_profile = derive_zk_stark_degree_bound_profile(
+        components.column_log_sizes(),
+        components.composition_log_degree_bound(),
+        COMPOSITION_LOG_SPLIT,
+        zk_config,
+        zk_config.metadata.degree_profile.fri_first_layer_log_size,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(VerificationError::ZkDegreeProfile)?;
+    let split_composition_log_degree_bound = zk_degree_profile.split_composition_log_degree_bound;
     tracing::info!(
         "ZK split composition polynomial log degree bound: {}",
         split_composition_log_degree_bound
@@ -195,6 +203,11 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
         &commitment_scheme.config,
         split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
     )?;
+    if lifting_log_size != zk_degree_profile.fri_first_layer_log_size {
+        return Err(VerificationError::InvalidStructure(String::from(
+            "ZK degree profile does not match PCS lifting domain",
+        )));
+    }
     if include_all_preprocessed_columns {
         let preprocessed_trace_height = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height;
         if lifting_log_size < preprocessed_trace_height {
@@ -232,14 +245,6 @@ pub fn verify_zk_ex<MC: MerkleChannel>(
             "ZK trace domain metadata does not match committed trace geometry",
         )));
     }
-    validate_zk_public_only_metadata(
-        &zk_config.metadata,
-        lifting_log_size,
-        commitment_scheme.config.fri_config.log_blowup_factor,
-    )
-    .map_err(|_| {
-        VerificationError::InvalidStructure(String::from("Invalid public-only ZK metadata"))
-    })?;
 
     mix_zk_public_metadata(
         channel,
@@ -309,6 +314,8 @@ pub enum VerificationError {
     (DEEP-ALI failure)."
     )]
     OodsNotMatching,
+    #[error("Invalid ZK STARK degree profile: {0:?}.")]
+    ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]

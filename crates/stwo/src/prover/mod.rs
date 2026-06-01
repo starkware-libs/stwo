@@ -7,10 +7,11 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::pcs::utils::{try_get_lifting_log_size, InvalidLiftingLogSizeError};
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
-use crate::core::verifier::PREPROCESSED_TRACE_IDX;
+use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
-    draw_zk_oods_point, mix_zk_public_metadata, zk_oods_exclusion_set, ExtendedZkStarkProof,
-    ZkOodsSamplingError, ZkStarkProof,
+    derive_zk_stark_degree_bound_profile, draw_zk_oods_point, mix_zk_public_metadata,
+    zk_oods_exclusion_set, ExtendedZkStarkProof, ZkOodsSamplingError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::zk::{ZkProvingConfig, ZkProvingConfigError};
@@ -248,6 +249,21 @@ where
     if zk_config.metadata.degree_profile.trace_domain_log_size != actual_trace_domain_log_size {
         return Err(ProvingError::InvalidZkTraceGeometry);
     }
+    let zk_verification_config = ZkVerificationConfig {
+        metadata: zk_config.metadata.clone(),
+        column_degree_bounds: zk_config.column_degree_bounds.clone(),
+    };
+    let zk_degree_profile = derive_zk_stark_degree_bound_profile(
+        component_provers.components().column_log_sizes(),
+        component_provers
+            .components()
+            .composition_log_degree_bound(),
+        COMPOSITION_LOG_SPLIT,
+        &zk_verification_config,
+        zk_config.metadata.degree_profile.fri_first_layer_log_size,
+        commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(ProvingError::ZkDegreeProfile)?;
 
     let trace = commitment_scheme.trace();
     zk_config
@@ -302,6 +318,9 @@ where
 
     let lifting_log_size =
         try_get_lifting_log_size(&commitment_scheme.config, split_composition_log_size)?;
+    if lifting_log_size != zk_degree_profile.fri_first_layer_log_size {
+        return Err(ProvingError::InvalidZkDegreeGeometry);
+    }
     if include_all_preprocessed_columns {
         let preprocessed_log_size = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
             .commitment
@@ -369,8 +388,12 @@ pub enum ProvingError {
     ZkConfig(ZkProvingConfigError),
     #[error("Could not sample a valid ZK OODS point: {0:?}.")]
     ZkOodsSampling(ZkOodsSamplingError),
+    #[error("Invalid ZK STARK degree profile: {0:?}.")]
+    ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK trace geometry.")]
     InvalidZkTraceGeometry,
+    #[error("Invalid ZK degree geometry.")]
+    InvalidZkDegreeGeometry,
     #[error(transparent)]
     InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
     #[error(transparent)]
