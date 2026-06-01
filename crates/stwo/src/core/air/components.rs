@@ -8,6 +8,9 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
+use crate::core::zk::{
+    apply_zk_column_degree_bounds, ZkColumnDegreeBound, ZkColumnDegreeBoundApplicationError,
+};
 use crate::core::ColumnVec;
 
 pub struct Components<'a> {
@@ -104,5 +107,12 @@ impl Components<'_> {
         column_log_sizes[PREPROCESSED_TRACE_IDX] = preprocessed_columns_trace_log_sizes;
 
         column_log_sizes
+    }
+
+    pub fn column_log_sizes_with_zk_bounds(
+        &self,
+        zk_bounds: &[ZkColumnDegreeBound],
+    ) -> Result<TreeVec<ColumnVec<u32>>, ZkColumnDegreeBoundApplicationError> {
+        apply_zk_column_degree_bounds(self.column_log_sizes(), zk_bounds)
     }
 }

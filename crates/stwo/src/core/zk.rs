@@ -1162,6 +1162,9 @@ pub enum ZkMetadataValidationError {
     },
     MissingPrivateColumnDegreeBounds,
     MissingQuotientDegreeBounds,
+    InvalidColumnDegreeBoundRange {
+        range: ZkColumnRange,
+    },
     EmptyRandomizerSpaceHash,
     EmptyPrivateColumnScopeHash,
     EmptySplitDerivationHash,
@@ -1208,6 +1211,86 @@ pub fn expected_zk_column_degree_bounds(metadata: &ZkPublicMetadata) -> Vec<ZkCo
         .clone();
     expected.extend(metadata.quotient_integration.quotient_degree_bounds.clone());
     expected
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkColumnDegreeBoundApplicationError {
+    MissingTree {
+        range: ZkColumnRange,
+    },
+    InvalidRange {
+        range: ZkColumnRange,
+    },
+    RangeOutOfBounds {
+        range: ZkColumnRange,
+        column_count: usize,
+    },
+    DuplicateColumn {
+        tree_index: usize,
+        column_index: usize,
+    },
+    DegreeBoundShrinksColumn {
+        range: ZkColumnRange,
+        column_index: usize,
+        base_log_degree_bound: u32,
+        zk_log_degree_bound: u32,
+    },
+}
+
+/// Applies verifier-owned ZK column degree bounds to a deterministic trace
+/// degree profile.
+///
+/// ZK bounds may only increase an existing committed column degree bound, never
+/// shrink it, and overlapping public ranges are rejected. This is a Phase 3
+/// building block and does not by itself enable private-witness STARK ZK.
+pub fn apply_zk_column_degree_bounds(
+    mut base_bounds: TreeVec<ColumnVec<u32>>,
+    zk_bounds: &[ZkColumnDegreeBound],
+) -> Result<TreeVec<ColumnVec<u32>>, ZkColumnDegreeBoundApplicationError> {
+    let mut seen_columns = BTreeSet::new();
+
+    for bound in zk_bounds {
+        let Some(tree_bounds) = base_bounds.get_mut(bound.range.tree_index) else {
+            return Err(ZkColumnDegreeBoundApplicationError::MissingTree { range: bound.range });
+        };
+        if bound.range.column_start >= bound.range.column_end {
+            return Err(ZkColumnDegreeBoundApplicationError::InvalidRange { range: bound.range });
+        }
+        if bound.range.column_start > tree_bounds.len() {
+            return Err(ZkColumnDegreeBoundApplicationError::RangeOutOfBounds {
+                range: bound.range,
+                column_count: tree_bounds.len(),
+            });
+        }
+        if bound.range.column_end > tree_bounds.len() {
+            return Err(ZkColumnDegreeBoundApplicationError::RangeOutOfBounds {
+                range: bound.range,
+                column_count: tree_bounds.len(),
+            });
+        }
+        for column_index in bound.range.column_start..bound.range.column_end {
+            if !seen_columns.insert((bound.range.tree_index, column_index)) {
+                return Err(ZkColumnDegreeBoundApplicationError::DuplicateColumn {
+                    tree_index: bound.range.tree_index,
+                    column_index,
+                });
+            }
+            let base_log_degree_bound = tree_bounds[column_index];
+            if bound.log_degree_bound < base_log_degree_bound {
+                return Err(
+                    ZkColumnDegreeBoundApplicationError::DegreeBoundShrinksColumn {
+                        range: bound.range,
+                        column_index,
+                        base_log_degree_bound,
+                        zk_log_degree_bound: bound.log_degree_bound,
+                    },
+                );
+            }
+            tree_bounds[column_index] = bound.log_degree_bound;
+        }
+    }
+
+    Ok(base_bounds)
 }
 
 pub fn validate_zk_public_metadata_against_verifier_config(
@@ -1324,6 +1407,10 @@ pub fn validate_zk_witness_metadata(
     {
         return Err(ZkMetadataValidationError::MissingQuotientDegreeBounds);
     }
+    validate_zk_column_degree_bound_ranges(
+        &metadata.witness_randomization.private_column_degree_bounds,
+    )?;
+    validate_zk_column_degree_bound_ranges(&metadata.quotient_integration.quotient_degree_bounds)?;
     if metadata
         .witness_randomization
         .randomizer_space_hash
@@ -1370,6 +1457,20 @@ pub fn validate_zk_witness_metadata(
                 trace_domain_size,
                 randomizer_coefficient_count,
                 randomized_domain_size,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_zk_column_degree_bound_ranges(
+    bounds: &[ZkColumnDegreeBound],
+) -> Result<(), ZkMetadataValidationError> {
+    for bound in bounds {
+        if bound.range.column_start >= bound.range.column_end {
+            return Err(ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
+                range: bound.range,
             });
         }
     }
@@ -2212,6 +2313,204 @@ mod tests {
         assert_eq!(
             validate_zk_public_only_metadata(&metadata, 16, 1),
             Err(ZkMetadataValidationError::UnexpectedQuotientDegreeBoundsForPhase1)
+        );
+    }
+
+    fn witness_metadata(lifting_log_size: u32, log_blowup_factor: u32) -> ZkPublicMetadata {
+        let h_batch =
+            expected_zk_fri_batch_degree_bound(lifting_log_size, log_blowup_factor).unwrap();
+
+        ZkPublicMetadata {
+            version: ZkProofVersion::V1,
+            privacy_map_hash: ZkPrivacyMapHash(nonzero_hash()),
+            public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            degree_profile: ZkDegreeProfile {
+                trace_domain_log_size: lifting_log_size - log_blowup_factor,
+                h_witness: 1 << (lifting_log_size - log_blowup_factor),
+                h_batch,
+                fri_first_layer_log_size: lifting_log_size,
+            },
+            witness_randomization: ZkWitnessRandomizationProfile {
+                h_witness: 1 << (lifting_log_size - log_blowup_factor),
+                randomizer_space_hash: nonzero_hash(),
+                private_column_scope_hash: nonzero_hash(),
+                private_column_degree_bounds: vec![ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(1, 0, 1),
+                    log_degree_bound: lifting_log_size,
+                }],
+            },
+            quotient_integration: ZkQuotientIntegrationProfile {
+                h_batch,
+                fri_first_layer_log_size: lifting_log_size,
+                split_derivation_hash: nonzero_hash(),
+                quotient_degree_bounds: vec![ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(2, 0, 1),
+                    log_degree_bound: lifting_log_size - log_blowup_factor,
+                }],
+            },
+        }
+    }
+
+    #[test]
+    fn witness_metadata_rejects_invalid_degree_bound_ranges() {
+        let mut metadata = witness_metadata(6, 1);
+        metadata.witness_randomization.private_column_degree_bounds[0].range =
+            ZkColumnRange::new(1, 0, 0);
+
+        assert_eq!(
+            validate_zk_witness_metadata(&metadata, 6, 1),
+            Err(ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
+                range: ZkColumnRange::new(1, 0, 0),
+            })
+        );
+
+        let mut metadata = witness_metadata(6, 1);
+        metadata.quotient_integration.quotient_degree_bounds[0].range = ZkColumnRange {
+            tree_index: 2,
+            column_start: 1,
+            column_end: 0,
+        };
+
+        assert_eq!(
+            validate_zk_witness_metadata(&metadata, 6, 1),
+            Err(ZkMetadataValidationError::InvalidColumnDegreeBoundRange {
+                range: ZkColumnRange {
+                    tree_index: 2,
+                    column_start: 1,
+                    column_end: 0,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn zk_column_degree_bounds_overlay_increases_selected_columns() {
+        let base_bounds = TreeVec(vec![vec![4, 4], vec![5]]);
+        let zk_bounds = vec![
+            ZkColumnDegreeBound {
+                range: ZkColumnRange::new(0, 1, 2),
+                log_degree_bound: 6,
+            },
+            ZkColumnDegreeBound {
+                range: ZkColumnRange::new(1, 0, 1),
+                log_degree_bound: 7,
+            },
+        ];
+
+        let overlay = apply_zk_column_degree_bounds(base_bounds, &zk_bounds).unwrap();
+        assert_eq!(overlay.0, vec![vec![4, 6], vec![7]]);
+    }
+
+    #[test]
+    fn zk_column_degree_bounds_reject_invalid_ranges() {
+        let base_bounds = TreeVec(vec![vec![4]]);
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds.clone(),
+                &[ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(0, 0, 0),
+                    log_degree_bound: 5,
+                }],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::InvalidRange {
+                range: ZkColumnRange::new(0, 0, 0),
+            }
+        );
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds.clone(),
+                &[ZkColumnDegreeBound {
+                    range: ZkColumnRange {
+                        tree_index: 0,
+                        column_start: 1,
+                        column_end: 0,
+                    },
+                    log_degree_bound: 5,
+                }],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::InvalidRange {
+                range: ZkColumnRange {
+                    tree_index: 0,
+                    column_start: 1,
+                    column_end: 0,
+                },
+            }
+        );
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds.clone(),
+                &[ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(1, 0, 1),
+                    log_degree_bound: 5,
+                }],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::MissingTree {
+                range: ZkColumnRange::new(1, 0, 1),
+            }
+        );
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds,
+                &[ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(0, 0, 2),
+                    log_degree_bound: 5,
+                }],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::RangeOutOfBounds {
+                range: ZkColumnRange::new(0, 0, 2),
+                column_count: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_column_degree_bounds_reject_overlap_and_shrinking() {
+        let base_bounds = TreeVec(vec![vec![4, 4]]);
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds.clone(),
+                &[
+                    ZkColumnDegreeBound {
+                        range: ZkColumnRange::new(0, 0, 1),
+                        log_degree_bound: 5,
+                    },
+                    ZkColumnDegreeBound {
+                        range: ZkColumnRange::new(0, 0, 1),
+                        log_degree_bound: 6,
+                    },
+                ],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::DuplicateColumn {
+                tree_index: 0,
+                column_index: 0,
+            }
+        );
+
+        assert_eq!(
+            apply_zk_column_degree_bounds(
+                base_bounds,
+                &[ZkColumnDegreeBound {
+                    range: ZkColumnRange::new(0, 1, 2),
+                    log_degree_bound: 3,
+                }],
+            )
+            .unwrap_err(),
+            ZkColumnDegreeBoundApplicationError::DegreeBoundShrinksColumn {
+                range: ZkColumnRange::new(0, 1, 2),
+                column_index: 1,
+                base_log_degree_bound: 4,
+                zk_log_degree_bound: 3,
+            }
         );
     }
 

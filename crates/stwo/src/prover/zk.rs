@@ -13,7 +13,7 @@ use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
 use crate::core::zk::{
-    build_zk_randomizer_matrices_from_stwo_sample_metadata,
+    build_zk_randomizer_matrices_from_stwo_sample_metadata, validate_zk_column_degree_bound_ranges,
     validate_zk_private_column_scope_for_witness_randomization, validate_zk_public_only_metadata,
     validate_zk_query_closure_for_witness_randomization,
     validate_zk_randomizer_rank_profile_for_witness_randomization, zk_trace_domain_half_coset,
@@ -395,6 +395,14 @@ impl ZkProvingConfig {
         {
             return Err(ZkProvingConfigError::MissingQuotientDegreeBounds);
         }
+        validate_zk_column_degree_bound_ranges(
+            &metadata.witness_randomization.private_column_degree_bounds,
+        )
+        .map_err(ZkProvingConfigError::Metadata)?;
+        validate_zk_column_degree_bound_ranges(
+            &metadata.quotient_integration.quotient_degree_bounds,
+        )
+        .map_err(ZkProvingConfigError::Metadata)?;
         if metadata.degree_profile.h_witness != metadata.witness_randomization.h_witness
             || metadata.degree_profile.h_batch != metadata.quotient_integration.h_batch
             || metadata.degree_profile.fri_first_layer_log_size
