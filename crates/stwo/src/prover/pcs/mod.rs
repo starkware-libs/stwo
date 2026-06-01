@@ -20,9 +20,10 @@ use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::core::zk::{
-    mix_zk_public_metadata, validate_zk_witness_metadata, zk_fri_batch_mask_fri_config,
-    zk_fri_batch_mask_query_positions, ExtendedZkCommitmentSchemeProof, ZkColumnRange,
-    ZkCommitmentSchemeProof, ZkCommitmentSchemeProofAux,
+    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile, validate_zk_witness_metadata,
+    zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
+    ExtendedZkCommitmentSchemeProof, ZkColumnRange, ZkCommitmentSchemeProof,
+    ZkCommitmentSchemeProofAux,
 };
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
@@ -360,6 +361,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let has_private_witness_columns = !zk_config.privacy_map.private_columns.is_empty();
         if has_private_witness_columns {
+            zk_config.validate_witness_and_quotient_static_config()?;
             if self.zk_witness_randomization_contexts.is_empty() {
                 return Err(ZkProvingConfigError::MissingWitnessRandomizationContext);
             }
@@ -421,6 +423,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             &zk_config.metadata,
             &zk_config.column_degree_bounds,
         );
+        if has_private_witness_columns {
+            mix_zk_quotient_split_mask_profile(
+                channel,
+                zk_config
+                    .quotient_split_mask_profile
+                    .ok_or(ZkProvingConfigError::MissingQuotientSplitMaskProfile)?,
+            )
+            .map_err(ZkProvingConfigError::QuotientSplitMaskProfile)?;
+        }
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
         let fri_batch_log_degree_bound =

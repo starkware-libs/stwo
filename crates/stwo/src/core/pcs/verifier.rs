@@ -16,11 +16,12 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
-    mix_zk_public_metadata, validate_zk_public_metadata_against_verifier_config,
-    validate_zk_public_only_metadata, validate_zk_sampled_values_shape,
-    validate_zk_witness_metadata, validate_zk_witness_randomization_audit_for_verifier,
-    zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions, ZkColumnDegreeBound,
-    ZkCommitmentSchemeProof, ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
+    validate_zk_public_metadata_against_verifier_config, validate_zk_public_only_metadata,
+    validate_zk_sampled_values_shape, validate_zk_witness_metadata,
+    validate_zk_witness_randomization_audit_for_verifier, zk_fri_batch_mask_fri_config,
+    zk_fri_batch_mask_query_positions, ZkColumnDegreeBound, ZkCommitmentSchemeProof,
+    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
 };
 use crate::core::ColumnVec;
 
@@ -317,6 +318,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             &zk_config.metadata,
             &zk_config.column_degree_bounds,
         );
+        if let Some(profile) = zk_config.quotient_split_mask_profile {
+            mix_zk_quotient_split_mask_profile(channel, profile).map_err(|_| {
+                VerificationError::InvalidStructure(String::from(
+                    "Invalid ZK quotient split mask profile",
+                ))
+            })?;
+        }
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let bound =
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
