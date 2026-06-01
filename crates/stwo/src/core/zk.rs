@@ -1335,6 +1335,10 @@ pub enum ZkStarkDegreeBoundProfileError {
         required: u32,
         actual: u32,
     },
+    FriFirstLayerBelowTraceDegree {
+        required: u32,
+        actual: u32,
+    },
     FriFirstLayerMismatch {
         degree_profile: u32,
         quotient_integration: u32,
@@ -1493,6 +1497,14 @@ pub fn derive_zk_stark_degree_bound_profile(
             degree_profile: metadata.degree_profile.fri_first_layer_log_size,
             quotient_integration: metadata.quotient_integration.fri_first_layer_log_size,
         });
+    }
+    if metadata.degree_profile.fri_first_layer_log_size < trace_log_degree_bound {
+        return Err(
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
+                required: trace_log_degree_bound,
+                actual: metadata.degree_profile.fri_first_layer_log_size,
+            },
+        );
     }
     let required_fri_first_layer_log_size = zk_split_composition_log_degree_bound
         .checked_add(log_blowup_factor)
@@ -2904,6 +2916,50 @@ mod tests {
             ZkStarkDegreeBoundProfileError::FriFirstLayerTooSmall {
                 required: 6,
                 actual: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_public_trace_bound_above_fri_layer() {
+        let metadata = public_only_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![7], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
+                required: 7,
+                actual: 6,
+            }
+        );
+    }
+
+    #[test]
+    fn zk_stark_degree_profile_rejects_private_trace_bound_above_fri_layer() {
+        let metadata = witness_metadata(6, 1);
+        let verifier_config = verification_config(metadata);
+
+        assert_eq!(
+            derive_zk_stark_degree_bound_profile(
+                TreeVec(vec![vec![7], vec![5]]),
+                6,
+                1,
+                &verifier_config,
+                6,
+                1,
+            )
+            .unwrap_err(),
+            ZkStarkDegreeBoundProfileError::FriFirstLayerBelowTraceDegree {
+                required: 7,
+                actual: 6,
             }
         );
     }
