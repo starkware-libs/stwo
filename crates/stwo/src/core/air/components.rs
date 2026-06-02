@@ -3,7 +3,7 @@ use core::iter::zip;
 use std_shims::{vec, Vec};
 
 use super::accumulation::PointEvaluationAccumulator;
-use super::Component;
+use super::{AbsoluteColumnMaskSemanticStepLogSizes, Component};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
@@ -56,6 +56,18 @@ impl Components<'_> {
             }
         }
 
+        for component in &self.components {
+            let component_lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            let component_point = point.repeated_double(component_lift);
+            for extra in component.absolute_mask_points(component_point, max_log_degree_bound) {
+                mask_points[extra.tree_index][extra.column_index].extend(extra.points);
+            }
+        }
+
         mask_points
     }
 
@@ -79,6 +91,12 @@ impl Components<'_> {
                 for idx in component.preprocessed_column_indices() {
                     preprocessed_mask_offsets[idx] = vec![0];
                 }
+            }
+        }
+
+        for component in &self.components {
+            for extra in component.absolute_mask_offsets()? {
+                mask_offsets[extra.tree_index][extra.column_index].extend(extra.offsets);
             }
         }
 
@@ -132,6 +150,103 @@ impl Components<'_> {
         }
 
         (semantic_step_log_sizes, semantic_base_lifts)
+    }
+
+    pub fn semantic_sample_step_log_sizes_and_lifts(
+        &self,
+        include_all_preprocessed_columns: bool,
+    ) -> Option<(TreeVec<ColumnVec<Vec<u32>>>, TreeVec<ColumnVec<Vec<u32>>>)> {
+        let composition_log_degree_bound = self.composition_log_degree_bound();
+        let component_step_log_sizes =
+            self.components
+                .iter()
+                .map(|component| {
+                    let component_offsets = component.mask_offsets()?;
+                    let component_bounds = component.trace_log_degree_bounds();
+                    Some(TreeVec(
+                        component_offsets
+                            .iter()
+                            .enumerate()
+                            .map(|(tree_index, offset_tree)| {
+                                if tree_index == PREPROCESSED_TRACE_IDX {
+                                    return vec![vec![]; offset_tree.len()];
+                                }
+                                offset_tree
+                                    .iter()
+                                    .zip(&component_bounds[tree_index])
+                                    .map(|(column_offsets, &log_size)| {
+                                        vec![log_size; column_offsets.len()]
+                                    })
+                                    .collect()
+                            })
+                            .collect(),
+                    ))
+                })
+                .collect::<Option<Vec<_>>>()?;
+        let component_base_lifts = self
+            .components
+            .iter()
+            .map(|component| {
+                let lift = if component.n_constraints() == 0 {
+                    0
+                } else {
+                    composition_log_degree_bound - component.max_constraint_log_degree_bound()
+                };
+                component.mask_offsets().map(|offsets| {
+                    offsets.map_cols(|column_offsets| vec![lift; column_offsets.len()])
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+
+        let mut semantic_step_log_sizes =
+            TreeVec::concat_cols(component_step_log_sizes.into_iter());
+        let mut semantic_base_lifts = TreeVec::concat_cols(component_base_lifts.into_iter());
+
+        let preprocessed_step_log_sizes = &mut semantic_step_log_sizes[PREPROCESSED_TRACE_IDX];
+        let preprocessed_base_lifts = &mut semantic_base_lifts[PREPROCESSED_TRACE_IDX];
+        *preprocessed_step_log_sizes = vec![vec![]; self.n_preprocessed_columns];
+        *preprocessed_base_lifts = vec![vec![]; self.n_preprocessed_columns];
+        if include_all_preprocessed_columns {
+            *preprocessed_step_log_sizes = vec![vec![0]; self.n_preprocessed_columns];
+            *preprocessed_base_lifts = vec![vec![0]; self.n_preprocessed_columns];
+        } else {
+            for component in &self.components {
+                let component_bounds = component.trace_log_degree_bounds();
+                let lift = if component.n_constraints() == 0 {
+                    0
+                } else {
+                    composition_log_degree_bound - component.max_constraint_log_degree_bound()
+                };
+                for (local_index, column_index) in component
+                    .preprocessed_column_indices()
+                    .into_iter()
+                    .enumerate()
+                {
+                    preprocessed_step_log_sizes[column_index] =
+                        vec![component_bounds[PREPROCESSED_TRACE_IDX][local_index]];
+                    preprocessed_base_lifts[column_index] = vec![lift];
+                }
+            }
+        }
+
+        for component in &self.components {
+            let lift = if component.n_constraints() == 0 {
+                0
+            } else {
+                composition_log_degree_bound - component.max_constraint_log_degree_bound()
+            };
+            let absolute_steps: Vec<AbsoluteColumnMaskSemanticStepLogSizes> =
+                component.absolute_mask_semantic_step_log_sizes()?;
+            for extra in absolute_steps {
+                let opening_count = extra.step_log_sizes.len();
+                semantic_step_log_sizes[extra.tree_index][extra.column_index]
+                    .extend(extra.step_log_sizes);
+                semantic_base_lifts[extra.tree_index][extra.column_index]
+                    .extend(vec![lift; opening_count]);
+            }
+        }
+
+        Some((semantic_step_log_sizes, semantic_base_lifts))
     }
 
     pub fn eval_composition_polynomial_at_point(

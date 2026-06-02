@@ -1,12 +1,13 @@
 use std::borrow::Cow;
 
 use itertools::Itertools;
+use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use stwo::core::air::Component;
 use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
 use stwo::core::utils::bit_reverse;
@@ -15,7 +16,7 @@ use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Backend, CpuBackend};
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::{
@@ -24,7 +25,9 @@ use stwo::prover::{
 use tracing::{span, Level};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};
-use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
+use crate::{
+    FrameworkComponent, FrameworkEval, StatisticalLogupAggregateComponent, PREPROCESSED_TRACE_IDX,
+};
 
 const CHUNK_SIZE: usize = 1;
 
@@ -246,7 +249,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         // Define any `self` values outside the loop to prevent the compiler thinking there is a
         // `Sync` requirement on `Self`.
         let self_eval = &self.eval;
-        let self_claimed_sum = self.claimed_sum;
+        let self_logup_claim = self.logup_claim;
 
         iter.for_each(|(chunk_idx, mut chunk)| {
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
@@ -254,14 +257,14 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             for idx_in_chunk in 0..CHUNK_SIZE {
                 let vec_row = chunk_idx * CHUNK_SIZE + idx_in_chunk;
                 // Evaluate constrains at row.
-                let eval = SimdDomainEvaluator::new(
+                let eval = SimdDomainEvaluator::new_with_logup_claim(
                     &trace_cols,
                     vec_row,
                     &accum.random_coeff_powers,
                     denominator_log_size,
                     eval_domain.log_size(),
                     self_eval.log_size(),
-                    self_claimed_sum,
+                    self_logup_claim,
                 );
                 let row_res = self_eval.evaluate(eval).row_res;
 
@@ -278,6 +281,107 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 }
             }
         });
+        Ok(())
+    }
+}
+
+impl ComponentProver<SimdBackend> for StatisticalLogupAggregateComponent {
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &Trace<'_, SimdBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
+    ) {
+        self.evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+            trace,
+            evaluation_accumulator,
+            self.max_constraint_log_degree_bound(),
+        )
+        .expect("statistical LogUp aggregate quotient evaluation should be valid")
+    }
+
+    fn evaluate_constraint_quotients_on_domain_with_log_degree_bound(
+        &self,
+        trace: &Trace<'_, SimdBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
+        max_constraint_log_degree_bound: u32,
+    ) -> Result<(), ProvingError> {
+        if max_constraint_log_degree_bound < self.max_constraint_log_degree_bound() {
+            return Err(ProvingError::InvalidZkDegreeGeometry);
+        }
+
+        let eval_domain = match evaluation_accumulator.evaluation_mode() {
+            EvaluationMode::SubDomain { log_expansion } => {
+                subdomain_eval_domain(max_constraint_log_degree_bound, log_expansion)
+            }
+            EvaluationMode::ExtendToEvalDomain => {
+                CanonicCoset::new(max_constraint_log_degree_bound).circle_domain()
+            }
+        };
+        let trace_domain = CanonicCoset::new(self.aggregate_vanishing_log_size());
+        let log_expand = eval_domain
+            .log_size()
+            .checked_sub(trace_domain.log_size())
+            .ok_or(ProvingError::InvalidZkDegreeGeometry)?;
+        let mut denom_inv = (0..1 << log_expand)
+            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+            .collect_vec();
+        bit_reverse(&mut denom_inv);
+
+        let correction_columns = self
+            .corrections
+            .iter()
+            .map(|correction| {
+                (0..SECURE_EXTENSION_DEGREE)
+                    .map(|i| {
+                        let poly = trace
+                            .polys
+                            .get(correction.tree_index)
+                            .and_then(|tree| tree.get(correction.column_start + i))
+                            .ok_or(ProvingError::InvalidZkTraceGeometry)?;
+                        let eval = match evaluation_accumulator.evaluation_mode() {
+                            EvaluationMode::SubDomain { log_expansion }
+                                if poly.evals.domain.log_size()
+                                    == eval_domain.log_size() + log_expansion =>
+                            {
+                                Cow::Borrowed(&poly.evals)
+                            }
+                            EvaluationMode::SubDomain { .. }
+                            | EvaluationMode::ExtendToEvalDomain => {
+                                let twiddles =
+                                    SimdBackend::precompute_twiddles(eval_domain.half_coset);
+                                Cow::Owned(poly.get_evaluation_on_domain(eval_domain, &twiddles))
+                            }
+                        };
+                        Ok(eval.to_cpu().values)
+                    })
+                    .collect::<Result<Vec<_>, ProvingError>>()
+                    .map(|columns| (*correction, columns))
+            })
+            .collect::<Result<Vec<_>, ProvingError>>()?;
+
+        let [mut accum] =
+            evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        accum.random_coeff_powers.reverse();
+        let random_coeff = accum.random_coeff_powers[0];
+        let mut result = SecureColumnByCoords::<CpuBackend>::zeros(1 << eval_domain.log_size());
+
+        for row in 0..(1 << eval_domain.log_size()) {
+            let mut lhs = SecureField::zero();
+            for (correction, columns) in &correction_columns {
+                let correction_value =
+                    SecureField::from_m31_array(core::array::from_fn(|i| columns[i][row]));
+                lhs += correction.masked_claim
+                    - correction_value * BaseField::from_u32_unchecked(1 << correction.log_size);
+            }
+            let constraint = lhs - self.public_target;
+            let row_denom_inv = denom_inv[row >> trace_domain.log_size()];
+            result.set(
+                row,
+                accum.col.to_cpu().at(row) + random_coeff * constraint * row_denom_inv,
+            );
+        }
+        *accum.col = SecureColumnByCoords::from_cpu(result);
+
         Ok(())
     }
 }
@@ -370,14 +474,14 @@ fn accumulate_pointwise_cpu<E: FrameworkEval>(
     let mut res = SecureColumnByCoords::zeros(1 << eval_log_size);
     for row in 0..(1 << eval_log_size) {
         // Evaluate constrains at row.
-        let eval = CpuDomainEvaluator::new(
+        let eval = CpuDomainEvaluator::new_with_logup_claim(
             &trace_cols,
             row,
             random_coeff_powers,
             mask_domain_log_size,
             eval_log_size,
             component.eval.log_size(),
-            component.claimed_sum,
+            component.logup_claim,
         );
         let row_res = component.eval.evaluate(eval).row_res;
 

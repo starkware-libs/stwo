@@ -4,18 +4,24 @@ use core::ops::Deref;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
+use num_traits::Zero;
 use std_shims::{vec, String, Vec};
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
-use stwo::core::air::Component;
+use stwo::core::air::{
+    AbsoluteColumnMaskOffsets, AbsoluteColumnMaskPoints, AbsoluteColumnMaskSemanticStepLogSizes,
+    Component,
+};
 use stwo::core::circle::CirclePoint;
 use stwo::core::constraints::coset_vanishing;
-use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::{TreeSubspan, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::all_unique;
 use stwo::core::ColumnVec;
 
+use super::logup::LogupClaim;
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, PREPROCESSED_TRACE_IDX};
 
@@ -114,7 +120,7 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     pub(super) eval: C,
     pub(super) trace_locations: TreeVec<TreeSubspan>,
     pub(super) preprocessed_column_indices: Vec<usize>,
-    pub(super) claimed_sum: SecureField,
+    pub(super) logup_claim: LogupClaim,
     info: InfoEvaluator,
 }
 
@@ -124,7 +130,19 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
         eval: E,
         claimed_sum: SecureField,
     ) -> Self {
-        let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], claimed_sum));
+        Self::new_with_logup_claim(location_allocator, eval, LogupClaim::Public(claimed_sum))
+    }
+
+    pub fn new_with_logup_claim(
+        location_allocator: &mut TraceLocationAllocator,
+        eval: E,
+        logup_claim: LogupClaim,
+    ) -> Self {
+        let info = eval.evaluate(InfoEvaluator::new_with_logup_claim(
+            eval.log_size(),
+            vec![],
+            logup_claim,
+        ));
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
 
         let preprocessed_column_indices = info
@@ -155,7 +173,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             trace_locations,
             info,
             preprocessed_column_indices,
-            claimed_sum,
+            logup_claim,
         }
     }
 
@@ -168,7 +186,11 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
     }
 
     pub const fn claimed_sum(&self) -> SecureField {
-        self.claimed_sum
+        self.logup_claim.value()
+    }
+
+    pub const fn logup_claim(&self) -> LogupClaim {
+        self.logup_claim
     }
 
     pub fn logup_counts(&self) -> RelationCounts {
@@ -189,6 +211,166 @@ impl Deref for RelationCounts {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatisticalLogupCorrectionRef {
+    pub tree_index: usize,
+    /// First base-field column of the extension-field correction value.
+    pub column_start: usize,
+    /// Index inside the column mask where this aggregate opening is expected.
+    pub opening_index: usize,
+    pub log_size: u32,
+    pub masked_claim: SecureField,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StatisticalLogupAggregateComponent {
+    pub n_trees: usize,
+    pub corrections: Vec<StatisticalLogupCorrectionRef>,
+    pub public_target: SecureField,
+}
+
+impl StatisticalLogupAggregateComponent {
+    #[must_use]
+    pub fn new(
+        n_trees: usize,
+        corrections: Vec<StatisticalLogupCorrectionRef>,
+        public_target: SecureField,
+    ) -> Self {
+        Self {
+            n_trees,
+            corrections,
+            public_target,
+        }
+    }
+
+    pub(crate) fn max_log_size(&self) -> u32 {
+        self.corrections
+            .iter()
+            .map(|correction| correction.log_size)
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn aggregate_vanishing_log_size(&self) -> u32 {
+        self.max_log_size()
+    }
+
+    fn quotient_log_degree_bound(&self) -> u32 {
+        self.max_log_size()
+            .checked_add(1)
+            .expect("statistical LogUp aggregate log degree bound overflow")
+    }
+
+    fn eval_constraint(&self, mask: &TreeVec<ColumnVec<Vec<SecureField>>>) -> SecureField {
+        let mut lhs = SecureField::zero();
+        for correction in &self.corrections {
+            let correction_value = SecureField::from_partial_evals(core::array::from_fn(|i| {
+                mask[correction.tree_index][correction.column_start + i]
+                    .get(correction.opening_index)
+                    .copied()
+                    .expect("statistical LogUp aggregate correction opening is missing")
+            }));
+            lhs += correction.masked_claim
+                - correction_value * BaseField::from_u32_unchecked(1 << correction.log_size);
+        }
+        lhs - self.public_target
+    }
+}
+
+impl Component for StatisticalLogupAggregateComponent {
+    fn n_constraints(&self) -> usize {
+        1
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.quotient_log_degree_bound()
+    }
+
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![vec![]; self.n_trees])
+    }
+
+    fn mask_points(
+        &self,
+        _point: CirclePoint<SecureField>,
+        _max_log_degree_bound: u32,
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![vec![]; self.n_trees])
+    }
+
+    fn mask_offsets(&self) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
+        Some(TreeVec::new(vec![vec![]; self.n_trees]))
+    }
+
+    fn absolute_mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+        _max_log_degree_bound: u32,
+    ) -> Vec<AbsoluteColumnMaskPoints> {
+        self.corrections
+            .iter()
+            .flat_map(|correction| {
+                (0..SECURE_EXTENSION_DEGREE).map(|i| AbsoluteColumnMaskPoints {
+                    tree_index: correction.tree_index,
+                    column_index: correction.column_start + i,
+                    points: vec![point],
+                })
+            })
+            .collect()
+    }
+
+    fn absolute_mask_offsets(&self) -> Option<Vec<AbsoluteColumnMaskOffsets>> {
+        Some(
+            self.corrections
+                .iter()
+                .flat_map(|correction| {
+                    (0..SECURE_EXTENSION_DEGREE).map(|i| AbsoluteColumnMaskOffsets {
+                        tree_index: correction.tree_index,
+                        column_index: correction.column_start + i,
+                        offsets: vec![0],
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn absolute_mask_semantic_step_log_sizes(
+        &self,
+    ) -> Option<Vec<AbsoluteColumnMaskSemanticStepLogSizes>> {
+        Some(
+            self.corrections
+                .iter()
+                .flat_map(|correction| {
+                    (0..SECURE_EXTENSION_DEGREE).map(|i| AbsoluteColumnMaskSemanticStepLogSizes {
+                        tree_index: correction.tree_index,
+                        column_index: correction.column_start + i,
+                        step_log_sizes: vec![self.aggregate_vanishing_log_size()],
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
+        vec![]
+    }
+
+    fn evaluate_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _max_log_degree_bound: u32,
+    ) {
+        let denom_inverse = coset_vanishing(
+            CanonicCoset::new(self.aggregate_vanishing_log_size()).coset,
+            point,
+        )
+        .inverse();
+        evaluation_accumulator.accumulate(denom_inverse * self.eval_constraint(mask));
     }
 }
 
@@ -255,12 +437,12 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         let mut mask_points = mask.sub_tree(&self.trace_locations);
         mask_points[PREPROCESSED_TRACE_IDX] = preprocessed_mask;
 
-        self.eval.evaluate(PointEvaluator::new(
+        self.eval.evaluate(PointEvaluator::new_with_logup_claim(
             mask_points,
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
             self.eval.log_size(),
-            self.claimed_sum,
+            self.logup_claim,
         ));
     }
 
@@ -280,12 +462,12 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         let mut mask_points = mask.sub_tree(&self.trace_locations);
         mask_points[PREPROCESSED_TRACE_IDX] = preprocessed_mask;
 
-        self.eval.evaluate(PointEvaluator::new(
+        self.eval.evaluate(PointEvaluator::new_with_logup_claim(
             mask_points,
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
             self.eval.log_size(),
-            self.claimed_sum,
+            self.logup_claim,
         ));
     }
 }

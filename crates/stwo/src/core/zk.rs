@@ -1,3 +1,5 @@
+use core::mem;
+
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, BTreeSet, Vec};
@@ -13,6 +15,7 @@ use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAu
 use crate::core::pcs::utils::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::get_folding_alphas;
+use crate::core::proof::SizeEstimate;
 use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -62,6 +65,518 @@ impl ZkColumnRange {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkTraceTreeScope {
+    Preprocessed,
+    OriginalTrace,
+    InteractionTrace { interaction_index: u32 },
+    CompositionSplit,
+    Custom(u32),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZkTraceTreeScopeBinding {
+    pub tree_index: usize,
+    pub scope: ZkTraceTreeScope,
+    pub column_log_degree_bounds: ColumnVec<u32>,
+}
+
+#[must_use]
+pub fn zk_singleton_column_ranges(tree_index: usize, column_count: usize) -> Vec<ZkColumnRange> {
+    (0..column_count)
+        .map(|column| ZkColumnRange::new(tree_index, column, column + 1))
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZkAirDegreeBounds {
+    pub trace_log_degree: u32,
+    pub randomized_private_column_log_degree: u32,
+    pub public_air_constraint_log_expansion: u32,
+    pub private_constraint_log_expansion: u32,
+    pub composition_log_split: u32,
+    pub full_composition_log_degree_bound: u32,
+    pub split_composition_log_degree_bound: u32,
+    pub left_masked_split_log_degree_bound: u32,
+    pub right_masked_split_log_degree_bound: u32,
+    pub fri_log_blowup_factor: u32,
+    pub fri_first_layer_log_size: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkAirMetadataBuildError {
+    EmptyTraceMetadata,
+    TraceDomainMismatch {
+        expected: u32,
+        actual: u32,
+    },
+    MissingTraceTreeScope {
+        tree_index: usize,
+    },
+    InvalidTraceTreeScope {
+        tree_index: usize,
+    },
+    DuplicateTraceTreeScope {
+        tree_index: usize,
+    },
+    DuplicatePrivateRange {
+        range: ZkColumnRange,
+    },
+    InvalidPublicRange {
+        range: ZkColumnRange,
+    },
+    InvalidPrivateRange {
+        range: ZkColumnRange,
+    },
+    PublicPrivateRangeOverlap {
+        public_range: ZkColumnRange,
+        private_range: ZkColumnRange,
+    },
+    IneligiblePrivateColumn {
+        range: ZkColumnRange,
+        usage: ZkPrivateColumnUsage,
+    },
+    MissingPrivateInteractionColumn {
+        range: ZkColumnRange,
+    },
+    InvalidPrivateLogupScope {
+        range: ZkColumnRange,
+    },
+    InvalidPrivacyProviderScopeCount {
+        expected: usize,
+        actual: usize,
+    },
+    InvalidPrivacyDependencyRange {
+        range: ZkColumnRange,
+    },
+    IncompleteDependencyMetadata,
+    IncompleteLogupClaimMetadata,
+    MissingPrivateLogupClaimManifest {
+        interaction_index: u32,
+    },
+    InvalidLogupClaimManifest {
+        interaction_index: u32,
+    },
+    MissingPrivateLogupClaimPolicy {
+        interaction_index: u32,
+        claim_index: u32,
+    },
+    UnsupportedPrivateLogupClaimPolicy {
+        interaction_index: u32,
+        claim_index: u32,
+    },
+    InvalidLogupClaimPolicy {
+        interaction_index: u32,
+        claim_index: u32,
+    },
+    DuplicateLogupStatisticalAggregateGroup {
+        aggregate_id: u32,
+    },
+    MissingLogupStatisticalAggregateGroup {
+        aggregate_id: u32,
+    },
+    UnusedLogupStatisticalAggregateGroup {
+        aggregate_id: u32,
+    },
+    InvalidLogupStatisticalAggregateGroup {
+        aggregate_id: u32,
+    },
+    LogupStatisticalSecurityOverflow {
+        aggregate_id: u32,
+    },
+    InsufficientLogupStatisticalSecurity {
+        aggregate_id: u32,
+        computed_bits: u32,
+        min_bits: u32,
+    },
+    UnclassifiedAirColumn {
+        range: ZkColumnRange,
+    },
+    PublicRangeOverlap {
+        lhs: ZkColumnRange,
+        rhs: ZkColumnRange,
+    },
+    ConstraintDegreeBound {
+        trace_log_degree: u32,
+        max_constraint_log_degree_bound: u32,
+    },
+    DegreeGeometryMismatch,
+    DegreeOverflow,
+    FriBatchDegree,
+    QuotientSplitMaskProfile,
+}
+
+#[derive(Clone, Debug)]
+pub struct ZkAirCanonicalMetadata {
+    pub component_column_log_sizes: TreeVec<ColumnVec<u32>>,
+    pub trace_tree_scope_bindings: Vec<ZkTraceTreeScopeBinding>,
+    pub trace_tree_scope_hash: [u8; 32],
+    pub public_ranges: Vec<ZkColumnRange>,
+    pub private_ranges: Vec<ZkColumnRange>,
+    pub private_column_scope: ZkPrivateColumnScope,
+    pub logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    pub logup_claim_manifest: Vec<ZkLogupClaimManifestEntry>,
+    pub logup_claim_policies: Vec<ZkLogupClaimPolicy>,
+    pub logup_statistical_aggregate_groups: Vec<ZkLogupStatisticalAggregateGroup>,
+    pub logup_statistical_security_budgets: Vec<ZkLogupStatisticalSecurityBudget>,
+    pub composition_split_range: ZkColumnRange,
+    pub trace_domain_log_size: u32,
+    pub randomized_witness_log_degree: u32,
+    pub fri_first_layer_log_size: u32,
+    pub quotient_degree_bound: ZkColumnDegreeBound,
+    pub quotient_split_mask_profile: ZkQuotientSplitMaskProfile,
+    pub public_statement_hash: ZkPublicStatementHash,
+    pub degree_bounds: ZkAirDegreeBounds,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZkAirConfigArtifacts {
+    pub privacy_map: ZkPrivacyMap,
+    pub metadata: ZkPublicMetadata,
+    pub verifier_config: ZkVerificationConfig,
+    pub verifier_audit: ZkWitnessRandomizationVerifierAudit,
+    pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
+    pub logup_statistical_security_budgets: Vec<ZkLogupStatisticalSecurityBudget>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkAirId(pub Vec<u8>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkPrivacyReason {
+    Witness,
+    DerivedFromPrivateRoot,
+    LogUpInteraction,
+    ApplicationPrivate,
+    Custom(u32),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkPrivateRoot {
+    pub range: ZkColumnRange,
+    pub usage: ZkPrivateColumnUsage,
+    pub reason: ZkPrivacyReason,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkDependencyKind {
+    AirConstraint,
+    LogUpInput,
+    LogUpRunningSum,
+    LookupMultiplicity,
+    CompositionQuotient,
+    FriOracle,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkPrivacyDependency {
+    pub from: ZkColumnRange,
+    pub to: ZkColumnRange,
+    pub kind: ZkDependencyKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkPrivacyInferenceMode {
+    FailClosed,
+    /// Conservative fallback that marks every interaction column private, but
+    /// still requires complete dependency metadata for private roots.
+    MarkAllInteractionDerivedPrivate,
+    /// Test/review-only mode. Production ZK config construction still requires
+    /// complete dependency metadata for private roots.
+    UseDeclaredDependenciesOnly,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkDependencyMetadataCompleteness {
+    Incomplete,
+    CompleteTraceAndInteractionClosure,
+}
+
+impl ZkDependencyMetadataCompleteness {
+    #[must_use]
+    pub const fn is_complete(self) -> bool {
+        matches!(self, Self::CompleteTraceAndInteractionClosure)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkLogupClaimMetadataCompleteness {
+    Incomplete,
+    Complete,
+}
+
+impl ZkLogupClaimMetadataCompleteness {
+    #[must_use]
+    pub const fn is_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkLogupClaimVisibility {
+    /// The scalar is a private witness-derived LogUp fingerprint and this ZK
+    /// path must reject until a reviewed private-claim protocol handles it.
+    PrivateUnsupported,
+    /// The scalar is intentionally public. This is a reviewed semantic
+    /// assertion, not a cryptographic hiding transformation. This visibility
+    /// must not be used for witness-derived LogUp fingerprints unless a
+    /// paper-grounded Math/Crypto review proves that the exposed scalar is part
+    /// of the public statement and leaks no private witness information.
+    SemanticallyPublic,
+    /// The scalar belongs to a private LogUp aggregate group. The verifier must
+    /// not receive the raw scalar; it may receive only the reviewed aggregate
+    /// representation, and the group must satisfy the statistical leakage
+    /// budget declared by verifier-owned metadata.
+    StatisticalAggregate { aggregate_id: u32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkLogupClaimPolicy {
+    pub interaction_index: u32,
+    pub claim_index: u32,
+    pub visibility: ZkLogupClaimVisibility,
+    pub semantic_domain: Vec<u8>,
+    pub semantic_statement: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkLogupClaimManifestEntry {
+    pub interaction_index: u32,
+    pub claim_count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ZkLogupStatisticalAggregateTarget {
+    Zero,
+    PublicExpression { domain: Vec<u8>, statement: Vec<u8> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkLogupStatisticalAggregateGroup {
+    pub aggregate_id: u32,
+    pub target: ZkLogupStatisticalAggregateTarget,
+    pub relation_domain: Vec<u8>,
+    pub relation_statement: Vec<u8>,
+    pub private_lookup_term_count_bound: u64,
+    pub lookup_challenge_count: u32,
+    pub expected_proof_volume: u64,
+    pub min_statistical_security_bits: u32,
+    pub safety_margin_bits: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkPrivateColumnSemanticDomains {
+    pub range: ZkColumnRange,
+    pub semantic_trace_domain_log_sizes: Vec<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ZkLogupStatisticalSecurityBudget {
+    pub aggregate_id: u32,
+    pub extension_field_bits: u32,
+    pub private_lookup_term_count_bound: u64,
+    pub lookup_challenge_count: u32,
+    pub expected_proof_volume: u64,
+    pub safety_margin_bits: u32,
+    pub computed_security_bits: u32,
+    pub min_statistical_security_bits: u32,
+}
+
+pub const ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS: u32 = 124;
+pub const ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH: [u8; 32] = [0x5a; 32];
+
+pub trait ZkAirPrivacyProvider {
+    fn air_id(&self) -> ZkAirId;
+
+    fn component_column_log_sizes(&self) -> TreeVec<ColumnVec<u32>>;
+
+    fn max_constraint_log_degree_bound(&self) -> u32;
+
+    fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope>;
+
+    fn public_roots(&self) -> Vec<ZkColumnRange>;
+
+    fn private_roots(&self) -> Vec<ZkPrivateRoot>;
+
+    fn private_column_semantic_domains(&self) -> Vec<ZkPrivateColumnSemanticDomains> {
+        vec![]
+    }
+
+    fn dependency_edges(&self) -> Vec<ZkPrivacyDependency>;
+
+    fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+        ZkDependencyMetadataCompleteness::Incomplete
+    }
+
+    fn logup_claim_policies(&self) -> Vec<ZkLogupClaimPolicy> {
+        vec![]
+    }
+
+    fn logup_claim_manifest(&self) -> Vec<ZkLogupClaimManifestEntry> {
+        vec![]
+    }
+
+    fn logup_statistical_aggregate_groups(&self) -> Vec<ZkLogupStatisticalAggregateGroup> {
+        vec![]
+    }
+
+    fn logup_claim_metadata_completeness(&self) -> ZkLogupClaimMetadataCompleteness {
+        ZkLogupClaimMetadataCompleteness::Incomplete
+    }
+
+    fn application_domain(&self) -> &[u8];
+
+    fn application_statement(&self) -> Vec<u8>;
+}
+
+#[must_use]
+pub const fn zk_max_u32(lhs: u32, rhs: u32) -> u32 {
+    if lhs > rhs {
+        lhs
+    } else {
+        rhs
+    }
+}
+
+pub fn zk_power_of_two_u64(log_size: u32) -> Result<u64, ZkAirMetadataBuildError> {
+    1u64.checked_shl(log_size)
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)
+}
+
+pub fn zk_public_air_constraint_log_expansion_from_bound(
+    trace_log_degree: u32,
+    max_constraint_log_degree_bound: u32,
+) -> Result<u32, ZkAirMetadataBuildError> {
+    max_constraint_log_degree_bound
+        .checked_sub(trace_log_degree)
+        .ok_or(ZkAirMetadataBuildError::ConstraintDegreeBound {
+            trace_log_degree,
+            max_constraint_log_degree_bound,
+        })
+}
+
+pub fn zk_masked_private_constraint_log_expansion(
+    public_air_constraint_log_expansion: u32,
+    trace_log_degree: u32,
+    randomized_private_column_log_degree: u32,
+) -> Result<u32, ZkAirMetadataBuildError> {
+    let randomized_degree_delta =
+        randomized_private_column_log_degree.saturating_sub(trace_log_degree);
+    public_air_constraint_log_expansion
+        .checked_add(zk_max_u32(
+            public_air_constraint_log_expansion,
+            randomized_degree_delta,
+        ))
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)
+}
+
+pub fn zk_default_randomized_witness_log_degree(
+    trace_domain_log_size: u32,
+) -> Result<u32, ZkAirMetadataBuildError> {
+    trace_domain_log_size
+        .checked_add(1)
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)
+}
+
+fn zk_log2_ceil_u64(value: u64) -> Result<u32, ZkAirMetadataBuildError> {
+    if value <= 1 {
+        return Ok(0);
+    }
+    value
+        .checked_next_power_of_two()
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)
+        .map(u64::ilog2)
+}
+
+pub fn zk_private_column_randomizer_dimension(
+    entry: &ZkPrivateColumnScopeEntry,
+) -> Result<u64, ZkAirMetadataBuildError> {
+    zk_power_of_two_u64(entry.trace_domain_log_size)
+}
+
+pub fn zk_private_column_semantic_vanishing_degree_bound(
+    entry: &ZkPrivateColumnScopeEntry,
+) -> Result<u64, ZkAirMetadataBuildError> {
+    entry
+        .semantic_trace_domain_log_sizes
+        .iter()
+        .try_fold(0u64, |acc, &log_size| {
+            acc.checked_add(zk_power_of_two_u64(log_size)?)
+                .ok_or(ZkAirMetadataBuildError::DegreeOverflow)
+        })
+}
+
+pub fn zk_private_column_randomized_log_degree(
+    entry: &ZkPrivateColumnScopeEntry,
+) -> Result<u32, ZkAirMetadataBuildError> {
+    let vanishing_degree_bound = zk_private_column_semantic_vanishing_degree_bound(entry)?;
+    let randomizer_dimension = zk_private_column_randomizer_dimension(entry)?;
+    zk_log2_ceil_u64(
+        vanishing_degree_bound
+            .checked_add(randomizer_dimension)
+            .ok_or(ZkAirMetadataBuildError::DegreeOverflow)?,
+    )
+}
+
+pub fn zk_randomized_witness_log_degree_for_private_scope(
+    trace_domain_log_size: u32,
+    entries: &[ZkPrivateColumnScopeEntry],
+) -> Result<u32, ZkAirMetadataBuildError> {
+    if entries.is_empty() {
+        return zk_default_randomized_witness_log_degree(trace_domain_log_size);
+    }
+
+    entries.iter().try_fold(0, |acc, entry| {
+        Ok(acc.max(zk_private_column_randomized_log_degree(entry)?))
+    })
+}
+
+pub fn derive_stwo_zk_air_degree_bounds(
+    trace_log_degree: u32,
+    randomized_private_column_log_degree: u32,
+    public_air_constraint_log_expansion: u32,
+    private_constraint_log_expansion: u32,
+    fri_log_blowup_factor: u32,
+    composition_log_split: u32,
+) -> Result<ZkAirDegreeBounds, ZkAirMetadataBuildError> {
+    let private_constraint_log_expansion = zk_max_u32(
+        public_air_constraint_log_expansion,
+        private_constraint_log_expansion,
+    );
+    let full_composition_log_degree_bound = randomized_private_column_log_degree
+        .checked_add(private_constraint_log_expansion)
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)?;
+    let split_composition_log_degree_bound = full_composition_log_degree_bound
+        .checked_sub(composition_log_split)
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)?;
+    let left_masked_split_log_degree_bound = full_composition_log_degree_bound;
+    let right_masked_split_log_degree_bound = split_composition_log_degree_bound;
+    let max_committed_split_log_degree_bound = zk_max_u32(
+        left_masked_split_log_degree_bound,
+        zk_max_u32(
+            right_masked_split_log_degree_bound,
+            randomized_private_column_log_degree,
+        ),
+    );
+    let fri_first_layer_log_size = max_committed_split_log_degree_bound
+        .checked_add(fri_log_blowup_factor)
+        .ok_or(ZkAirMetadataBuildError::DegreeOverflow)?;
+
+    Ok(ZkAirDegreeBounds {
+        trace_log_degree,
+        randomized_private_column_log_degree,
+        public_air_constraint_log_expansion,
+        private_constraint_log_expansion,
+        composition_log_split,
+        full_composition_log_degree_bound,
+        split_composition_log_degree_bound,
+        left_masked_split_log_degree_bound,
+        right_masked_split_log_degree_bound,
+        fri_log_blowup_factor,
+        fri_first_layer_log_size,
+    })
+}
+
 /// Verifier-owned privacy map. Proof metadata may echo its hash, but must not
 /// be trusted as the source of privacy policy.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,14 +601,16 @@ pub enum ZkPrivateColumnUsage {
 impl ZkPrivateColumnUsage {
     #[must_use]
     pub const fn eligible_for_witness_randomization(self) -> bool {
-        matches!(self, Self::OrdinaryWitness)
+        matches!(self, Self::OrdinaryWitness | Self::LogUp)
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ZkPrivateColumnScopeEntry {
     pub range: ZkColumnRange,
     pub usage: ZkPrivateColumnUsage,
+    pub trace_domain_log_size: u32,
+    pub semantic_trace_domain_log_sizes: Vec<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +637,9 @@ pub enum ZkPrivateColumnScopeValidationError {
     EntryForNonPrivateColumn {
         range: ZkColumnRange,
     },
+    DuplicatePrivateColumn {
+        range: ZkColumnRange,
+    },
     IneligiblePrivateColumn {
         range: ZkColumnRange,
         usage: ZkPrivateColumnUsage,
@@ -137,6 +657,20 @@ impl ZkPrivateColumnScope {
         self.canonicalize();
         self
     }
+}
+
+#[must_use]
+pub fn canonical_zk_private_column_scope_from_entries(
+    entries: Vec<ZkPrivateColumnScopeEntry>,
+) -> ZkPrivateColumnScope {
+    let mut scope = ZkPrivateColumnScope {
+        version: ZkProofVersion::V1,
+        hash: [0; 32],
+        entries,
+    }
+    .canonicalized();
+    scope.hash = canonical_zk_private_column_scope_hash(&scope);
+    scope
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -188,14 +722,17 @@ pub fn zk_trace_domain_circle_domain(trace_domain: Coset) -> CircleDomain {
     CircleDomain::new(zk_trace_domain_half_coset(trace_domain))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ZkRandomizerSpaceEntry {
     pub range: ZkColumnRange,
     pub trace_domain: ZkCircleCosetEncoding,
+    pub semantic_trace_domains: Vec<ZkCircleCosetEncoding>,
     pub randomized_log_degree: u32,
     pub randomizer_dimension: u64,
 }
 
+const ZK_PRIVACY_MAP_HASH_DOMAIN: &[u8] = b"stwo.zk.privacy-map.v1";
+const ZK_TRACE_TREE_SCOPE_HASH_DOMAIN: &[u8] = b"stwo.zk.trace-tree-scope.v1";
 const ZK_PRIVATE_COLUMN_SCOPE_HASH_DOMAIN: &[u8] = b"stwo.zk.private-column-scope.v1";
 const ZK_RANDOMIZER_SPACE_HASH_DOMAIN: &[u8] = b"stwo.zk.randomizer-space.v1";
 const ZK_SPLIT_DERIVATION_HASH_DOMAIN: &[u8] = b"stwo.zk.split-derivation.v1";
@@ -268,8 +805,143 @@ fn private_column_usage_tag(usage: ZkPrivateColumnUsage) -> u32 {
     }
 }
 
+fn trace_tree_scope_tag(scope: ZkTraceTreeScope) -> (u32, u32) {
+    match scope {
+        ZkTraceTreeScope::Preprocessed => (0, 0),
+        ZkTraceTreeScope::OriginalTrace => (1, 0),
+        ZkTraceTreeScope::InteractionTrace { interaction_index } => (2, interaction_index),
+        ZkTraceTreeScope::CompositionSplit => (3, 0),
+        ZkTraceTreeScope::Custom(value) => (4, value),
+    }
+}
+
+fn privacy_reason_tag(reason: ZkPrivacyReason) -> (u32, u32) {
+    match reason {
+        ZkPrivacyReason::Witness => (0, 0),
+        ZkPrivacyReason::DerivedFromPrivateRoot => (1, 0),
+        ZkPrivacyReason::LogUpInteraction => (2, 0),
+        ZkPrivacyReason::ApplicationPrivate => (3, 0),
+        ZkPrivacyReason::Custom(value) => (4, value),
+    }
+}
+
+fn dependency_kind_tag(kind: ZkDependencyKind) -> u32 {
+    match kind {
+        ZkDependencyKind::AirConstraint => 0,
+        ZkDependencyKind::LogUpInput => 1,
+        ZkDependencyKind::LogUpRunningSum => 2,
+        ZkDependencyKind::LookupMultiplicity => 3,
+        ZkDependencyKind::CompositionQuotient => 4,
+        ZkDependencyKind::FriOracle => 5,
+    }
+}
+
+fn privacy_inference_mode_tag(mode: ZkPrivacyInferenceMode) -> u32 {
+    match mode {
+        ZkPrivacyInferenceMode::FailClosed => 0,
+        ZkPrivacyInferenceMode::MarkAllInteractionDerivedPrivate => 1,
+        ZkPrivacyInferenceMode::UseDeclaredDependenciesOnly => 2,
+    }
+}
+
+fn dependency_metadata_completeness_tag(completeness: ZkDependencyMetadataCompleteness) -> u32 {
+    match completeness {
+        ZkDependencyMetadataCompleteness::Incomplete => 0,
+        ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure => 1,
+    }
+}
+
+fn logup_claim_metadata_completeness_tag(completeness: ZkLogupClaimMetadataCompleteness) -> u32 {
+    match completeness {
+        ZkLogupClaimMetadataCompleteness::Incomplete => 0,
+        ZkLogupClaimMetadataCompleteness::Complete => 1,
+    }
+}
+
+fn logup_claim_visibility_tag(visibility: ZkLogupClaimVisibility) -> u32 {
+    match visibility {
+        ZkLogupClaimVisibility::PrivateUnsupported => 0,
+        ZkLogupClaimVisibility::SemanticallyPublic => 1,
+        ZkLogupClaimVisibility::StatisticalAggregate { .. } => 2,
+    }
+}
+
+fn logup_statistical_aggregate_target_tag(target: &ZkLogupStatisticalAggregateTarget) -> u32 {
+    match target {
+        ZkLogupStatisticalAggregateTarget::Zero => 0,
+        ZkLogupStatisticalAggregateTarget::PublicExpression { .. } => 1,
+    }
+}
+
 fn blake2s_hash(bytes: &[u8]) -> [u8; 32] {
     Blake2sHasher::hash(bytes).into()
+}
+
+#[must_use]
+pub fn canonical_zk_logup_statistical_security_budget_hash(
+    budgets: &[ZkLogupStatisticalSecurityBudget],
+) -> [u8; 32] {
+    if budgets.is_empty() {
+        return ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH;
+    }
+
+    let mut budgets = budgets.to_vec();
+    budgets.sort_unstable();
+
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, b"stwo.zk.logup.statistical.security.budget.v1");
+    push_u64(&mut bytes, budgets.len() as u64);
+    for budget in budgets {
+        push_u32(&mut bytes, budget.aggregate_id);
+        push_u32(&mut bytes, budget.extension_field_bits);
+        push_u64(&mut bytes, budget.private_lookup_term_count_bound);
+        push_u32(&mut bytes, budget.lookup_challenge_count);
+        push_u64(&mut bytes, budget.expected_proof_volume);
+        push_u32(&mut bytes, budget.safety_margin_bits);
+        push_u32(&mut bytes, budget.computed_security_bits);
+        push_u32(&mut bytes, budget.min_statistical_security_bits);
+    }
+
+    blake2s_hash(&bytes)
+}
+
+#[must_use]
+pub fn canonical_zk_privacy_map_hash(privacy_map: &ZkPrivacyMap) -> ZkPrivacyMapHash {
+    let mut private_columns = privacy_map.private_columns.clone();
+    private_columns.sort_unstable();
+
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_PRIVACY_MAP_HASH_DOMAIN);
+    push_u32(&mut bytes, privacy_map.version.0);
+    push_u64(&mut bytes, private_columns.len() as u64);
+    for range in private_columns {
+        push_column_range(&mut bytes, range);
+    }
+
+    ZkPrivacyMapHash(blake2s_hash(&bytes))
+}
+
+#[must_use]
+pub fn canonical_zk_trace_tree_scope_hash(bindings: &[ZkTraceTreeScopeBinding]) -> [u8; 32] {
+    let mut bindings = bindings.to_vec();
+    bindings.sort_unstable_by_key(|binding| binding.tree_index);
+
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, ZK_TRACE_TREE_SCOPE_HASH_DOMAIN);
+    push_u32(&mut bytes, ZkProofVersion::V1.0);
+    push_u64(&mut bytes, bindings.len() as u64);
+    for binding in bindings {
+        let (scope_tag, scope_parameter) = trace_tree_scope_tag(binding.scope);
+        push_usize(&mut bytes, binding.tree_index);
+        push_u32(&mut bytes, scope_tag);
+        push_u32(&mut bytes, scope_parameter);
+        push_usize(&mut bytes, binding.column_log_degree_bounds.len());
+        for log_degree_bound in binding.column_log_degree_bounds {
+            push_u32(&mut bytes, log_degree_bound);
+        }
+    }
+
+    blake2s_hash(&bytes)
 }
 
 #[must_use]
@@ -282,6 +954,14 @@ pub fn canonical_zk_private_column_scope_hash(scope: &ZkPrivateColumnScope) -> [
     for entry in scope.entries {
         push_column_range(&mut bytes, entry.range);
         push_u32(&mut bytes, private_column_usage_tag(entry.usage));
+        push_u32(&mut bytes, entry.trace_domain_log_size);
+        push_u64(
+            &mut bytes,
+            entry.semantic_trace_domain_log_sizes.len() as u64,
+        );
+        for log_size in entry.semantic_trace_domain_log_sizes {
+            push_u32(&mut bytes, log_size);
+        }
     }
     blake2s_hash(&bytes)
 }
@@ -302,6 +982,10 @@ pub fn canonical_zk_randomizer_space_hash(
     for entry in entries {
         push_column_range(&mut bytes, entry.range);
         push_circle_coset(&mut bytes, entry.trace_domain);
+        push_u64(&mut bytes, entry.semantic_trace_domains.len() as u64);
+        for semantic_domain in entry.semantic_trace_domains {
+            push_circle_coset(&mut bytes, semantic_domain);
+        }
         push_u32(&mut bytes, entry.randomized_log_degree);
         push_u64(&mut bytes, entry.randomizer_dimension);
         push_tag(&mut bytes, ZK_RANDOMIZER_BASIS_ID);
@@ -309,6 +993,1224 @@ pub fn canonical_zk_randomizer_space_hash(
         push_tag(&mut bytes, ZK_RANDOMIZER_RANK_MATRIX_ID);
     }
     blake2s_hash(&bytes)
+}
+
+fn push_column_ranges(dst: &mut Vec<u8>, ranges: &[ZkColumnRange]) {
+    push_u64(dst, ranges.len() as u64);
+    for &range in ranges {
+        push_column_range(dst, range);
+    }
+}
+
+fn push_tree_column_log_sizes(dst: &mut Vec<u8>, column_log_sizes: &TreeVec<ColumnVec<u32>>) {
+    push_u64(dst, column_log_sizes.len() as u64);
+    for tree in column_log_sizes.iter() {
+        push_u64(dst, tree.len() as u64);
+        for &log_size in tree {
+            push_u32(dst, log_size);
+        }
+    }
+}
+
+fn push_logup_claim_policies(dst: &mut Vec<u8>, policies: &[ZkLogupClaimPolicy]) {
+    let mut policies = policies.to_vec();
+    policies.sort();
+
+    push_u64(dst, policies.len() as u64);
+    for policy in policies {
+        push_u32(dst, policy.interaction_index);
+        push_u32(dst, policy.claim_index);
+        push_u32(dst, logup_claim_visibility_tag(policy.visibility));
+        if let ZkLogupClaimVisibility::StatisticalAggregate { aggregate_id } = policy.visibility {
+            push_u32(dst, aggregate_id);
+        }
+        push_tag(dst, &policy.semantic_domain);
+        push_tag(dst, &policy.semantic_statement);
+    }
+}
+
+fn push_logup_claim_manifest(dst: &mut Vec<u8>, manifest: &[ZkLogupClaimManifestEntry]) {
+    let mut manifest = manifest.to_vec();
+    manifest.sort();
+
+    push_u64(dst, manifest.len() as u64);
+    for entry in manifest {
+        push_u32(dst, entry.interaction_index);
+        push_u32(dst, entry.claim_count);
+    }
+}
+
+fn push_logup_statistical_aggregate_groups(
+    dst: &mut Vec<u8>,
+    groups: &[ZkLogupStatisticalAggregateGroup],
+) {
+    let mut groups = groups.to_vec();
+    groups.sort();
+
+    push_u64(dst, groups.len() as u64);
+    for group in groups {
+        push_u32(dst, group.aggregate_id);
+        push_u32(dst, logup_statistical_aggregate_target_tag(&group.target));
+        match group.target {
+            ZkLogupStatisticalAggregateTarget::Zero => {}
+            ZkLogupStatisticalAggregateTarget::PublicExpression { domain, statement } => {
+                push_tag(dst, &domain);
+                push_tag(dst, &statement);
+            }
+        }
+        push_tag(dst, &group.relation_domain);
+        push_tag(dst, &group.relation_statement);
+        push_u64(dst, group.private_lookup_term_count_bound);
+        push_u32(dst, group.lookup_challenge_count);
+        push_u64(dst, group.expected_proof_volume);
+        push_u32(dst, group.min_statistical_security_bits);
+        push_u32(dst, group.safety_margin_bits);
+    }
+}
+
+fn ranges_overlap(lhs: ZkColumnRange, rhs: ZkColumnRange) -> bool {
+    lhs.tree_index == rhs.tree_index
+        && lhs.column_start < rhs.column_end
+        && rhs.column_start < lhs.column_end
+}
+
+fn zk_column_range_singletons(
+    range: ZkColumnRange,
+    error: fn(ZkColumnRange) -> ZkAirMetadataBuildError,
+) -> Result<Vec<ZkColumnRange>, ZkAirMetadataBuildError> {
+    if range.column_start >= range.column_end {
+        return Err(error(range));
+    }
+
+    Ok((range.column_start..range.column_end)
+        .map(|column| ZkColumnRange::new(range.tree_index, column, column + 1))
+        .collect())
+}
+
+fn add_zk_private_scope_entry(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    entries: &mut Vec<ZkPrivateColumnScopeEntry>,
+    range: ZkColumnRange,
+    usage: ZkPrivateColumnUsage,
+    extra_semantic_trace_domain_log_sizes: &[u32],
+) -> Result<bool, ZkAirMetadataBuildError> {
+    let trace_domain_log_size = component_column_log_sizes[range.tree_index][range.column_start];
+    let mut semantic_trace_domain_log_sizes = extra_semantic_trace_domain_log_sizes.to_vec();
+    semantic_trace_domain_log_sizes.push(trace_domain_log_size);
+    semantic_trace_domain_log_sizes.sort_unstable();
+    semantic_trace_domain_log_sizes.dedup();
+
+    if let Some(existing) = entries.iter_mut().find(|entry| entry.range == range) {
+        if existing.usage != usage || existing.trace_domain_log_size != trace_domain_log_size {
+            return Err(ZkAirMetadataBuildError::DuplicatePrivateRange { range });
+        }
+        let previous = existing.semantic_trace_domain_log_sizes.clone();
+        existing
+            .semantic_trace_domain_log_sizes
+            .extend(semantic_trace_domain_log_sizes);
+        existing.semantic_trace_domain_log_sizes.sort_unstable();
+        existing.semantic_trace_domain_log_sizes.dedup();
+        return Ok(existing.semantic_trace_domain_log_sizes != previous);
+    }
+
+    entries.push(ZkPrivateColumnScopeEntry {
+        range,
+        usage,
+        trace_domain_log_size,
+        semantic_trace_domain_log_sizes,
+    });
+    Ok(true)
+}
+
+fn zk_private_usage_for_dependency_target(
+    dependency: ZkPrivacyDependency,
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+) -> ZkPrivateColumnUsage {
+    if trace_tree_scope_bindings.iter().any(|binding| {
+        binding.tree_index == dependency.to.tree_index
+            && matches!(binding.scope, ZkTraceTreeScope::InteractionTrace { .. })
+    }) {
+        return ZkPrivateColumnUsage::LogUp;
+    }
+
+    match dependency.kind {
+        ZkDependencyKind::LogUpInput | ZkDependencyKind::LogUpRunningSum => {
+            ZkPrivateColumnUsage::LogUp
+        }
+        ZkDependencyKind::AirConstraint
+        | ZkDependencyKind::LookupMultiplicity
+        | ZkDependencyKind::CompositionQuotient
+        | ZkDependencyKind::FriOracle => ZkPrivateColumnUsage::OrdinaryWitness,
+    }
+}
+
+fn zk_range_has_private_column(
+    entries: &[ZkPrivateColumnScopeEntry],
+    range: ZkColumnRange,
+) -> Result<bool, ZkAirMetadataBuildError> {
+    let singletons = zk_column_range_singletons(range, |range| {
+        ZkAirMetadataBuildError::InvalidPrivacyDependencyRange { range }
+    })?;
+    Ok(singletons
+        .iter()
+        .any(|range| entries.iter().any(|entry| entry.range == *range)))
+}
+
+fn validate_zk_dependency_ranges(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    dependency_edges: &[ZkPrivacyDependency],
+) -> Result<(), ZkAirMetadataBuildError> {
+    for dependency in dependency_edges {
+        if !range_within_tree_bounds(dependency.from, component_column_log_sizes) {
+            return Err(ZkAirMetadataBuildError::InvalidPrivacyDependencyRange {
+                range: dependency.from,
+            });
+        }
+        if !range_within_tree_bounds(dependency.to, component_column_log_sizes) {
+            return Err(ZkAirMetadataBuildError::InvalidPrivacyDependencyRange {
+                range: dependency.to,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_zk_public_ranges(
+    public_ranges: &[ZkColumnRange],
+) -> Result<(), ZkAirMetadataBuildError> {
+    for (index, &lhs) in public_ranges.iter().enumerate() {
+        for &rhs in &public_ranges[index + 1..] {
+            if ranges_overlap(lhs, rhs) {
+                return Err(ZkAirMetadataBuildError::PublicRangeOverlap { lhs, rhs });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_zk_air_column_classification_coverage(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+    public_ranges: &[ZkColumnRange],
+    private_scope_entries: &[ZkPrivateColumnScopeEntry],
+) -> Result<(), ZkAirMetadataBuildError> {
+    for binding in trace_tree_scope_bindings {
+        if matches!(binding.scope, ZkTraceTreeScope::CompositionSplit) {
+            continue;
+        }
+        for column in 0..component_column_log_sizes[binding.tree_index].len() {
+            let range = ZkColumnRange::new(binding.tree_index, column, column + 1);
+            let public = public_ranges
+                .iter()
+                .any(|public_range| ranges_overlap(*public_range, range));
+            let private = private_scope_entries
+                .iter()
+                .any(|entry| entry.range == range);
+            if !public && !private {
+                return Err(ZkAirMetadataBuildError::UnclassifiedAirColumn { range });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn private_logup_interaction_indices(
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+    private_scope_entries: &[ZkPrivateColumnScopeEntry],
+) -> Result<BTreeSet<u32>, ZkAirMetadataBuildError> {
+    let mut indices = BTreeSet::new();
+    for entry in private_scope_entries {
+        let Some(binding) = trace_tree_scope_bindings
+            .iter()
+            .find(|binding| binding.tree_index == entry.range.tree_index)
+        else {
+            continue;
+        };
+        if entry.usage == ZkPrivateColumnUsage::LogUp {
+            if let ZkTraceTreeScope::InteractionTrace { interaction_index } = binding.scope {
+                indices.insert(interaction_index);
+            } else {
+                return Err(ZkAirMetadataBuildError::InvalidPrivateLogupScope {
+                    range: entry.range,
+                });
+            }
+        }
+        if matches!(binding.scope, ZkTraceTreeScope::InteractionTrace { .. }) {
+            if let ZkTraceTreeScope::InteractionTrace { interaction_index } = binding.scope {
+                indices.insert(interaction_index);
+            }
+        }
+    }
+    Ok(indices)
+}
+
+fn ceil_log2_u128(value: u128) -> u32 {
+    if value <= 1 {
+        0
+    } else {
+        u128::BITS - (value - 1).leading_zeros()
+    }
+}
+
+pub fn derive_zk_logup_statistical_security_budget(
+    group: &ZkLogupStatisticalAggregateGroup,
+) -> Result<ZkLogupStatisticalSecurityBudget, ZkAirMetadataBuildError> {
+    if group.private_lookup_term_count_bound == 0
+        || group.lookup_challenge_count == 0
+        || group.expected_proof_volume == 0
+        || group.min_statistical_security_bits == 0
+        || group.relation_domain.is_empty()
+        || group.relation_statement.is_empty()
+    {
+        return Err(
+            ZkAirMetadataBuildError::InvalidLogupStatisticalAggregateGroup {
+                aggregate_id: group.aggregate_id,
+            },
+        );
+    }
+    if let ZkLogupStatisticalAggregateTarget::PublicExpression { domain, statement } = &group.target
+    {
+        if domain.is_empty() || statement.is_empty() {
+            return Err(
+                ZkAirMetadataBuildError::InvalidLogupStatisticalAggregateGroup {
+                    aggregate_id: group.aggregate_id,
+                },
+            );
+        }
+    }
+
+    let exposure = u128::from(group.private_lookup_term_count_bound)
+        .checked_mul(u128::from(group.lookup_challenge_count))
+        .and_then(|value| value.checked_mul(u128::from(group.expected_proof_volume)))
+        .ok_or(ZkAirMetadataBuildError::LogupStatisticalSecurityOverflow {
+            aggregate_id: group.aggregate_id,
+        })?;
+    let exposure_bits = ceil_log2_u128(exposure);
+    let computed_security_bits = ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS
+        .saturating_sub(exposure_bits)
+        .saturating_sub(group.safety_margin_bits);
+    if computed_security_bits < group.min_statistical_security_bits {
+        return Err(
+            ZkAirMetadataBuildError::InsufficientLogupStatisticalSecurity {
+                aggregate_id: group.aggregate_id,
+                computed_bits: computed_security_bits,
+                min_bits: group.min_statistical_security_bits,
+            },
+        );
+    }
+
+    Ok(ZkLogupStatisticalSecurityBudget {
+        aggregate_id: group.aggregate_id,
+        extension_field_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+        private_lookup_term_count_bound: group.private_lookup_term_count_bound,
+        lookup_challenge_count: group.lookup_challenge_count,
+        expected_proof_volume: group.expected_proof_volume,
+        safety_margin_bits: group.safety_margin_bits,
+        computed_security_bits,
+        min_statistical_security_bits: group.min_statistical_security_bits,
+    })
+}
+
+fn validate_zk_private_logup_claim_policies(
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+    private_scope_entries: &[ZkPrivateColumnScopeEntry],
+    logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    logup_claim_manifest: &[ZkLogupClaimManifestEntry],
+    logup_claim_policies: &[ZkLogupClaimPolicy],
+    logup_statistical_aggregate_groups: &[ZkLogupStatisticalAggregateGroup],
+) -> Result<Vec<ZkLogupStatisticalSecurityBudget>, ZkAirMetadataBuildError> {
+    let required_interaction_indices =
+        private_logup_interaction_indices(trace_tree_scope_bindings, private_scope_entries)?;
+
+    let mut manifest_seen = BTreeSet::new();
+    for entry in logup_claim_manifest {
+        if !manifest_seen.insert(entry.interaction_index)
+            || entry.claim_count == 0
+            || !required_interaction_indices.contains(&entry.interaction_index)
+        {
+            return Err(ZkAirMetadataBuildError::InvalidLogupClaimManifest {
+                interaction_index: entry.interaction_index,
+            });
+        }
+    }
+
+    let mut policy_seen = BTreeSet::new();
+    for policy in logup_claim_policies {
+        if !policy_seen.insert((policy.interaction_index, policy.claim_index)) {
+            return Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: policy.interaction_index,
+                claim_index: policy.claim_index,
+            });
+        }
+        let Some(manifest_entry) = logup_claim_manifest
+            .iter()
+            .find(|entry| entry.interaction_index == policy.interaction_index)
+        else {
+            return Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: policy.interaction_index,
+                claim_index: policy.claim_index,
+            });
+        };
+        if policy.claim_index >= manifest_entry.claim_count {
+            return Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: policy.interaction_index,
+                claim_index: policy.claim_index,
+            });
+        }
+        if policy.visibility == ZkLogupClaimVisibility::SemanticallyPublic
+            && (policy.semantic_domain.is_empty() || policy.semantic_statement.is_empty())
+        {
+            return Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: policy.interaction_index,
+                claim_index: policy.claim_index,
+            });
+        }
+    }
+
+    if required_interaction_indices.is_empty() {
+        if let Some(group) = logup_statistical_aggregate_groups.first() {
+            return Err(
+                ZkAirMetadataBuildError::UnusedLogupStatisticalAggregateGroup {
+                    aggregate_id: group.aggregate_id,
+                },
+            );
+        }
+        return Ok(vec![]);
+    }
+
+    if !logup_claim_metadata_completeness.is_complete() {
+        return Err(ZkAirMetadataBuildError::IncompleteLogupClaimMetadata);
+    }
+
+    let mut group_seen = BTreeSet::new();
+    for group in logup_statistical_aggregate_groups {
+        if !group_seen.insert(group.aggregate_id) {
+            return Err(
+                ZkAirMetadataBuildError::DuplicateLogupStatisticalAggregateGroup {
+                    aggregate_id: group.aggregate_id,
+                },
+            );
+        }
+    }
+
+    let mut used_statistical_groups = BTreeSet::new();
+    for policy in logup_claim_policies {
+        match policy.visibility {
+            ZkLogupClaimVisibility::PrivateUnsupported => {
+                return Err(
+                    ZkAirMetadataBuildError::UnsupportedPrivateLogupClaimPolicy {
+                        interaction_index: policy.interaction_index,
+                        claim_index: policy.claim_index,
+                    },
+                );
+            }
+            ZkLogupClaimVisibility::SemanticallyPublic => {}
+            ZkLogupClaimVisibility::StatisticalAggregate { aggregate_id } => {
+                let Some(group) = logup_statistical_aggregate_groups
+                    .iter()
+                    .find(|group| group.aggregate_id == aggregate_id)
+                else {
+                    return Err(
+                        ZkAirMetadataBuildError::MissingLogupStatisticalAggregateGroup {
+                            aggregate_id,
+                        },
+                    );
+                };
+                used_statistical_groups.insert(group.aggregate_id);
+            }
+        }
+    }
+
+    for group in logup_statistical_aggregate_groups {
+        if !used_statistical_groups.contains(&group.aggregate_id) {
+            return Err(
+                ZkAirMetadataBuildError::UnusedLogupStatisticalAggregateGroup {
+                    aggregate_id: group.aggregate_id,
+                },
+            );
+        }
+    }
+
+    for interaction_index in required_interaction_indices {
+        let Some(manifest_entry) = logup_claim_manifest
+            .iter()
+            .find(|entry| entry.interaction_index == interaction_index)
+        else {
+            return Err(ZkAirMetadataBuildError::MissingPrivateLogupClaimManifest {
+                interaction_index,
+            });
+        };
+        for claim_index in 0..manifest_entry.claim_count {
+            if !logup_claim_policies.iter().any(|policy| {
+                policy.interaction_index == interaction_index && policy.claim_index == claim_index
+            }) {
+                return Err(ZkAirMetadataBuildError::MissingPrivateLogupClaimPolicy {
+                    interaction_index,
+                    claim_index,
+                });
+            }
+        }
+    }
+
+    let mut budgets = Vec::with_capacity(logup_statistical_aggregate_groups.len());
+    for group in logup_statistical_aggregate_groups {
+        let member_count = logup_claim_policies
+            .iter()
+            .filter(|policy| {
+                matches!(
+                    policy.visibility,
+                    ZkLogupClaimVisibility::StatisticalAggregate { aggregate_id }
+                        if aggregate_id == group.aggregate_id
+                )
+            })
+            .count();
+        if group.private_lookup_term_count_bound < member_count as u64 {
+            return Err(
+                ZkAirMetadataBuildError::InvalidLogupStatisticalAggregateGroup {
+                    aggregate_id: group.aggregate_id,
+                },
+            );
+        }
+        budgets.push(derive_zk_logup_statistical_security_budget(group)?);
+    }
+
+    Ok(budgets)
+}
+
+fn build_zk_trace_tree_scope_bindings_from_scopes(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    scopes: Vec<ZkTraceTreeScope>,
+) -> Result<Vec<ZkTraceTreeScopeBinding>, ZkAirMetadataBuildError> {
+    if scopes.len() != component_column_log_sizes.len() {
+        return Err(ZkAirMetadataBuildError::InvalidPrivacyProviderScopeCount {
+            expected: component_column_log_sizes.len(),
+            actual: scopes.len(),
+        });
+    }
+
+    Ok(scopes
+        .into_iter()
+        .enumerate()
+        .map(|(tree_index, scope)| ZkTraceTreeScopeBinding {
+            tree_index,
+            scope,
+            column_log_degree_bounds: component_column_log_sizes[tree_index].clone(),
+        })
+        .collect())
+}
+
+fn derived_private_scope_entries_from_provider_policy(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+    private_roots: &[ZkPrivateRoot],
+    private_column_semantic_domains: &[ZkPrivateColumnSemanticDomains],
+    dependency_edges: &[ZkPrivacyDependency],
+    dependency_metadata_completeness: ZkDependencyMetadataCompleteness,
+    inference_mode: ZkPrivacyInferenceMode,
+) -> Result<Vec<ZkPrivateColumnScopeEntry>, ZkAirMetadataBuildError> {
+    if !private_roots.is_empty() && !dependency_metadata_completeness.is_complete() {
+        return Err(ZkAirMetadataBuildError::IncompleteDependencyMetadata);
+    }
+    validate_zk_dependency_ranges(component_column_log_sizes, dependency_edges)?;
+    for domain_set in private_column_semantic_domains {
+        if !domain_set.range.is_singleton()
+            || !range_within_tree_bounds(domain_set.range, component_column_log_sizes)
+        {
+            return Err(ZkAirMetadataBuildError::InvalidPrivateRange {
+                range: domain_set.range,
+            });
+        }
+    }
+
+    let mut entries = Vec::new();
+    for root in private_roots {
+        for range in zk_column_range_singletons(root.range, |range| {
+            ZkAirMetadataBuildError::InvalidPrivateRange { range }
+        })? {
+            let extra_semantic_trace_domain_log_sizes = private_column_semantic_domains
+                .iter()
+                .filter(|domain_set| domain_set.range == range)
+                .flat_map(|domain_set| domain_set.semantic_trace_domain_log_sizes.iter().copied())
+                .collect::<Vec<_>>();
+            add_zk_private_scope_entry(
+                component_column_log_sizes,
+                &mut entries,
+                range,
+                root.usage,
+                &extra_semantic_trace_domain_log_sizes,
+            )?;
+        }
+    }
+
+    if matches!(
+        inference_mode,
+        ZkPrivacyInferenceMode::MarkAllInteractionDerivedPrivate
+    ) && !entries.is_empty()
+    {
+        for binding in trace_tree_scope_bindings {
+            if matches!(binding.scope, ZkTraceTreeScope::InteractionTrace { .. }) {
+                for column in 0..binding.column_log_degree_bounds.len() {
+                    let range = ZkColumnRange::new(binding.tree_index, column, column + 1);
+                    let extra_semantic_trace_domain_log_sizes = private_column_semantic_domains
+                        .iter()
+                        .filter(|domain_set| domain_set.range == range)
+                        .flat_map(|domain_set| {
+                            domain_set.semantic_trace_domain_log_sizes.iter().copied()
+                        })
+                        .collect::<Vec<_>>();
+                    add_zk_private_scope_entry(
+                        component_column_log_sizes,
+                        &mut entries,
+                        range,
+                        ZkPrivateColumnUsage::LogUp,
+                        &extra_semantic_trace_domain_log_sizes,
+                    )?;
+                }
+            }
+        }
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for dependency in dependency_edges {
+            if !zk_range_has_private_column(&entries, dependency.from)? {
+                continue;
+            }
+            let usage =
+                zk_private_usage_for_dependency_target(*dependency, trace_tree_scope_bindings);
+            for range in zk_column_range_singletons(dependency.to, |range| {
+                ZkAirMetadataBuildError::InvalidPrivacyDependencyRange { range }
+            })? {
+                let extra_semantic_trace_domain_log_sizes = private_column_semantic_domains
+                    .iter()
+                    .filter(|domain_set| domain_set.range == range)
+                    .flat_map(|domain_set| {
+                        domain_set.semantic_trace_domain_log_sizes.iter().copied()
+                    })
+                    .collect::<Vec<_>>();
+                changed |= add_zk_private_scope_entry(
+                    component_column_log_sizes,
+                    &mut entries,
+                    range,
+                    usage,
+                    &extra_semantic_trace_domain_log_sizes,
+                )?;
+            }
+        }
+    }
+
+    for domain_set in private_column_semantic_domains {
+        if !entries.iter().any(|entry| entry.range == domain_set.range) {
+            return Err(ZkAirMetadataBuildError::InvalidPrivateRange {
+                range: domain_set.range,
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
+fn canonical_zk_air_provider_statement_bytes(
+    air_id: ZkAirId,
+    application_statement: Vec<u8>,
+    inference_mode: ZkPrivacyInferenceMode,
+    dependency_metadata_completeness: ZkDependencyMetadataCompleteness,
+    private_roots: &[ZkPrivateRoot],
+    dependency_edges: &[ZkPrivacyDependency],
+    logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    logup_claim_manifest: &[ZkLogupClaimManifestEntry],
+    logup_claim_policies: &[ZkLogupClaimPolicy],
+    logup_statistical_aggregate_groups: &[ZkLogupStatisticalAggregateGroup],
+) -> Vec<u8> {
+    let mut private_roots = private_roots.to_vec();
+    let mut dependency_edges = dependency_edges.to_vec();
+    private_roots.sort();
+    dependency_edges.sort();
+
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, b"stwo-zk-air-privacy-provider-statement-v3");
+    push_tag(&mut bytes, &air_id.0);
+    push_tag(&mut bytes, &application_statement);
+    push_u32(&mut bytes, privacy_inference_mode_tag(inference_mode));
+    push_u32(
+        &mut bytes,
+        dependency_metadata_completeness_tag(dependency_metadata_completeness),
+    );
+    push_u64(&mut bytes, private_roots.len() as u64);
+    for root in private_roots {
+        push_column_range(&mut bytes, root.range);
+        push_u32(&mut bytes, private_column_usage_tag(root.usage));
+        let (reason_tag, reason_value) = privacy_reason_tag(root.reason);
+        push_u32(&mut bytes, reason_tag);
+        push_u32(&mut bytes, reason_value);
+    }
+    push_u64(&mut bytes, dependency_edges.len() as u64);
+    for dependency in dependency_edges {
+        push_column_range(&mut bytes, dependency.from);
+        push_column_range(&mut bytes, dependency.to);
+        push_u32(&mut bytes, dependency_kind_tag(dependency.kind));
+    }
+    push_u32(
+        &mut bytes,
+        logup_claim_metadata_completeness_tag(logup_claim_metadata_completeness),
+    );
+    push_logup_claim_manifest(&mut bytes, logup_claim_manifest);
+    push_logup_claim_policies(&mut bytes, logup_claim_policies);
+    push_logup_statistical_aggregate_groups(&mut bytes, logup_statistical_aggregate_groups);
+    bytes
+}
+
+fn range_within_tree_bounds(
+    range: ZkColumnRange,
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+) -> bool {
+    range.column_start < range.column_end
+        && component_column_log_sizes
+            .get(range.tree_index)
+            .is_some_and(|tree| range.column_end <= tree.len())
+}
+
+fn validate_zk_air_tree_scope_bindings(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+) -> Result<(), ZkAirMetadataBuildError> {
+    let mut seen_tree_indices = BTreeSet::new();
+    for binding in trace_tree_scope_bindings {
+        if !seen_tree_indices.insert(binding.tree_index) {
+            return Err(ZkAirMetadataBuildError::DuplicateTraceTreeScope {
+                tree_index: binding.tree_index,
+            });
+        }
+        let Some(expected_column_bounds) = component_column_log_sizes.get(binding.tree_index)
+        else {
+            return Err(ZkAirMetadataBuildError::InvalidTraceTreeScope {
+                tree_index: binding.tree_index,
+            });
+        };
+        if expected_column_bounds != &binding.column_log_degree_bounds {
+            return Err(ZkAirMetadataBuildError::InvalidTraceTreeScope {
+                tree_index: binding.tree_index,
+            });
+        }
+    }
+    for tree_index in 0..component_column_log_sizes.len() {
+        if !seen_tree_indices.contains(&tree_index) {
+            return Err(ZkAirMetadataBuildError::MissingTraceTreeScope { tree_index });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_zk_air_public_and_private_ranges(
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    trace_tree_scope_bindings: &[ZkTraceTreeScopeBinding],
+    public_ranges: &[ZkColumnRange],
+    private_scope_entries: &[ZkPrivateColumnScopeEntry],
+) -> Result<(), ZkAirMetadataBuildError> {
+    for &public_range in public_ranges {
+        if !range_within_tree_bounds(public_range, component_column_log_sizes) {
+            return Err(ZkAirMetadataBuildError::InvalidPublicRange {
+                range: public_range,
+            });
+        }
+    }
+
+    let mut seen_private_ranges = BTreeSet::new();
+    for entry in private_scope_entries {
+        if !entry.range.is_singleton()
+            || !range_within_tree_bounds(entry.range, component_column_log_sizes)
+        {
+            return Err(ZkAirMetadataBuildError::InvalidPrivateRange { range: entry.range });
+        }
+        if !entry.usage.eligible_for_witness_randomization() {
+            return Err(ZkAirMetadataBuildError::IneligiblePrivateColumn {
+                range: entry.range,
+                usage: entry.usage,
+            });
+        }
+        if !seen_private_ranges.insert(entry.range) {
+            return Err(ZkAirMetadataBuildError::DuplicatePrivateRange { range: entry.range });
+        }
+        for &public_range in public_ranges {
+            if ranges_overlap(public_range, entry.range) {
+                return Err(ZkAirMetadataBuildError::PublicPrivateRangeOverlap {
+                    public_range,
+                    private_range: entry.range,
+                });
+            }
+        }
+    }
+    for binding in trace_tree_scope_bindings {
+        if matches!(binding.scope, ZkTraceTreeScope::InteractionTrace { .. }) {
+            for column in 0..binding.column_log_degree_bounds.len() {
+                let range = ZkColumnRange::new(binding.tree_index, column, column + 1);
+                if !private_scope_entries
+                    .iter()
+                    .any(|entry| entry.range == range && entry.usage == ZkPrivateColumnUsage::LogUp)
+                {
+                    return Err(ZkAirMetadataBuildError::MissingPrivateInteractionColumn { range });
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[must_use]
+pub fn canonical_zk_air_public_statement_hash(
+    application_domain: &[u8],
+    application_statement: &[u8],
+    component_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    trace_tree_scope_hash: [u8; 32],
+    public_ranges: &[ZkColumnRange],
+    private_column_scope: &ZkPrivateColumnScope,
+    logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    logup_claim_manifest: &[ZkLogupClaimManifestEntry],
+    logup_claim_policies: &[ZkLogupClaimPolicy],
+    logup_statistical_aggregate_groups: &[ZkLogupStatisticalAggregateGroup],
+    composition_split_range: ZkColumnRange,
+    trace_domain_log_size: u32,
+    randomized_witness_log_degree: u32,
+    fri_first_layer_log_size: u32,
+    quotient_degree_bound: ZkColumnDegreeBound,
+) -> ZkPublicStatementHash {
+    let private_column_scope = private_column_scope.clone().canonicalized();
+    let mut bytes = Vec::new();
+    push_tag(&mut bytes, application_domain);
+    push_tag(&mut bytes, application_statement);
+    push_u32(&mut bytes, ZkProofVersion::V1.0);
+    push_tree_column_log_sizes(&mut bytes, component_column_log_sizes);
+    push_hash(&mut bytes, &trace_tree_scope_hash);
+    push_u32(&mut bytes, trace_domain_log_size);
+    push_u32(&mut bytes, randomized_witness_log_degree);
+    push_u32(&mut bytes, fri_first_layer_log_size);
+    push_column_ranges(&mut bytes, public_ranges);
+    push_u64(&mut bytes, private_column_scope.entries.len() as u64);
+    for entry in private_column_scope.entries {
+        push_column_range(&mut bytes, entry.range);
+        push_u32(&mut bytes, private_column_usage_tag(entry.usage));
+        push_u32(&mut bytes, entry.trace_domain_log_size);
+        push_u64(
+            &mut bytes,
+            entry.semantic_trace_domain_log_sizes.len() as u64,
+        );
+        for log_size in entry.semantic_trace_domain_log_sizes {
+            push_u32(&mut bytes, log_size);
+        }
+    }
+    push_u32(
+        &mut bytes,
+        logup_claim_metadata_completeness_tag(logup_claim_metadata_completeness),
+    );
+    push_logup_claim_manifest(&mut bytes, logup_claim_manifest);
+    push_logup_claim_policies(&mut bytes, logup_claim_policies);
+    push_logup_statistical_aggregate_groups(&mut bytes, logup_statistical_aggregate_groups);
+    push_column_range(&mut bytes, composition_split_range);
+    push_column_range(&mut bytes, quotient_degree_bound.range);
+    push_u32(&mut bytes, quotient_degree_bound.log_degree_bound);
+
+    ZkPublicStatementHash(blake2s_hash(&bytes))
+}
+
+/// Builds canonical public ZK AIR metadata from actual component tree geometry
+/// and an explicit private-column policy.
+///
+/// Public leakage contract: tree roles, column counts, private/public column
+/// positions, private degree bounds, quotient bounds, and stable metadata
+/// hashes are public circuit metadata. Do not use this builder when the
+/// private-column policy or AIR geometry is intended to be confidential.
+#[allow(clippy::too_many_arguments)]
+pub fn build_stwo_zk_air_metadata(
+    component_column_log_sizes: TreeVec<ColumnVec<u32>>,
+    trace_domain_log_size: u32,
+    randomized_witness_log_degree: u32,
+    degree_bounds: ZkAirDegreeBounds,
+    trace_tree_scope_bindings: Vec<ZkTraceTreeScopeBinding>,
+    public_ranges: Vec<ZkColumnRange>,
+    private_scope_entries: Vec<ZkPrivateColumnScopeEntry>,
+    logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    logup_claim_manifest: Vec<ZkLogupClaimManifestEntry>,
+    logup_claim_policies: Vec<ZkLogupClaimPolicy>,
+    application_domain: &[u8],
+    application_statement: &[u8],
+) -> Result<ZkAirCanonicalMetadata, ZkAirMetadataBuildError> {
+    build_stwo_zk_air_metadata_with_logup_aggregates(
+        component_column_log_sizes,
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+        degree_bounds,
+        trace_tree_scope_bindings,
+        public_ranges,
+        private_scope_entries,
+        logup_claim_metadata_completeness,
+        logup_claim_manifest,
+        logup_claim_policies,
+        vec![],
+        application_domain,
+        application_statement,
+    )
+}
+
+/// Builds canonical public ZK AIR metadata with statistical-ZK LogUp aggregate
+/// declarations. This is the entry point for private LogUp metadata; callers
+/// that do not declare aggregate groups continue to fail closed for private
+/// witness-derived LogUp claims unless they are explicitly semantically public.
+#[allow(clippy::too_many_arguments)]
+pub fn build_stwo_zk_air_metadata_with_logup_aggregates(
+    component_column_log_sizes: TreeVec<ColumnVec<u32>>,
+    trace_domain_log_size: u32,
+    randomized_witness_log_degree: u32,
+    degree_bounds: ZkAirDegreeBounds,
+    mut trace_tree_scope_bindings: Vec<ZkTraceTreeScopeBinding>,
+    mut public_ranges: Vec<ZkColumnRange>,
+    private_scope_entries: Vec<ZkPrivateColumnScopeEntry>,
+    logup_claim_metadata_completeness: ZkLogupClaimMetadataCompleteness,
+    logup_claim_manifest: Vec<ZkLogupClaimManifestEntry>,
+    logup_claim_policies: Vec<ZkLogupClaimPolicy>,
+    mut logup_statistical_aggregate_groups: Vec<ZkLogupStatisticalAggregateGroup>,
+    application_domain: &[u8],
+    application_statement: &[u8],
+) -> Result<ZkAirCanonicalMetadata, ZkAirMetadataBuildError> {
+    let actual_trace_domain_log_size =
+        zk_trace_domain_log_size_from_column_bounds(&component_column_log_sizes)
+            .ok_or(ZkAirMetadataBuildError::EmptyTraceMetadata)?;
+    if actual_trace_domain_log_size != trace_domain_log_size {
+        return Err(ZkAirMetadataBuildError::TraceDomainMismatch {
+            expected: trace_domain_log_size,
+            actual: actual_trace_domain_log_size,
+        });
+    }
+    let expected_degree_bounds = derive_stwo_zk_air_degree_bounds(
+        degree_bounds.trace_log_degree,
+        degree_bounds.randomized_private_column_log_degree,
+        degree_bounds.public_air_constraint_log_expansion,
+        degree_bounds.private_constraint_log_expansion,
+        degree_bounds.fri_log_blowup_factor,
+        degree_bounds.composition_log_split,
+    )?;
+    if degree_bounds != expected_degree_bounds {
+        return Err(ZkAirMetadataBuildError::DegreeGeometryMismatch);
+    }
+    if degree_bounds.trace_log_degree != trace_domain_log_size
+        || degree_bounds.randomized_private_column_log_degree != randomized_witness_log_degree
+        || degree_bounds.fri_first_layer_log_size
+            < randomized_witness_log_degree
+                .checked_add(degree_bounds.fri_log_blowup_factor)
+                .ok_or(ZkAirMetadataBuildError::DegreeOverflow)?
+    {
+        return Err(ZkAirMetadataBuildError::DegreeGeometryMismatch);
+    }
+    public_ranges.sort_unstable();
+    logup_statistical_aggregate_groups.sort();
+    validate_zk_air_tree_scope_bindings(&component_column_log_sizes, &trace_tree_scope_bindings)?;
+    validate_zk_public_ranges(&public_ranges)?;
+    validate_zk_air_public_and_private_ranges(
+        &component_column_log_sizes,
+        &trace_tree_scope_bindings,
+        &public_ranges,
+        &private_scope_entries,
+    )?;
+    validate_zk_air_column_classification_coverage(
+        &component_column_log_sizes,
+        &trace_tree_scope_bindings,
+        &public_ranges,
+        &private_scope_entries,
+    )?;
+    let logup_statistical_security_budgets = validate_zk_private_logup_claim_policies(
+        &trace_tree_scope_bindings,
+        &private_scope_entries,
+        logup_claim_metadata_completeness,
+        &logup_claim_manifest,
+        &logup_claim_policies,
+        &logup_statistical_aggregate_groups,
+    )?;
+
+    let composition_tree_index = component_column_log_sizes.len();
+    let composition_split_range =
+        ZkColumnRange::new(composition_tree_index, 0, 2 * SECURE_EXTENSION_DEGREE);
+    let quotient_degree_bound = ZkColumnDegreeBound {
+        range: composition_split_range,
+        log_degree_bound: degree_bounds.split_composition_log_degree_bound,
+    };
+    let mut composition_split_column_bounds =
+        vec![degree_bounds.left_masked_split_log_degree_bound; SECURE_EXTENSION_DEGREE];
+    composition_split_column_bounds.extend(vec![
+        degree_bounds.right_masked_split_log_degree_bound;
+        SECURE_EXTENSION_DEGREE
+    ]);
+    trace_tree_scope_bindings.push(ZkTraceTreeScopeBinding {
+        tree_index: composition_tree_index,
+        scope: ZkTraceTreeScope::CompositionSplit,
+        column_log_degree_bounds: composition_split_column_bounds,
+    });
+    let trace_tree_scope_hash = canonical_zk_trace_tree_scope_hash(&trace_tree_scope_bindings);
+    let quotient_split_mask_profile = stwo_composition_quotient_split_mask_profile(
+        quotient_degree_bound.range.tree_index,
+        degree_bounds.full_composition_log_degree_bound,
+        quotient_degree_bound.log_degree_bound,
+        zk_power_of_two_u64(quotient_degree_bound.log_degree_bound)?,
+        degree_bounds.left_masked_split_log_degree_bound,
+        degree_bounds.right_masked_split_log_degree_bound,
+    )
+    .map_err(|_| ZkAirMetadataBuildError::QuotientSplitMaskProfile)?;
+
+    let private_column_scope =
+        canonical_zk_private_column_scope_from_entries(private_scope_entries);
+    let private_ranges = private_column_scope
+        .entries
+        .iter()
+        .map(|entry| entry.range)
+        .collect::<Vec<_>>();
+    let public_statement_hash = canonical_zk_air_public_statement_hash(
+        application_domain,
+        application_statement,
+        &component_column_log_sizes,
+        trace_tree_scope_hash,
+        &public_ranges,
+        &private_column_scope,
+        logup_claim_metadata_completeness,
+        &logup_claim_manifest,
+        &logup_claim_policies,
+        &logup_statistical_aggregate_groups,
+        composition_split_range,
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+        degree_bounds.fri_first_layer_log_size,
+        quotient_degree_bound,
+    );
+
+    Ok(ZkAirCanonicalMetadata {
+        component_column_log_sizes,
+        trace_tree_scope_bindings,
+        trace_tree_scope_hash,
+        public_ranges,
+        private_ranges,
+        private_column_scope,
+        logup_claim_metadata_completeness,
+        logup_claim_manifest,
+        logup_claim_policies,
+        logup_statistical_aggregate_groups,
+        logup_statistical_security_budgets,
+        composition_split_range,
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+        fri_first_layer_log_size: degree_bounds.fri_first_layer_log_size,
+        quotient_degree_bound,
+        quotient_split_mask_profile,
+        public_statement_hash,
+        degree_bounds,
+    })
+}
+
+pub fn build_zk_air_metadata_from_privacy_provider<P: ZkAirPrivacyProvider>(
+    provider: &P,
+    fri_log_blowup_factor: u32,
+    inference_mode: ZkPrivacyInferenceMode,
+) -> Result<ZkAirCanonicalMetadata, ZkAirMetadataBuildError> {
+    let component_column_log_sizes = provider.component_column_log_sizes();
+    let trace_domain_log_size =
+        zk_trace_domain_log_size_from_column_bounds(&component_column_log_sizes)
+            .ok_or(ZkAirMetadataBuildError::EmptyTraceMetadata)?;
+    let trace_tree_scope_bindings = build_zk_trace_tree_scope_bindings_from_scopes(
+        &component_column_log_sizes,
+        provider.trace_tree_scopes(),
+    )?;
+    let private_roots = provider.private_roots();
+    let private_column_semantic_domains = provider.private_column_semantic_domains();
+    let dependency_edges = provider.dependency_edges();
+    let dependency_metadata_completeness = provider.dependency_metadata_completeness();
+    let logup_claim_manifest = provider.logup_claim_manifest();
+    let logup_claim_policies = provider.logup_claim_policies();
+    let logup_statistical_aggregate_groups = provider.logup_statistical_aggregate_groups();
+    let logup_claim_metadata_completeness = provider.logup_claim_metadata_completeness();
+    let private_scope_entries = derived_private_scope_entries_from_provider_policy(
+        &component_column_log_sizes,
+        &trace_tree_scope_bindings,
+        &private_roots,
+        &private_column_semantic_domains,
+        &dependency_edges,
+        dependency_metadata_completeness,
+        inference_mode,
+    )?;
+    let randomized_witness_log_degree = zk_randomized_witness_log_degree_for_private_scope(
+        trace_domain_log_size,
+        &private_scope_entries,
+    )?;
+    let public_air_constraint_log_expansion = zk_public_air_constraint_log_expansion_from_bound(
+        trace_domain_log_size,
+        provider.max_constraint_log_degree_bound(),
+    )?;
+    let private_constraint_log_expansion = zk_masked_private_constraint_log_expansion(
+        public_air_constraint_log_expansion,
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+    )?;
+    let degree_bounds = derive_stwo_zk_air_degree_bounds(
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+        public_air_constraint_log_expansion,
+        private_constraint_log_expansion,
+        fri_log_blowup_factor,
+        crate::core::verifier::COMPOSITION_LOG_SPLIT,
+    )?;
+    let provider_statement = canonical_zk_air_provider_statement_bytes(
+        provider.air_id(),
+        provider.application_statement(),
+        inference_mode,
+        dependency_metadata_completeness,
+        &private_roots,
+        &dependency_edges,
+        logup_claim_metadata_completeness,
+        &logup_claim_manifest,
+        &logup_claim_policies,
+        &logup_statistical_aggregate_groups,
+    );
+
+    build_stwo_zk_air_metadata_with_logup_aggregates(
+        component_column_log_sizes,
+        trace_domain_log_size,
+        randomized_witness_log_degree,
+        degree_bounds,
+        trace_tree_scope_bindings,
+        provider.public_roots(),
+        private_scope_entries,
+        logup_claim_metadata_completeness,
+        logup_claim_manifest,
+        logup_claim_policies,
+        logup_statistical_aggregate_groups,
+        provider.application_domain(),
+        &provider_statement,
+    )
+}
+
+pub fn build_zk_config_from_air_privacy_provider<P: ZkAirPrivacyProvider>(
+    provider: &P,
+    fri_log_blowup_factor: u32,
+    inference_mode: ZkPrivacyInferenceMode,
+) -> Result<ZkAirConfigArtifacts, ZkAirMetadataBuildError> {
+    let canonical_metadata = build_zk_air_metadata_from_privacy_provider(
+        provider,
+        fri_log_blowup_factor,
+        inference_mode,
+    )?;
+    build_stwo_zk_air_config_artifacts(&canonical_metadata, fri_log_blowup_factor)
+}
+
+pub fn build_stwo_zk_air_config_artifacts(
+    canonical_metadata: &ZkAirCanonicalMetadata,
+    fri_log_blowup_factor: u32,
+) -> Result<ZkAirConfigArtifacts, ZkAirMetadataBuildError> {
+    let mut privacy_map = ZkPrivacyMap {
+        version: ZkProofVersion::V1,
+        private_columns: canonical_metadata.private_ranges.clone(),
+        hash: ZkPrivacyMapHash([0; 32]),
+    };
+    privacy_map.hash = canonical_zk_privacy_map_hash(&privacy_map);
+
+    let h_witness = zk_power_of_two_u64(canonical_metadata.trace_domain_log_size)?;
+    let randomizer_space_entries = canonical_metadata
+        .private_column_scope
+        .entries
+        .iter()
+        .cloned()
+        .map(|entry| {
+            let trace_domain = CanonicCoset::new(entry.trace_domain_log_size).coset;
+            let semantic_trace_domains = entry
+                .semantic_trace_domain_log_sizes
+                .iter()
+                .map(|&log_size| {
+                    let domain = CanonicCoset::new(log_size).coset;
+                    ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(domain))
+                })
+                .collect::<Vec<_>>();
+            Ok(ZkRandomizerSpaceEntry {
+                range: entry.range,
+                trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                semantic_trace_domains,
+                randomized_log_degree: zk_private_column_randomized_log_degree(&entry)?,
+                randomizer_dimension: zk_private_column_randomizer_dimension(&entry)?,
+            })
+        })
+        .collect::<Result<Vec<_>, ZkAirMetadataBuildError>>()?;
+    let randomizer_space_hash = canonical_zk_randomizer_space_hash(
+        canonical_metadata.private_column_scope.hash,
+        &randomizer_space_entries,
+    );
+    let private_degree_bounds = canonical_metadata
+        .private_column_scope
+        .entries
+        .iter()
+        .map(|entry| {
+            Ok(ZkColumnDegreeBound {
+                range: entry.range,
+                log_degree_bound: zk_private_column_randomized_log_degree(entry)?,
+            })
+        })
+        .collect::<Result<Vec<_>, ZkAirMetadataBuildError>>()?;
+    let h_batch = expected_zk_fri_batch_degree_bound(
+        canonical_metadata.fri_first_layer_log_size,
+        fri_log_blowup_factor,
+    )
+    .ok_or(ZkAirMetadataBuildError::FriBatchDegree)?;
+    let metadata = ZkPublicMetadata {
+        version: ZkProofVersion::V1,
+        privacy_map_hash: privacy_map.hash,
+        public_statement_hash: canonical_metadata.public_statement_hash,
+        logup_statistical_security_budget_hash: canonical_zk_logup_statistical_security_budget_hash(
+            &canonical_metadata.logup_statistical_security_budgets,
+        ),
+        degree_profile: ZkDegreeProfile {
+            trace_domain_log_size: canonical_metadata.trace_domain_log_size,
+            h_witness,
+            h_batch,
+            fri_first_layer_log_size: canonical_metadata.fri_first_layer_log_size,
+        },
+        witness_randomization: ZkWitnessRandomizationProfile {
+            h_witness,
+            randomizer_space_hash,
+            private_column_scope_hash: canonical_metadata.private_column_scope.hash,
+            private_column_degree_bounds: private_degree_bounds.clone(),
+        },
+        quotient_integration: ZkQuotientIntegrationProfile {
+            h_batch,
+            fri_first_layer_log_size: canonical_metadata.fri_first_layer_log_size,
+            split_derivation_hash: canonical_zk_split_derivation_hash(
+                canonical_metadata.degree_bounds.composition_log_split,
+            ),
+            quotient_degree_bounds: vec![canonical_metadata.quotient_degree_bound],
+        },
+    };
+    let mut column_degree_bounds = private_degree_bounds;
+    column_degree_bounds.push(canonical_metadata.quotient_degree_bound);
+    let verifier_config = ZkVerificationConfig {
+        metadata: metadata.clone(),
+        column_degree_bounds: column_degree_bounds.clone(),
+        quotient_split_mask_profile: Some(canonical_metadata.quotient_split_mask_profile),
+        logup_statistical_security_budgets: canonical_metadata
+            .logup_statistical_security_budgets
+            .clone(),
+    };
+    let verifier_audit = ZkWitnessRandomizationVerifierAudit {
+        privacy_map: privacy_map.clone(),
+        private_column_scope: canonical_metadata.private_column_scope.clone(),
+    };
+
+    Ok(ZkAirConfigArtifacts {
+        privacy_map,
+        metadata,
+        verifier_config,
+        verifier_audit,
+        column_degree_bounds,
+        logup_statistical_security_budgets: canonical_metadata
+            .logup_statistical_security_budgets
+            .clone(),
+    })
 }
 
 #[must_use]
@@ -375,6 +2277,16 @@ pub fn validate_zk_private_column_scope_for_witness_randomization(
         }
     }
 
+    for entries in scope.entries.windows(2) {
+        if entries[0].range == entries[1].range {
+            return Err(
+                ZkPrivateColumnScopeValidationError::DuplicatePrivateColumn {
+                    range: entries[0].range,
+                },
+            );
+        }
+    }
+
     for entry in &scope.entries {
         if !privacy_map.private_columns.contains(&entry.range) {
             return Err(
@@ -390,6 +2302,19 @@ pub fn validate_zk_private_column_scope_for_witness_randomization(
                     usage: entry.usage,
                 },
             );
+        }
+        if entry.semantic_trace_domain_log_sizes.is_empty()
+            || !entry
+                .semantic_trace_domain_log_sizes
+                .contains(&entry.trace_domain_log_size)
+            || entry.semantic_trace_domain_log_sizes != {
+                let mut canonical = entry.semantic_trace_domain_log_sizes.clone();
+                canonical.sort_unstable();
+                canonical.dedup();
+                canonical
+            }
+        {
+            return Err(ZkPrivateColumnScopeValidationError::NonCanonicalEntries);
         }
     }
 
@@ -679,12 +2604,12 @@ pub fn validate_zk_randomizer_rank_profile_for_witness_randomization(
             });
         }
 
-        let expected_dimension = metadata.witness_randomization.h_witness;
-        if entry.randomizer_dimension != expected_dimension {
+        let max_dimension = metadata.witness_randomization.h_witness;
+        if entry.randomizer_dimension > max_dimension {
             return Err(
                 ZkRandomizerRankValidationError::RandomizerDimensionMismatch {
                     range,
-                    expected: expected_dimension,
+                    expected: max_dimension,
                     actual: entry.randomizer_dimension,
                 },
             );
@@ -801,8 +2726,99 @@ pub enum ZkSampleMetadataBuildError {
     MissingTree { tree_index: usize },
     MissingColumn { range: ZkColumnRange },
     QueryPositionOutOfDomain { position: usize, domain_size: usize },
+    TraceDomainTooLarge { log_size: u32 },
     LiftingDomainTooLarge { log_size: u32 },
     RandomizerMatrix(ZkRandomizerMatrixBuildError),
+}
+
+fn zk_randomizer_dimension_from_trace_log_size(
+    trace_log_size: u32,
+) -> Result<u64, ZkSampleMetadataBuildError> {
+    1u64.checked_shl(trace_log_size)
+        .ok_or(ZkSampleMetadataBuildError::TraceDomainTooLarge {
+            log_size: trace_log_size,
+        })
+}
+
+pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
+    privacy_map: &ZkPrivacyMap,
+    private_column_scope: &ZkPrivateColumnScope,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+) -> Result<ZkRandomizerMatrixBuild, ZkSampleMetadataBuildError> {
+    let mut closure_entries = Vec::new();
+    let mut matrices = Vec::new();
+    let mut rank_entries = Vec::new();
+
+    for entry in &private_column_scope.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            continue;
+        }
+        let semantic_domains = entry
+            .semantic_trace_domain_log_sizes
+            .iter()
+            .map(|&log_size| {
+                CanonicCoset::try_new(log_size)
+                    .map(|domain| domain.coset)
+                    .map_err(|_| ZkSampleMetadataBuildError::TraceDomainTooLarge { log_size })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let scoped_privacy_map = ZkPrivacyMap {
+            version: privacy_map.version,
+            private_columns: vec![entry.range],
+            hash: privacy_map.hash,
+        };
+        let build = build_zk_randomizer_matrices_from_stwo_sample_metadata_with_semantic_domains(
+            &semantic_domains,
+            &scoped_privacy_map,
+            zk_randomizer_dimension_from_trace_log_size(entry.trace_domain_log_size)?,
+            sampled_points,
+            fri_query_positions,
+            lifting_log_size,
+        )?;
+        closure_entries.extend(build.closure.entries);
+        matrices.extend(build.matrices);
+        rank_entries.extend(build.rank_profile.entries);
+    }
+
+    let mut closure = ZkQueryClosure {
+        entries: closure_entries,
+    };
+    closure.canonicalize();
+    let mut rank_profile = ZkRandomizerRankProfile {
+        entries: rank_entries,
+    };
+    rank_profile.canonicalize();
+
+    Ok(ZkRandomizerMatrixBuild {
+        closure,
+        matrices,
+        rank_profile,
+    })
+}
+
+pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata_with_semantic_domains(
+    semantic_domains: &[Coset],
+    privacy_map: &ZkPrivacyMap,
+    randomizer_dimension: u64,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+) -> Result<ZkRandomizerMatrixBuild, ZkSampleMetadataBuildError> {
+    let functionals = zk_randomizer_query_functionals_from_stwo_sample_metadata(
+        privacy_map,
+        sampled_points,
+        fri_query_positions,
+        lifting_log_size,
+    )?;
+    build_zk_randomizer_matrices_for_witness_randomization_with_semantic_domains(
+        semantic_domains,
+        privacy_map,
+        randomizer_dimension,
+        &functionals,
+    )
+    .map_err(ZkSampleMetadataBuildError::RandomizerMatrix)
 }
 
 pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata(
@@ -813,6 +2829,28 @@ pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata(
     fri_query_positions: &[usize],
     lifting_log_size: u32,
 ) -> Result<ZkRandomizerMatrixBuild, ZkSampleMetadataBuildError> {
+    let functionals = zk_randomizer_query_functionals_from_stwo_sample_metadata(
+        privacy_map,
+        sampled_points,
+        fri_query_positions,
+        lifting_log_size,
+    )?;
+
+    build_zk_randomizer_matrices_for_witness_randomization(
+        trace_domain,
+        privacy_map,
+        randomizer_dimension,
+        &functionals,
+    )
+    .map_err(ZkSampleMetadataBuildError::RandomizerMatrix)
+}
+
+fn zk_randomizer_query_functionals_from_stwo_sample_metadata(
+    privacy_map: &ZkPrivacyMap,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+) -> Result<Vec<ZkRandomizerQueryFunctional>, ZkSampleMetadataBuildError> {
     let domain_size = 1usize.checked_shl(lifting_log_size).ok_or(
         ZkSampleMetadataBuildError::LiftingDomainTooLarge {
             log_size: lifting_log_size,
@@ -846,14 +2884,14 @@ pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata(
 
         for &point in column_points {
             let point_encoding = encode_zk_query_point(point);
-            for coordinate_index in 0..4 {
+            for coordinate_index in 0..SECURE_EXTENSION_DEGREE {
                 functionals.push(ZkRandomizerQueryFunctional {
                     range,
                     kind: ZkQueryClosureKind::OodsExtension,
                     domain_id: range.tree_index as u64,
                     point_or_position: point_encoding,
                     point,
-                    coordinate_index,
+                    coordinate_index: coordinate_index as u8,
                 });
             }
         }
@@ -872,17 +2910,25 @@ pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata(
         }
     }
 
-    build_zk_randomizer_matrices_for_witness_randomization(
-        trace_domain,
-        privacy_map,
-        randomizer_dimension,
-        &functionals,
-    )
-    .map_err(ZkSampleMetadataBuildError::RandomizerMatrix)
+    Ok(functionals)
 }
 
 pub fn build_zk_randomizer_matrices_for_witness_randomization(
     trace_domain: Coset,
+    privacy_map: &ZkPrivacyMap,
+    randomizer_dimension: u64,
+    functionals: &[ZkRandomizerQueryFunctional],
+) -> Result<ZkRandomizerMatrixBuild, ZkRandomizerMatrixBuildError> {
+    build_zk_randomizer_matrices_for_witness_randomization_with_semantic_domains(
+        &[trace_domain],
+        privacy_map,
+        randomizer_dimension,
+        functionals,
+    )
+}
+
+pub fn build_zk_randomizer_matrices_for_witness_randomization_with_semantic_domains(
+    semantic_domains: &[Coset],
     privacy_map: &ZkPrivacyMap,
     randomizer_dimension: u64,
     functionals: &[ZkRandomizerQueryFunctional],
@@ -956,7 +3002,7 @@ pub fn build_zk_randomizer_matrices_for_witness_randomization(
             .filter_map(|(_, functional)| (functional.range == range).then_some(*functional))
             .map(|functional| {
                 build_zk_randomizer_matrix_row(
-                    trace_domain,
+                    semantic_domains,
                     randomizer_dimension,
                     ambient_log_dimension,
                     functional,
@@ -1008,14 +3054,18 @@ pub fn encode_zk_query_position(position: usize) -> [u64; 8] {
 }
 
 fn build_zk_randomizer_matrix_row(
-    trace_domain: Coset,
+    semantic_domains: &[Coset],
     randomizer_dimension: u64,
     ambient_log_dimension: usize,
     functional: ZkRandomizerQueryFunctional,
 ) -> Vec<BaseField> {
-    let trace_domain = zk_trace_domain_half_coset(trace_domain);
-    let vanishing = coset_vanishing(trace_domain, functional.point)
-        * coset_vanishing(trace_domain.conjugate(), functional.point);
+    let vanishing = semantic_domains
+        .iter()
+        .fold(SecureField::one(), |acc, &semantic_domain| {
+            let half_domain = zk_trace_domain_half_coset(semantic_domain);
+            acc * coset_vanishing(half_domain, functional.point)
+                * coset_vanishing(half_domain.conjugate(), functional.point)
+        });
     let folding_alphas = get_folding_alphas(functional.point, ambient_log_dimension);
     let coordinate_index = functional.coordinate_index as usize;
 
@@ -1333,6 +3383,7 @@ pub struct ZkPublicMetadata {
     pub version: ZkProofVersion,
     pub privacy_map_hash: ZkPrivacyMapHash,
     pub public_statement_hash: ZkPublicStatementHash,
+    pub logup_statistical_security_budget_hash: [u8; 32],
     pub degree_profile: ZkDegreeProfile,
     pub witness_randomization: ZkWitnessRandomizationProfile,
     pub quotient_integration: ZkQuotientIntegrationProfile,
@@ -1357,6 +3408,7 @@ pub struct ZkVerificationConfig {
     pub metadata: ZkPublicMetadata,
     pub column_degree_bounds: Vec<ZkColumnDegreeBound>,
     pub quotient_split_mask_profile: Option<ZkQuotientSplitMaskProfile>,
+    pub logup_statistical_security_budgets: Vec<ZkLogupStatisticalSecurityBudget>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1366,6 +3418,7 @@ pub enum ZkWitnessRandomizationVerifierAuditError {
     PrivacyMapVersionMismatch,
     PrivacyMapHashMismatch,
     PrivateColumnDegreeBoundsMismatch,
+    MissingPrivateLogupStatisticalSecurityBudget,
     RandomizerSpaceHashMismatch,
     InvalidTraceDomainLogSize { log_size: u32 },
     PrivateColumnScope(ZkPrivateColumnScopeValidationError),
@@ -1433,9 +3486,18 @@ pub enum ZkMetadataValidationError {
 pub enum ZkVerificationConfigValidationError {
     PublicMetadataMismatch,
     ColumnDegreeBoundsMismatch,
+    LogupStatisticalSecurityBudgetHashMismatch,
     UnexpectedQuotientSplitMaskProfileForPublicOnly,
     MissingQuotientSplitMaskProfile,
     QuotientSplitMaskProfile(ZkQuotientSplitMaskProfileBindingError),
+    InvalidLogupStatisticalSecurityBudget {
+        aggregate_id: u32,
+    },
+    InsufficientLogupStatisticalSecurityBudget {
+        aggregate_id: u32,
+        computed_bits: u32,
+        min_bits: u32,
+    },
     UnexpectedColumnDegreeBoundsForPhase1,
     Metadata(ZkMetadataValidationError),
 }
@@ -1454,6 +3516,56 @@ pub fn expected_zk_column_degree_bounds(metadata: &ZkPublicMetadata) -> Vec<ZkCo
         .clone();
     expected.extend(metadata.quotient_integration.quotient_degree_bounds.clone());
     expected
+}
+
+pub fn validate_zk_logup_statistical_security_budgets(
+    budgets: &[ZkLogupStatisticalSecurityBudget],
+) -> Result<(), ZkVerificationConfigValidationError> {
+    let mut seen = BTreeSet::new();
+    for budget in budgets {
+        if !seen.insert(budget.aggregate_id)
+            || budget.extension_field_bits != ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS
+            || budget.private_lookup_term_count_bound == 0
+            || budget.lookup_challenge_count == 0
+            || budget.expected_proof_volume == 0
+            || budget.min_statistical_security_bits == 0
+        {
+            return Err(
+                ZkVerificationConfigValidationError::InvalidLogupStatisticalSecurityBudget {
+                    aggregate_id: budget.aggregate_id,
+                },
+            );
+        }
+        let exposure = u128::from(budget.private_lookup_term_count_bound)
+            .checked_mul(u128::from(budget.lookup_challenge_count))
+            .and_then(|value| value.checked_mul(u128::from(budget.expected_proof_volume)))
+            .ok_or(
+                ZkVerificationConfigValidationError::InvalidLogupStatisticalSecurityBudget {
+                    aggregate_id: budget.aggregate_id,
+                },
+            )?;
+        let expected_bits = ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS
+            .saturating_sub(ceil_log2_u128(exposure))
+            .saturating_sub(budget.safety_margin_bits);
+        if budget.computed_security_bits != expected_bits {
+            return Err(
+                ZkVerificationConfigValidationError::InvalidLogupStatisticalSecurityBudget {
+                    aggregate_id: budget.aggregate_id,
+                },
+            );
+        }
+        if budget.computed_security_bits < budget.min_statistical_security_bits {
+            return Err(
+                ZkVerificationConfigValidationError::InsufficientLogupStatisticalSecurityBudget {
+                    aggregate_id: budget.aggregate_id,
+                    computed_bits: budget.computed_security_bits,
+                    min_bits: budget.min_statistical_security_bits,
+                },
+            );
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2262,6 +4374,20 @@ pub fn validate_zk_public_metadata_against_verifier_config(
     {
         return Err(ZkVerificationConfigValidationError::ColumnDegreeBoundsMismatch);
     }
+    validate_zk_logup_statistical_security_budgets(
+        &verifier_config.logup_statistical_security_budgets,
+    )?;
+    if verifier_config
+        .metadata
+        .logup_statistical_security_budget_hash
+        != canonical_zk_logup_statistical_security_budget_hash(
+            &verifier_config.logup_statistical_security_budgets,
+        )
+    {
+        return Err(
+            ZkVerificationConfigValidationError::LogupStatisticalSecurityBudgetHashMismatch,
+        );
+    }
     let requires_quotient_split_mask_profile = !verifier_config
         .metadata
         .witness_randomization
@@ -2363,25 +4489,73 @@ pub fn validate_zk_witness_randomization_audit_for_verifier(
         &audit.private_column_scope,
     )
     .map_err(ZkWitnessRandomizationVerifierAuditError::PrivateColumnScope)?;
-
-    let trace_domain = CanonicCoset::try_new(metadata.degree_profile.trace_domain_log_size)
-        .map_err(
-            |_| ZkWitnessRandomizationVerifierAuditError::InvalidTraceDomainLogSize {
-                log_size: metadata.degree_profile.trace_domain_log_size,
-            },
-        )?
-        .coset;
-    let randomizer_space_entries = metadata
-        .witness_randomization
-        .private_column_degree_bounds
+    let has_private_logup = audit
+        .private_column_scope
+        .entries
         .iter()
-        .map(|bound| ZkRandomizerSpaceEntry {
-            range: bound.range,
-            trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
-            randomized_log_degree: bound.log_degree_bound,
-            randomizer_dimension: metadata.witness_randomization.h_witness,
+        .any(|entry| entry.usage == ZkPrivateColumnUsage::LogUp);
+    if has_private_logup
+        && (verifier_config
+            .logup_statistical_security_budgets
+            .is_empty()
+            || metadata.logup_statistical_security_budget_hash
+                == ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH)
+    {
+        return Err(
+            ZkWitnessRandomizationVerifierAuditError::MissingPrivateLogupStatisticalSecurityBudget,
+        );
+    }
+
+    let randomizer_space_entries = audit
+        .private_column_scope
+        .entries
+        .iter()
+        .map(|entry| {
+            let trace_domain = CanonicCoset::try_new(entry.trace_domain_log_size)
+                .map_err(
+                    |_| ZkWitnessRandomizationVerifierAuditError::InvalidTraceDomainLogSize {
+                        log_size: entry.trace_domain_log_size,
+                    },
+                )?
+                .coset;
+            let randomized_log_degree = metadata
+                .witness_randomization
+                .private_column_degree_bounds
+                .iter()
+                .find(|bound| bound.range == entry.range)
+                .map(|bound| bound.log_degree_bound)
+                .ok_or(
+                    ZkWitnessRandomizationVerifierAuditError::PrivateColumnDegreeBoundsMismatch,
+                )?;
+            let randomizer_dimension = 1u64.checked_shl(entry.trace_domain_log_size).ok_or(
+                ZkWitnessRandomizationVerifierAuditError::InvalidTraceDomainLogSize {
+                    log_size: entry.trace_domain_log_size,
+                },
+            )?;
+            let semantic_trace_domains = entry
+                .semantic_trace_domain_log_sizes
+                .iter()
+                .map(|&log_size| {
+                    CanonicCoset::try_new(log_size)
+                        .map(|domain| {
+                            ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(domain.coset))
+                        })
+                        .map_err(|_| {
+                            ZkWitnessRandomizationVerifierAuditError::InvalidTraceDomainLogSize {
+                                log_size,
+                            }
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ZkRandomizerSpaceEntry {
+                range: entry.range,
+                trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                semantic_trace_domains,
+                randomized_log_degree,
+                randomizer_dimension,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, ZkWitnessRandomizationVerifierAuditError>>()?;
     if canonical_zk_randomizer_space_hash(
         audit.private_column_scope.hash,
         &randomizer_space_entries,
@@ -2389,15 +4563,15 @@ pub fn validate_zk_witness_randomization_audit_for_verifier(
     {
         return Err(ZkWitnessRandomizationVerifierAuditError::RandomizerSpaceHashMismatch);
     }
-    let sampled_metadata = build_zk_randomizer_matrices_from_stwo_sample_metadata(
-        trace_domain,
-        &audit.privacy_map,
-        metadata.witness_randomization.h_witness,
-        sampled_points,
-        fri_query_positions,
-        lifting_log_size,
-    )
-    .map_err(ZkWitnessRandomizationVerifierAuditError::SampleMetadata)?;
+    let sampled_metadata =
+        build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
+            &audit.privacy_map,
+            &audit.private_column_scope,
+            sampled_points,
+            fri_query_positions,
+            lifting_log_size,
+        )
+        .map_err(ZkWitnessRandomizationVerifierAuditError::SampleMetadata)?;
     validate_zk_query_closure_for_witness_randomization(
         &audit.privacy_map,
         metadata,
@@ -2462,22 +4636,6 @@ pub fn validate_zk_witness_metadata(
     if metadata.witness_randomization.h_witness == 0 {
         return Err(ZkMetadataValidationError::EmptyWitnessRandomizer);
     }
-    let randomizer_coefficient_count = metadata
-        .witness_randomization
-        .h_witness
-        .checked_next_power_of_two()
-        .ok_or(
-            ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
-                dimension: metadata.witness_randomization.h_witness,
-            },
-        )?;
-    let trace_domain_size = 1u64
-        .checked_shl(metadata.degree_profile.trace_domain_log_size)
-        .ok_or(
-            ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
-                dimension: metadata.witness_randomization.h_witness,
-            },
-        )?;
     if metadata
         .witness_randomization
         .private_column_degree_bounds
@@ -2521,29 +4679,11 @@ pub fn validate_zk_witness_metadata(
         return Err(ZkMetadataValidationError::EmptySplitDerivationHash);
     }
     for bound in &metadata.witness_randomization.private_column_degree_bounds {
-        if bound.log_degree_bound <= metadata.degree_profile.trace_domain_log_size {
-            return Err(
-                ZkMetadataValidationError::WitnessRandomizedDomainNotLarger {
-                    trace_domain_log_size: metadata.degree_profile.trace_domain_log_size,
-                    randomized_log_degree: bound.log_degree_bound,
-                },
-            );
-        }
-        let randomized_domain_size = 1u64.checked_shl(bound.log_degree_bound).ok_or(
+        1u64.checked_shl(bound.log_degree_bound).ok_or(
             ZkMetadataValidationError::WitnessRandomizerDimensionTooLarge {
                 dimension: metadata.witness_randomization.h_witness,
             },
         )?;
-        if trace_domain_size
-            .checked_add(randomizer_coefficient_count)
-            .is_none_or(|required| required > randomized_domain_size)
-        {
-            return Err(ZkMetadataValidationError::WitnessRandomizedDomainTooSmall {
-                trace_domain_size,
-                randomizer_coefficient_count,
-                randomized_domain_size,
-            });
-        }
     }
 
     Ok(())
@@ -2677,6 +4817,7 @@ pub fn mix_zk_public_metadata<C: Channel>(
     channel.mix_u64(metadata.degree_profile.h_batch);
     mix_hash_bytes(channel, &metadata.privacy_map_hash.0);
     mix_hash_bytes(channel, &metadata.public_statement_hash.0);
+    mix_hash_bytes(channel, &metadata.logup_statistical_security_budget_hash);
 
     channel.mix_u64(metadata.witness_randomization.h_witness);
     mix_hash_bytes(
@@ -2876,10 +5017,6 @@ pub fn draw_zk_oods_point_with_preimage<C: Channel>(
     })
 }
 
-/// Conservative public cap on the extra kernel exposed by sampling a deepest
-/// Fiat-Shamir point and doubling it into mixed-degree semantic OODS points.
-pub const ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA: u32 = 8;
-
 #[derive(Clone, Debug)]
 pub struct ZkOodsSamplePointPlan {
     pub semantic_oods_point: CirclePoint<SecureField>,
@@ -2904,12 +5041,6 @@ pub enum ZkOodsSamplePointPlanError {
         column_index: usize,
         column_log_size: u32,
         lifting_log_size: u32,
-    },
-    SamplePointLiftDeltaTooLarge {
-        tree_index: usize,
-        column_index: usize,
-        delta: u32,
-        max: u32,
     },
     SamplePointLiftDomainOverflow {
         max_log_degree_bound: u32,
@@ -3034,32 +5165,88 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
     lifting_log_size: u32,
     exclusion_set: &ZkOodsExclusionSet,
 ) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
+    let semantic_sample_step_log_sizes = TreeVec(
+        mask_offsets
+            .iter()
+            .zip(semantic_step_log_sizes.iter())
+            .map(|(offset_tree, step_tree)| {
+                offset_tree
+                    .iter()
+                    .zip(step_tree.iter())
+                    .map(|(column_offsets, &step_log_size)| {
+                        vec![step_log_size; column_offsets.len()]
+                    })
+                    .collect()
+            })
+            .collect(),
+    );
+    let semantic_sample_base_doublings = TreeVec(
+        mask_offsets
+            .iter()
+            .zip(semantic_base_doublings.iter())
+            .map(|(offset_tree, base_tree)| {
+                offset_tree
+                    .iter()
+                    .zip(base_tree.iter())
+                    .map(|(column_offsets, &base_doubling)| {
+                        vec![base_doubling; column_offsets.len()]
+                    })
+                    .collect()
+            })
+            .collect(),
+    );
+
+    plan_zk_oods_sample_points_with_semantic_sample_domains(
+        deepest_point,
+        mask_offsets,
+        &semantic_sample_step_log_sizes,
+        &semantic_sample_base_doublings,
+        committed_column_log_sizes,
+        lifting_log_size,
+        exclusion_set,
+    )
+}
+
+pub fn plan_zk_oods_sample_points_with_semantic_sample_domains(
+    deepest_point: CirclePoint<SecureField>,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_sample_step_log_sizes: &TreeVec<ColumnVec<Vec<u32>>>,
+    semantic_sample_base_doublings: &TreeVec<ColumnVec<Vec<u32>>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanError> {
     if mask_offsets.len() != committed_column_log_sizes.len() {
         return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
             expected: committed_column_log_sizes.len(),
             actual: mask_offsets.len(),
         });
     }
-    if mask_offsets.len() != semantic_step_log_sizes.len() {
+    if mask_offsets.len() != semantic_sample_step_log_sizes.len() {
         return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
-            expected: semantic_step_log_sizes.len(),
+            expected: semantic_sample_step_log_sizes.len(),
             actual: mask_offsets.len(),
         });
     }
-    if mask_offsets.len() != semantic_base_doublings.len() {
+    if mask_offsets.len() != semantic_sample_base_doublings.len() {
         return Err(ZkOodsSamplePointPlanError::TreeCountMismatch {
-            expected: semantic_base_doublings.len(),
+            expected: semantic_sample_base_doublings.len(),
             actual: mask_offsets.len(),
         });
     }
+    CanonicCoset::try_new(lifting_log_size).map_err(|_| {
+        ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+            log_size: lifting_log_size,
+        }
+    })?;
 
     let mut max_delta = 0;
     let mut column_deltas = TreeVec(Vec::with_capacity(mask_offsets.len()));
     for (tree_index, (((offset_tree, semantic_step_tree), semantic_base_tree), log_size_tree)) in
         mask_offsets
             .iter()
-            .zip(semantic_step_log_sizes.iter())
-            .zip(semantic_base_doublings.iter())
+            .zip(semantic_sample_step_log_sizes.iter())
+            .zip(semantic_sample_base_doublings.iter())
             .zip(committed_column_log_sizes.iter())
             .enumerate()
     {
@@ -3086,13 +5273,30 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
         }
 
         let mut tree_deltas = Vec::with_capacity(offset_tree.len());
-        for (column_index, ((column_offsets, &column_log_size), &semantic_base_doubling)) in
-            offset_tree
-                .iter()
-                .zip(log_size_tree.iter())
-                .zip(semantic_base_tree.iter())
-                .enumerate()
+        for (
+            column_index,
+            (((column_offsets, column_step_log_sizes), column_base_doublings), &column_log_size),
+        ) in offset_tree
+            .iter()
+            .zip(semantic_step_tree.iter())
+            .zip(semantic_base_tree.iter())
+            .zip(log_size_tree.iter())
+            .enumerate()
         {
+            if column_offsets.len() != column_step_log_sizes.len() {
+                return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
+                    tree_index,
+                    expected: column_offsets.len(),
+                    actual: column_step_log_sizes.len(),
+                });
+            }
+            if column_offsets.len() != column_base_doublings.len() {
+                return Err(ZkOodsSamplePointPlanError::ColumnCountMismatch {
+                    tree_index,
+                    expected: column_offsets.len(),
+                    actual: column_base_doublings.len(),
+                });
+            }
             let delta = lifting_log_size.checked_sub(column_log_size).ok_or(
                 ZkOodsSamplePointPlanError::ColumnLogSizeAboveLifting {
                     tree_index,
@@ -3101,20 +5305,77 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
                     lifting_log_size,
                 },
             )?;
-            if delta > ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA {
-                return Err(ZkOodsSamplePointPlanError::SamplePointLiftDeltaTooLarge {
-                    tree_index,
-                    column_index,
-                    delta,
-                    max: ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA,
-                });
-            }
-            if !column_offsets.is_empty() {
+            // A large lift delta is not rejected by a fixed protocol constant.
+            // Algebraic validity is checked dynamically below by ensuring that
+            // all derived cosets exist, all generated points pass the exclusion
+            // policy, and every PCS point doubles back to its semantic point.
+            // Larger deltas reduce the challenge support seen after repeated
+            // doubling, so callers must include this geometry in the soundness
+            // budget rather than hiding it behind an example-specific cap.
+            for (&semantic_step_log_size, &semantic_base_doubling) in column_step_log_sizes
+                .iter()
+                .zip(column_base_doublings.iter())
+            {
+                CanonicCoset::try_new(semantic_step_log_size).map_err(|_| {
+                    ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                        log_size: semantic_step_log_size,
+                    }
+                })?;
+                let pcs_step_log_size = semantic_step_log_size.checked_add(delta).ok_or(
+                    ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                        max_log_degree_bound: semantic_step_log_size,
+                        delta,
+                    },
+                )?;
+                CanonicCoset::try_new(pcs_step_log_size).map_err(|_| {
+                    ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                        log_size: pcs_step_log_size,
+                    }
+                })?;
                 max_delta = max_delta.max(delta.saturating_sub(semantic_base_doubling));
             }
             tree_deltas.push(delta);
         }
         column_deltas.push(tree_deltas);
+    }
+
+    if max_delta > 0 {
+        CanonicCoset::try_new(max_delta).map_err(|_| {
+            ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                log_size: max_delta,
+            }
+        })?;
+    }
+    for ((offset_tree, semantic_base_tree), delta_tree) in mask_offsets
+        .iter()
+        .zip(semantic_sample_base_doublings.iter())
+        .zip(column_deltas.iter())
+    {
+        for ((_, column_base_doublings), &delta) in offset_tree
+            .iter()
+            .zip(semantic_base_tree.iter())
+            .zip(delta_tree.iter())
+        {
+            for &semantic_base_doubling in column_base_doublings {
+                let semantic_base_doubles = max_delta.checked_add(semantic_base_doubling).ok_or(
+                    ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                        max_log_degree_bound: semantic_base_doubling,
+                        delta: max_delta,
+                    },
+                )?;
+                if semantic_base_doubles > lifting_log_size {
+                    return Err(ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                        log_size: semantic_base_doubles,
+                    });
+                }
+                if semantic_base_doubles < delta {
+                    return Err(ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow {
+                        max_delta: semantic_base_doubles,
+                        delta,
+                    });
+                }
+            }
+        }
     }
 
     if !exclusion_set.accepts(deepest_point) {
@@ -3131,8 +5392,8 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
     for (tree_index, (((offset_tree, semantic_step_tree), semantic_base_tree), delta_tree)) in
         mask_offsets
             .iter()
-            .zip(semantic_step_log_sizes.iter())
-            .zip(semantic_base_doublings.iter())
+            .zip(semantic_sample_step_log_sizes.iter())
+            .zip(semantic_sample_base_doublings.iter())
             .zip(column_deltas.iter())
             .enumerate()
     {
@@ -3140,7 +5401,7 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
         let mut pcs_tree = Vec::with_capacity(offset_tree.len());
         for (
             column_index,
-            (((column_offsets, &semantic_step_log_size), &semantic_base_doubling), &delta),
+            (((column_offsets, column_step_log_sizes), column_base_doublings), &delta),
         ) in offset_tree
             .iter()
             .zip(semantic_step_tree.iter())
@@ -3153,44 +5414,50 @@ pub fn plan_zk_oods_sample_points_with_semantic_domains(
                 pcs_tree.push(Vec::new());
                 continue;
             }
-            let semantic_base_doubles = max_delta.checked_add(semantic_base_doubling).ok_or(
-                ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
-                    max_log_degree_bound: semantic_base_doubling,
-                    delta: max_delta,
-                },
-            )?;
-            let pcs_base_doubles = semantic_base_doubles.checked_sub(delta).ok_or(
-                ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow {
-                    max_delta: semantic_base_doubles,
-                    delta,
-                },
-            )?;
-            let semantic_base = deepest_point.repeated_double(semantic_base_doubles);
-            let pcs_base = deepest_point.repeated_double(pcs_base_doubles);
-            let semantic_step = CanonicCoset::try_new(semantic_step_log_size)
-                .map_err(
-                    |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
-                        log_size: semantic_step_log_size,
-                    },
-                )?
-                .step();
-            let pcs_step_log_size = semantic_step_log_size.checked_add(delta).ok_or(
-                ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
-                    max_log_degree_bound: semantic_step_log_size,
-                    delta,
-                },
-            )?;
-            let pcs_step = CanonicCoset::try_new(pcs_step_log_size)
-                .map_err(
-                    |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
-                        log_size: pcs_step_log_size,
-                    },
-                )?
-                .step();
 
             let mut semantic_column = Vec::with_capacity(column_offsets.len());
             let mut pcs_column = Vec::with_capacity(column_offsets.len());
-            for (sample_index, &offset) in column_offsets.iter().enumerate() {
+            for (sample_index, ((&offset, &semantic_step_log_size), &semantic_base_doubling)) in
+                column_offsets
+                    .iter()
+                    .zip(column_step_log_sizes.iter())
+                    .zip(column_base_doublings.iter())
+                    .enumerate()
+            {
+                let semantic_base_doubles = max_delta.checked_add(semantic_base_doubling).ok_or(
+                    ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                        max_log_degree_bound: semantic_base_doubling,
+                        delta: max_delta,
+                    },
+                )?;
+                let pcs_base_doubles = semantic_base_doubles.checked_sub(delta).ok_or(
+                    ZkOodsSamplePointPlanError::SamplePointLiftDeltaUnderflow {
+                        max_delta: semantic_base_doubles,
+                        delta,
+                    },
+                )?;
+                let semantic_base = deepest_point.repeated_double(semantic_base_doubles);
+                let pcs_base = deepest_point.repeated_double(pcs_base_doubles);
+                let semantic_step = CanonicCoset::try_new(semantic_step_log_size)
+                    .map_err(
+                        |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                            log_size: semantic_step_log_size,
+                        },
+                    )?
+                    .step();
+                let pcs_step_log_size = semantic_step_log_size.checked_add(delta).ok_or(
+                    ZkOodsSamplePointPlanError::SamplePointLiftDomainOverflow {
+                        max_log_degree_bound: semantic_step_log_size,
+                        delta,
+                    },
+                )?;
+                let pcs_step = CanonicCoset::try_new(pcs_step_log_size)
+                    .map_err(
+                        |_| ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain {
+                            log_size: pcs_step_log_size,
+                        },
+                    )?
+                    .step();
                 let semantic_point = semantic_base + semantic_step.mul_signed(offset).into_ef();
                 let pcs_point = pcs_base + pcs_step.mul_signed(offset).into_ef();
 
@@ -3327,6 +5594,40 @@ pub fn draw_zk_oods_sample_point_plan_with_semantic_domains<C: Channel>(
     ))
 }
 
+pub fn draw_zk_oods_sample_point_plan_with_semantic_sample_domains<C: Channel>(
+    channel: &mut C,
+    mask_offsets: &TreeVec<ColumnVec<Vec<isize>>>,
+    semantic_sample_step_log_sizes: &TreeVec<ColumnVec<Vec<u32>>>,
+    semantic_sample_base_doublings: &TreeVec<ColumnVec<Vec<u32>>>,
+    committed_column_log_sizes: &TreeVec<ColumnVec<u32>>,
+    lifting_log_size: u32,
+    exclusion_set: &ZkOodsExclusionSet,
+    max_attempts: usize,
+) -> Result<ZkOodsSamplePointPlan, ZkOodsSamplePointPlanningError> {
+    for _ in 0..max_attempts {
+        let deepest_point = CirclePoint::<SecureField>::get_random_point(channel);
+        match plan_zk_oods_sample_points_with_semantic_sample_domains(
+            deepest_point,
+            mask_offsets,
+            semantic_sample_step_log_sizes,
+            semantic_sample_base_doublings,
+            committed_column_log_sizes,
+            lifting_log_size,
+            exclusion_set,
+        ) {
+            Ok(plan) => return Ok(plan),
+            Err(error) if error.is_sampling_rejection() => {}
+            Err(error) => return Err(ZkOodsSamplePointPlanningError::Plan(error)),
+        }
+    }
+
+    Err(ZkOodsSamplePointPlanningError::Sampling(
+        ZkOodsSamplingError::ExhaustedAttempts {
+            attempts: max_attempts,
+        },
+    ))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkOodsSamplePointValidationError {
     ForbiddenSamplePoint {
@@ -3401,6 +5702,12 @@ impl ZkFriBatchMaskQueryValues {
     }
 }
 
+impl SizeEstimate for ZkFriBatchMaskQueryValues {
+    fn size_estimate(&self) -> usize {
+        self.queries.len() * mem::size_of::<[BaseField; 4]>()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ZkFriBatchMaskVerificationError {
     QueryCountMismatch { expected: usize, actual: usize },
@@ -3414,6 +5721,17 @@ pub enum ZkFriBatchMaskVerificationError {
 impl From<MerkleVerificationError> for ZkFriBatchMaskVerificationError {
     fn from(error: MerkleVerificationError) -> Self {
         Self::Merkle(error)
+    }
+}
+
+impl<H: MerkleHasherLifted> SizeEstimate for ZkFriBatchMaskProof<H> {
+    fn size_estimate(&self) -> usize {
+        self.commitment.size_estimate()
+            + mem::size_of_val(&self.log_size)
+            + self.fri_proof.size_estimate()
+            + self.decommitment.size_estimate()
+            + self.queried_values.size_estimate()
+            + self.fri_queried_values.size_estimate()
     }
 }
 
@@ -3702,10 +6020,52 @@ pub struct ExtendedZkCommitmentSchemeProof<H: MerkleHasherLifted> {
     pub aux: ZkCommitmentSchemeProofAux<H>,
 }
 
+fn zk_column_range_size_estimate() -> usize {
+    3 * mem::size_of::<usize>()
+}
+
+fn zk_column_degree_bounds_size_estimate(bounds: &[ZkColumnDegreeBound]) -> usize {
+    bounds.len() * (zk_column_range_size_estimate() + mem::size_of::<u32>())
+}
+
+fn zk_public_metadata_size_estimate(metadata: &ZkPublicMetadata) -> usize {
+    mem::size_of_val(&metadata.version)
+        + mem::size_of_val(&metadata.privacy_map_hash)
+        + mem::size_of_val(&metadata.public_statement_hash)
+        + mem::size_of_val(&metadata.logup_statistical_security_budget_hash)
+        + mem::size_of_val(&metadata.degree_profile)
+        + mem::size_of_val(&metadata.witness_randomization.h_witness)
+        + mem::size_of_val(&metadata.witness_randomization.randomizer_space_hash)
+        + mem::size_of_val(&metadata.witness_randomization.private_column_scope_hash)
+        + zk_column_degree_bounds_size_estimate(
+            &metadata.witness_randomization.private_column_degree_bounds,
+        )
+        + mem::size_of_val(&metadata.quotient_integration.h_batch)
+        + mem::size_of_val(&metadata.quotient_integration.fri_first_layer_log_size)
+        + mem::size_of_val(&metadata.quotient_integration.split_derivation_hash)
+        + zk_column_degree_bounds_size_estimate(
+            &metadata.quotient_integration.quotient_degree_bounds,
+        )
+}
+
+impl<H: MerkleHasherLifted> SizeEstimate for ZkCommitmentSchemeProof<H> {
+    fn size_estimate(&self) -> usize {
+        mem::size_of_val(&self.version)
+            + self.randomized_pcs_proof.size_estimate()
+            + self.fri_batch_mask.size_estimate()
+            + zk_public_metadata_size_estimate(&self.public_metadata)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkStarkProof<H: MerkleHasherLifted>(pub ZkCommitmentSchemeProof<H>);
 
 impl<H: MerkleHasherLifted> ZkStarkProof<H> {
+    /// Returns the estimate size (in bytes) of the ZK proof.
+    pub fn size_estimate(&self) -> usize {
+        self.0.size_estimate()
+    }
+
     /// Extracts the randomized composition trace Out-Of-Domain-Sample
     /// evaluation from the ZK PCS sampled values.
     pub(crate) fn extract_composition_oods_eval(
@@ -3821,6 +6181,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash: ZkPrivacyMapHash(nonzero_hash()),
             public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: lifting_log_size - log_blowup_factor,
                 h_witness: 0,
@@ -3875,6 +6236,7 @@ mod tests {
             metadata,
             column_degree_bounds,
             quotient_split_mask_profile,
+            logup_statistical_security_budgets: Vec::new(),
         }
     }
 
@@ -4060,6 +6422,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash: ZkPrivacyMapHash(nonzero_hash()),
             public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: lifting_log_size - log_blowup_factor,
                 h_witness: 1 << (lifting_log_size - log_blowup_factor),
@@ -4547,20 +6910,55 @@ mod tests {
                 CirclePoint::<SecureField>::get_point(17),
                 &TreeVec(vec![vec![vec![0]]]),
                 &TreeVec(vec![vec![1]]),
-                10,
+                u32::MAX,
                 6,
                 &ZkOodsExclusionSet {
                     forbidden_cosets: vec![],
                     reject_line_degeneracy: false,
                 },
             ),
-            Err(ZkOodsSamplePointPlanError::SamplePointLiftDeltaTooLarge {
-                tree_index: 0,
-                column_index: 0,
-                delta: 9,
-                max: ZK_OODS_MAX_SAMPLE_POINT_LIFT_DELTA,
-            })
+            Err(ZkOodsSamplePointPlanError::InvalidSamplePointLiftDomain { log_size: u32::MAX })
         ));
+
+        assert_eq!(
+            plan_zk_oods_sample_points(
+                CirclePoint::<SecureField>::get_point(17),
+                &TreeVec(vec![vec![vec![0]]]),
+                &TreeVec(vec![vec![1]]),
+                10,
+                6,
+                &ZkOodsExclusionSet {
+                    forbidden_cosets: vec![],
+                    reject_line_degeneracy: false,
+                },
+            )
+            .unwrap()
+            .max_delta,
+            9
+        );
+
+        for (committed_log_size, lifting_log_size, expected_delta) in [(1, 11, 10), (1, 13, 12)] {
+            let plan = plan_zk_oods_sample_points(
+                CirclePoint::<SecureField>::get_point(17),
+                &TreeVec(vec![vec![vec![0, 1]]]),
+                &TreeVec(vec![vec![committed_log_size]]),
+                lifting_log_size,
+                6,
+                &ZkOodsExclusionSet {
+                    forbidden_cosets: vec![],
+                    reject_line_degeneracy: false,
+                },
+            )
+            .unwrap();
+
+            assert_eq!(plan.max_delta, expected_delta);
+            for (semantic_point, pcs_point) in plan.semantic_sample_points[0][0]
+                .iter()
+                .zip(plan.pcs_sample_points[0][0].iter())
+            {
+                assert_eq!(pcs_point.repeated_double(expected_delta), *semantic_point);
+            }
+        }
     }
 
     #[test]
@@ -5046,6 +7444,7 @@ mod tests {
                 log_degree_bound: 5,
             }],
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         assert_eq!(
@@ -5073,6 +7472,7 @@ mod tests {
             metadata,
             column_degree_bounds: Vec::new(),
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         assert_eq!(
@@ -5093,6 +7493,7 @@ mod tests {
             metadata: metadata.clone(),
             column_degree_bounds: expected_zk_column_degree_bounds(&metadata),
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         assert_eq!(
@@ -5176,6 +7577,7 @@ mod tests {
             quotient_split_mask_profile: Some(
                 stwo_composition_quotient_split_mask_profile(1, 6, 5, 32, 6, 5).unwrap(),
             ),
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         assert_eq!(
@@ -5196,6 +7598,7 @@ mod tests {
                 log_degree_bound: 15,
             }],
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         assert_eq!(
@@ -5234,6 +7637,8 @@ mod tests {
             entries: vec![ZkPrivateColumnScopeEntry {
                 range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: 3,
+                semantic_trace_domain_log_sizes: vec![3],
             }],
         };
         let scope_hash = canonical_zk_private_column_scope_hash(&scope);
@@ -5247,6 +7652,36 @@ mod tests {
             ),
             Err(ZkPrivateColumnScopeValidationError::NonSingletonPrivateRange { range })
         );
+    }
+
+    #[test]
+    fn private_column_scope_accepts_reviewed_logup_private_column() {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let mut privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(zero_hash()),
+        };
+        privacy_map.hash = canonical_zk_privacy_map_hash(&privacy_map);
+        let mut scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: zero_hash(),
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range,
+                usage: ZkPrivateColumnUsage::LogUp,
+                trace_domain_log_size: 3,
+                semantic_trace_domain_log_sizes: vec![3],
+            }],
+        };
+        let scope_hash = canonical_zk_private_column_scope_hash(&scope);
+        scope.hash = scope_hash;
+
+        assert!(validate_zk_private_column_scope_for_witness_randomization(
+            &privacy_map,
+            scope_hash,
+            &scope,
+        )
+        .is_ok());
     }
 
     #[test]
@@ -5329,6 +7764,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash: privacy_map.hash,
             public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: 3,
                 h_witness: 2,
@@ -5408,6 +7844,8 @@ mod tests {
             entries: vec![ZkPrivateColumnScopeEntry {
                 range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: trace_domain.log_size(),
+                semantic_trace_domain_log_sizes: vec![trace_domain.log_size()],
             }],
         };
         private_column_scope.hash = canonical_zk_private_column_scope_hash(&private_column_scope);
@@ -5419,6 +7857,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash(nonzero_hash()),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: trace_domain.log_size(),
                 h_witness,
@@ -5434,8 +7873,11 @@ mod tests {
                         trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(
                             trace_domain,
                         )),
+                        semantic_trace_domains: vec![ZkCircleCosetEncoding::from(
+                            zk_trace_domain_half_coset(trace_domain),
+                        )],
                         randomized_log_degree,
-                        randomizer_dimension: h_witness,
+                        randomizer_dimension: 1 << trace_domain.log_size(),
                     }],
                 ),
                 private_column_scope_hash: private_column_scope.hash,
@@ -5452,6 +7894,7 @@ mod tests {
             metadata,
             column_degree_bounds: vec![private_degree_bound],
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
         let audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,
@@ -5609,10 +8052,14 @@ mod tests {
                 ZkPrivateColumnScopeEntry {
                     range: range1,
                     usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                    trace_domain_log_size: 4,
+                    semantic_trace_domain_log_sizes: vec![4],
                 },
                 ZkPrivateColumnScopeEntry {
                     range: range0,
                     usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                    trace_domain_log_size: 3,
+                    semantic_trace_domain_log_sizes: vec![3],
                 },
             ],
         };
@@ -5620,6 +8067,8 @@ mod tests {
         canonical_scope.canonicalize();
         let mut changed_scope = canonical_scope.clone();
         changed_scope.entries[0].usage = ZkPrivateColumnUsage::Lookup;
+        let mut changed_domain_scope = canonical_scope.clone();
+        changed_domain_scope.entries[0].trace_domain_log_size += 1;
 
         assert_eq!(
             canonical_zk_private_column_scope_hash(&scope),
@@ -5628,6 +8077,40 @@ mod tests {
         assert_ne!(
             canonical_zk_private_column_scope_hash(&canonical_scope),
             canonical_zk_private_column_scope_hash(&changed_scope)
+        );
+        assert_ne!(
+            canonical_zk_private_column_scope_hash(&canonical_scope),
+            canonical_zk_private_column_scope_hash(&changed_domain_scope)
+        );
+    }
+
+    #[test]
+    fn privacy_map_hash_is_canonical_and_binds_ranges() {
+        let range0 = ZkColumnRange::new(0, 0, 1);
+        let range1 = ZkColumnRange::new(0, 1, 2);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range1, range0],
+            hash: ZkPrivacyMapHash(zero_hash()),
+        };
+        let canonical_privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range0, range1],
+            hash: ZkPrivacyMapHash(zero_hash()),
+        };
+        let changed_privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range0],
+            hash: ZkPrivacyMapHash(zero_hash()),
+        };
+
+        assert_eq!(
+            canonical_zk_privacy_map_hash(&privacy_map),
+            canonical_zk_privacy_map_hash(&canonical_privacy_map)
+        );
+        assert_ne!(
+            canonical_zk_privacy_map_hash(&canonical_privacy_map),
+            canonical_zk_privacy_map_hash(&changed_privacy_map)
         );
     }
 
@@ -5641,12 +8124,14 @@ mod tests {
             ZkRandomizerSpaceEntry {
                 range: range1,
                 trace_domain,
+                semantic_trace_domains: vec![trace_domain],
                 randomized_log_degree: 5,
                 randomizer_dimension: 8,
             },
             ZkRandomizerSpaceEntry {
                 range: range0,
                 trace_domain,
+                semantic_trace_domains: vec![trace_domain],
                 randomized_log_degree: 5,
                 randomizer_dimension: 8,
             },
@@ -5972,6 +8457,725 @@ mod tests {
                 required: 16,
                 available: 0,
             })
+        );
+    }
+
+    struct TestPrivacyProvider {
+        complete: bool,
+        dependencies: Vec<ZkPrivacyDependency>,
+        logup_claim_metadata_complete: bool,
+        logup_claim_manifest: Vec<ZkLogupClaimManifestEntry>,
+        logup_claim_policies: Vec<ZkLogupClaimPolicy>,
+        logup_statistical_aggregate_groups: Vec<ZkLogupStatisticalAggregateGroup>,
+    }
+
+    fn test_logup_claim_policy() -> ZkLogupClaimPolicy {
+        ZkLogupClaimPolicy {
+            interaction_index: 0,
+            claim_index: 0,
+            visibility: ZkLogupClaimVisibility::SemanticallyPublic,
+            semantic_domain: b"test.logup.claim.public.v1".to_vec(),
+            semantic_statement: b"test fixture declares this scalar public".to_vec(),
+        }
+    }
+
+    fn test_statistical_logup_claim_policy() -> ZkLogupClaimPolicy {
+        ZkLogupClaimPolicy {
+            interaction_index: 0,
+            claim_index: 0,
+            visibility: ZkLogupClaimVisibility::StatisticalAggregate { aggregate_id: 7 },
+            semantic_domain: vec![],
+            semantic_statement: vec![],
+        }
+    }
+
+    fn test_logup_statistical_aggregate_group(
+        min_statistical_security_bits: u32,
+    ) -> ZkLogupStatisticalAggregateGroup {
+        ZkLogupStatisticalAggregateGroup {
+            aggregate_id: 7,
+            target: ZkLogupStatisticalAggregateTarget::Zero,
+            relation_domain: b"test.logup.aggregate.relation.v1".to_vec(),
+            relation_statement: b"private send receive aggregate sums to zero".to_vec(),
+            private_lookup_term_count_bound: 16,
+            lookup_challenge_count: 2,
+            expected_proof_volume: 1024,
+            min_statistical_security_bits,
+            safety_margin_bits: 8,
+        }
+    }
+
+    fn complete_test_privacy_provider(
+        dependencies: Vec<ZkPrivacyDependency>,
+    ) -> TestPrivacyProvider {
+        TestPrivacyProvider {
+            complete: true,
+            dependencies,
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![],
+        }
+    }
+
+    impl ZkAirPrivacyProvider for TestPrivacyProvider {
+        fn air_id(&self) -> ZkAirId {
+            ZkAirId(b"test.air.v1".to_vec())
+        }
+
+        fn component_column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+            TreeVec::new(vec![vec![2], vec![2, 2], vec![2]])
+        }
+
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            3
+        }
+
+        fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+            vec![
+                ZkTraceTreeScope::Preprocessed,
+                ZkTraceTreeScope::OriginalTrace,
+                ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 0,
+                },
+            ]
+        }
+
+        fn public_roots(&self) -> Vec<ZkColumnRange> {
+            vec![ZkColumnRange::new(0, 0, 1)]
+        }
+
+        fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+            vec![ZkPrivateRoot {
+                range: ZkColumnRange::new(1, 0, 2),
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                reason: ZkPrivacyReason::Witness,
+            }]
+        }
+
+        fn dependency_edges(&self) -> Vec<ZkPrivacyDependency> {
+            self.dependencies.clone()
+        }
+
+        fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+            if self.complete {
+                ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure
+            } else {
+                ZkDependencyMetadataCompleteness::Incomplete
+            }
+        }
+
+        fn logup_claim_policies(&self) -> Vec<ZkLogupClaimPolicy> {
+            self.logup_claim_policies.clone()
+        }
+
+        fn logup_claim_manifest(&self) -> Vec<ZkLogupClaimManifestEntry> {
+            self.logup_claim_manifest.clone()
+        }
+
+        fn logup_statistical_aggregate_groups(&self) -> Vec<ZkLogupStatisticalAggregateGroup> {
+            self.logup_statistical_aggregate_groups.clone()
+        }
+
+        fn logup_claim_metadata_completeness(&self) -> ZkLogupClaimMetadataCompleteness {
+            if self.logup_claim_metadata_complete {
+                ZkLogupClaimMetadataCompleteness::Complete
+            } else {
+                ZkLogupClaimMetadataCompleteness::Incomplete
+            }
+        }
+
+        fn application_domain(&self) -> &[u8] {
+            b"test.zk.domain"
+        }
+
+        fn application_statement(&self) -> Vec<u8> {
+            b"test-public-statement".to_vec()
+        }
+    }
+
+    #[test]
+    fn privacy_provider_closure_marks_logup_interaction_private() {
+        let provider = complete_test_privacy_provider(vec![ZkPrivacyDependency {
+            from: ZkColumnRange::new(1, 0, 2),
+            to: ZkColumnRange::new(2, 0, 1),
+            kind: ZkDependencyKind::LogUpRunningSum,
+        }]);
+
+        let metadata = build_zk_air_metadata_from_privacy_provider(
+            &provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+
+        assert!(metadata.private_column_scope.entries.iter().any(|entry| {
+            entry.range == ZkColumnRange::new(1, 0, 1)
+                && entry.usage == ZkPrivateColumnUsage::OrdinaryWitness
+        }));
+        assert!(metadata.private_column_scope.entries.iter().any(|entry| {
+            entry.range == ZkColumnRange::new(1, 1, 2)
+                && entry.usage == ZkPrivateColumnUsage::OrdinaryWitness
+        }));
+        assert!(metadata.private_column_scope.entries.iter().any(|entry| {
+            entry.range == ZkColumnRange::new(2, 0, 1) && entry.usage == ZkPrivateColumnUsage::LogUp
+        }));
+        assert_eq!(
+            metadata.logup_claim_metadata_completeness,
+            ZkLogupClaimMetadataCompleteness::Complete
+        );
+        assert_eq!(
+            metadata.logup_claim_manifest,
+            vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }]
+        );
+        assert_eq!(
+            metadata.logup_claim_policies,
+            vec![test_logup_claim_policy()]
+        );
+    }
+
+    #[test]
+    fn privacy_provider_fail_closed_rejects_incomplete_dependency_metadata() {
+        let provider = TestPrivacyProvider {
+            complete: false,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteDependencyMetadata)
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_relaxed_modes_still_reject_incomplete_dependency_metadata() {
+        let provider = TestPrivacyProvider {
+            complete: false,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::UseDeclaredDependenciesOnly
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteDependencyMetadata)
+        ));
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::MarkAllInteractionDerivedPrivate
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteDependencyMetadata)
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_invalid_dependency_target_even_if_source_is_public() {
+        let provider = complete_test_privacy_provider(vec![ZkPrivacyDependency {
+            from: ZkColumnRange::new(0, 0, 1),
+            to: ZkColumnRange::new(9, 0, 1),
+            kind: ZkDependencyKind::AirConstraint,
+        }]);
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::InvalidPrivacyDependencyRange {
+                range: ZkColumnRange {
+                    tree_index: 9,
+                    column_start: 0,
+                    column_end: 1,
+                },
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_unclassified_air_columns() {
+        struct PartialProvider;
+
+        impl ZkAirPrivacyProvider for PartialProvider {
+            fn air_id(&self) -> ZkAirId {
+                ZkAirId(b"partial.test.air.v1".to_vec())
+            }
+
+            fn component_column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+                TreeVec::new(vec![vec![2], vec![2, 2]])
+            }
+
+            fn max_constraint_log_degree_bound(&self) -> u32 {
+                3
+            }
+
+            fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+                vec![
+                    ZkTraceTreeScope::Preprocessed,
+                    ZkTraceTreeScope::OriginalTrace,
+                ]
+            }
+
+            fn public_roots(&self) -> Vec<ZkColumnRange> {
+                vec![ZkColumnRange::new(0, 0, 1)]
+            }
+
+            fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+                vec![ZkPrivateRoot {
+                    range: ZkColumnRange::new(1, 0, 1),
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                    reason: ZkPrivacyReason::Witness,
+                }]
+            }
+
+            fn dependency_edges(&self) -> Vec<ZkPrivacyDependency> {
+                vec![]
+            }
+
+            fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+                ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure
+            }
+
+            fn application_domain(&self) -> &[u8] {
+                b"partial.test.zk.domain"
+            }
+
+            fn application_statement(&self) -> Vec<u8> {
+                b"partial-test-public-statement".to_vec()
+            }
+        }
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &PartialProvider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::UnclassifiedAirColumn {
+                range: ZkColumnRange {
+                    tree_index: 1,
+                    column_start: 1,
+                    column_end: 2,
+                },
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_missing_private_interaction_closure() {
+        let provider = complete_test_privacy_provider(vec![]);
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::MissingPrivateInteractionColumn {
+                range: ZkColumnRange {
+                    tree_index: 2,
+                    column_start: 0,
+                    column_end: 1,
+                },
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_private_logup_without_claim_metadata() {
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: false,
+            logup_claim_manifest: vec![],
+            logup_claim_policies: vec![],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteLogupClaimMetadata)
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_private_logup_without_claim_for_interaction() {
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![],
+            logup_claim_policies: vec![],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::MissingPrivateLogupClaimManifest {
+                interaction_index: 0,
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_private_unsupported_logup_claim() {
+        let mut policy = test_logup_claim_policy();
+        policy.visibility = ZkLogupClaimVisibility::PrivateUnsupported;
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![policy],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(
+                ZkAirMetadataBuildError::UnsupportedPrivateLogupClaimPolicy {
+                    interaction_index: 0,
+                    claim_index: 0,
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_wrong_logup_claim_index() {
+        let mut policy = test_logup_claim_policy();
+        policy.claim_index = 999;
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![policy],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: 0,
+                claim_index: 999,
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_rejects_stale_logup_claim_policy_without_private_logup() {
+        struct PublicOnlyProvider;
+
+        impl ZkAirPrivacyProvider for PublicOnlyProvider {
+            fn air_id(&self) -> ZkAirId {
+                ZkAirId(b"public-only.test.air.v1".to_vec())
+            }
+
+            fn component_column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+                TreeVec::new(vec![vec![2]])
+            }
+
+            fn max_constraint_log_degree_bound(&self) -> u32 {
+                3
+            }
+
+            fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+                vec![ZkTraceTreeScope::Preprocessed]
+            }
+
+            fn public_roots(&self) -> Vec<ZkColumnRange> {
+                vec![ZkColumnRange::new(0, 0, 1)]
+            }
+
+            fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+                vec![]
+            }
+
+            fn dependency_edges(&self) -> Vec<ZkPrivacyDependency> {
+                vec![]
+            }
+
+            fn logup_claim_policies(&self) -> Vec<ZkLogupClaimPolicy> {
+                vec![test_logup_claim_policy()]
+            }
+
+            fn logup_claim_metadata_completeness(&self) -> ZkLogupClaimMetadataCompleteness {
+                ZkLogupClaimMetadataCompleteness::Complete
+            }
+
+            fn application_domain(&self) -> &[u8] {
+                b"public-only.test.zk.domain"
+            }
+
+            fn application_statement(&self) -> Vec<u8> {
+                b"public-only-test".to_vec()
+            }
+        }
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &PublicOnlyProvider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed
+            ),
+            Err(ZkAirMetadataBuildError::InvalidLogupClaimPolicy {
+                interaction_index: 0,
+                claim_index: 0,
+            })
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_binds_logup_claim_policy_to_public_statement() {
+        let provider = complete_test_privacy_provider(vec![ZkPrivacyDependency {
+            from: ZkColumnRange::new(1, 0, 2),
+            to: ZkColumnRange::new(2, 0, 1),
+            kind: ZkDependencyKind::LogUpRunningSum,
+        }]);
+        let mut changed_policy = test_logup_claim_policy();
+        changed_policy.semantic_statement = b"changed semantic public rationale".to_vec();
+        let changed_provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: provider.dependencies.clone(),
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: provider.logup_claim_manifest.clone(),
+            logup_claim_policies: vec![changed_policy],
+            logup_statistical_aggregate_groups: vec![],
+        };
+
+        let metadata = build_zk_air_metadata_from_privacy_provider(
+            &provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+        let changed_metadata = build_zk_air_metadata_from_privacy_provider(
+            &changed_provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+
+        assert_ne!(
+            metadata.public_statement_hash,
+            changed_metadata.public_statement_hash
+        );
+    }
+
+    #[test]
+    fn privacy_provider_accepts_statistical_logup_aggregate_metadata() {
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_statistical_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![test_logup_statistical_aggregate_group(100)],
+        };
+
+        let metadata = build_zk_air_metadata_from_privacy_provider(
+            &provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.logup_statistical_aggregate_groups,
+            vec![test_logup_statistical_aggregate_group(100)]
+        );
+        assert_eq!(
+            metadata.logup_statistical_security_budgets,
+            vec![ZkLogupStatisticalSecurityBudget {
+                aggregate_id: 7,
+                extension_field_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+                private_lookup_term_count_bound: 16,
+                lookup_challenge_count: 2,
+                expected_proof_volume: 1024,
+                safety_margin_bits: 8,
+                computed_security_bits: 101,
+                min_statistical_security_bits: 100,
+            }]
+        );
+
+        let artifacts = build_zk_config_from_air_privacy_provider(
+            &provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+        assert_eq!(
+            artifacts.verifier_config.logup_statistical_security_budgets,
+            metadata.logup_statistical_security_budgets
+        );
+        assert_eq!(
+            validate_zk_public_metadata_against_verifier_config(
+                &artifacts.metadata,
+                &artifacts.verifier_config,
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn privacy_provider_rejects_underbudget_statistical_logup_aggregate() {
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_statistical_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![test_logup_statistical_aggregate_group(102)],
+        };
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                1,
+                ZkPrivacyInferenceMode::FailClosed,
+            ),
+            Err(
+                ZkAirMetadataBuildError::InsufficientLogupStatisticalSecurity {
+                    aggregate_id: 7,
+                    computed_bits: 101,
+                    min_bits: 102,
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn privacy_provider_binds_statistical_logup_aggregate_to_public_statement() {
+        let provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, 2),
+                to: ZkColumnRange::new(2, 0, 1),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }],
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: vec![ZkLogupClaimManifestEntry {
+                interaction_index: 0,
+                claim_count: 1,
+            }],
+            logup_claim_policies: vec![test_statistical_logup_claim_policy()],
+            logup_statistical_aggregate_groups: vec![test_logup_statistical_aggregate_group(100)],
+        };
+        let mut changed_group = test_logup_statistical_aggregate_group(100);
+        changed_group.private_lookup_term_count_bound += 1;
+        let changed_provider = TestPrivacyProvider {
+            complete: true,
+            dependencies: provider.dependencies.clone(),
+            logup_claim_metadata_complete: true,
+            logup_claim_manifest: provider.logup_claim_manifest.clone(),
+            logup_claim_policies: provider.logup_claim_policies.clone(),
+            logup_statistical_aggregate_groups: vec![changed_group],
+        };
+
+        let metadata = build_zk_air_metadata_from_privacy_provider(
+            &provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+        let changed_metadata = build_zk_air_metadata_from_privacy_provider(
+            &changed_provider,
+            1,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .unwrap();
+
+        assert_ne!(
+            metadata.public_statement_hash,
+            changed_metadata.public_statement_hash
         );
     }
 }

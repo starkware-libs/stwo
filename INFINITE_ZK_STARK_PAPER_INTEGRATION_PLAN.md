@@ -11,6 +11,16 @@ STWO in a paper-grounded way, with prover-private polynomial randomization and
 FRI batch masking. This plan intentionally excludes additive sampled-value
 mask/unmask designs.
 
+Current generalization status:
+
+- See `INFINITE_ZK_STARK_GENERAL_SOLUTION_STATUS.md`.
+- STWO now has a reusable AIR metadata builder for public/private tree scopes,
+  private usage policy, checked degree geometry, public metadata hashes,
+  randomizer-space metadata, and verifier config artifacts.
+- AIR-specific builders must still provide reviewed private degree expansion
+  metadata; the generic builder deliberately does not infer private degree
+  growth from public AIR degree alone.
+
 ## 1. Non-negotiable boundaries
 
 - Do not send a value together with the mask/randomizer that recovers it.

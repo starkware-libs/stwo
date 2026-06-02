@@ -7,7 +7,7 @@ use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::uninit_vec;
 use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::SecureColumn;
+use stwo::prover::backend::simd::column::{BaseColumn, SecureColumn};
 use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
@@ -107,15 +107,13 @@ impl LogupTraceGenerator {
     /// Finalize the trace. Returns the trace and the total sum of the last column.
     /// The last column is shifted by the cumsum_shift.
     pub fn finalize_last(
-        mut self,
+        self,
     ) -> (
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         SecureField,
     ) {
-        let mut last_col_coords = self.trace.pop().unwrap().columns;
-
-        // Compute cumsum_shift.
-        let coordinate_sums = last_col_coords.each_ref().map(|c| {
+        let last_col_coords = self.trace.last().unwrap().columns.each_ref();
+        let coordinate_sums = last_col_coords.map(|c| {
             c.data
                 .iter()
                 .copied()
@@ -124,6 +122,53 @@ impl LogupTraceGenerator {
         });
         let claimed_sum = SecureField::from_m31_array(coordinate_sums);
         let cumsum_shift = claimed_sum / BaseField::from_u32_unchecked(1 << self.log_size);
+
+        (
+            self.finalize_last_with_shift(cumsum_shift, None),
+            claimed_sum,
+        )
+    }
+
+    /// Finalizes a private LogUp trace using a public masked claim.
+    ///
+    /// The returned correction shift is `(masked_claim - actual_claim) / n_rows`.
+    /// The correction shift is emitted as the first extension column in the
+    /// interaction trace and must be consumed by
+    /// `LogupClaim::MaskedWithPrivateCorrection(masked_claim)`.
+    pub fn finalize_last_masked_with_private_correction(
+        self,
+        masked_claim: SecureField,
+    ) -> (
+        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        SecureField,
+        SecureField,
+    ) {
+        let last_col_coords = self.trace.last().unwrap().columns.each_ref();
+        let coordinate_sums = last_col_coords.map(|c| {
+            c.data
+                .iter()
+                .copied()
+                .sum::<PackedBaseField>()
+                .pointwise_sum()
+        });
+        let claimed_sum = SecureField::from_m31_array(coordinate_sums);
+        let n_rows = BaseField::from_u32_unchecked(1 << self.log_size);
+        let cumsum_shift = claimed_sum / n_rows;
+        let correction_shift = (masked_claim - claimed_sum) / n_rows;
+
+        (
+            self.finalize_last_with_shift(cumsum_shift, Some(correction_shift)),
+            claimed_sum,
+            correction_shift,
+        )
+    }
+
+    fn finalize_last_with_shift(
+        mut self,
+        cumsum_shift: SecureField,
+        correction_shift: Option<SecureField>,
+    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        let mut last_col_coords = self.trace.pop().unwrap().columns;
         let packed_cumsum_shift = PackedSecureField::broadcast(cumsum_shift);
 
         last_col_coords.iter_mut().enumerate().for_each(|(i, c)| {
@@ -136,7 +181,9 @@ impl LogupTraceGenerator {
             columns: coord_prefix_sum,
         };
         self.trace.push(secure_prefix_sum);
-        let trace = self
+
+        let domain = CanonicCoset::new(self.log_size).circle_domain();
+        let mut trace = self
             .trace
             .into_iter()
             .flat_map(|eval| {
@@ -145,7 +192,16 @@ impl LogupTraceGenerator {
                 })
             })
             .collect_vec();
-        (trace, claimed_sum)
+        if let Some(correction_shift) = correction_shift {
+            let correction_coords = correction_shift.to_m31_array();
+            trace.extend(correction_coords.map(|coord| {
+                CircleEvaluation::new(
+                    domain,
+                    BaseColumn::from_iter((0..(1 << self.log_size)).map(|_| coord)),
+                )
+            }));
+        }
+        trace
     }
 }
 

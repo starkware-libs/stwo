@@ -11,13 +11,18 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::{verify, VerificationError};
+use stwo::core::zk::{
+    zk_singleton_column_ranges, ZkAirId, ZkAirPrivacyProvider, ZkColumnRange, ZkDependencyKind,
+    ZkDependencyMetadataCompleteness, ZkPrivacyDependency, ZkPrivacyReason, ZkPrivateColumnUsage,
+    ZkPrivateRoot, ZkTraceTreeScope,
+};
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::BackendForChannel;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
+use stwo_constraint_framework::{FrameworkEval, TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
@@ -271,6 +276,155 @@ impl BlakeComponents {
     }
 }
 
+#[cfg(test)]
+struct BlakeZkPrivacyProvider<'a> {
+    stmt0: &'a BlakeStatement0,
+}
+
+#[cfg(test)]
+impl<'a> BlakeZkPrivacyProvider<'a> {
+    const fn new(stmt0: &'a BlakeStatement0) -> Self {
+        Self { stmt0 }
+    }
+}
+
+#[cfg(test)]
+fn blake_max_constraint_log_degree_bound(log_size: u32) -> u32 {
+    chain![
+        [BlakeSchedulerEval {
+            log_size,
+            blake_lookup_elements: BlakeElements::dummy(),
+            round_lookup_elements: RoundElements::dummy(),
+            claimed_sum: SecureField::zero(),
+        }
+        .max_constraint_log_degree_bound()],
+        ROUND_LOG_SPLIT.map(|l| {
+            BlakeRoundEval {
+                log_size: log_size + l,
+                xor_lookup_elements: BlakeXorElements::dummy(),
+                round_lookup_elements: RoundElements::dummy(),
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound()
+        }),
+        [
+            xor12::XorTableEval::<12, 4> {
+                lookup_elements: BlakeXorElements::dummy().xor12,
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound(),
+            xor9::XorTableEval::<9, 2> {
+                lookup_elements: BlakeXorElements::dummy().xor9,
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound(),
+            xor8::XorTableEval::<8, 2> {
+                lookup_elements: BlakeXorElements::dummy().xor8,
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound(),
+            xor7::XorTableEval::<7, 2> {
+                lookup_elements: BlakeXorElements::dummy().xor7,
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound(),
+            xor4::XorTableEval::<4, 0> {
+                lookup_elements: BlakeXorElements::dummy().xor4,
+                claimed_sum: SecureField::zero(),
+            }
+            .max_constraint_log_degree_bound(),
+        ]
+    ]
+    .into_iter()
+    .max()
+    .expect("Blake AIR must have at least one component")
+}
+
+#[cfg(test)]
+impl ZkAirPrivacyProvider for BlakeZkPrivacyProvider<'_> {
+    fn air_id(&self) -> ZkAirId {
+        ZkAirId(b"stwo.examples.blake2s.component.zk.v1".to_vec())
+    }
+
+    fn component_column_log_sizes(&self) -> TreeVec<Vec<u32>> {
+        self.stmt0.log_sizes()
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        blake_max_constraint_log_degree_bound(self.stmt0.log_size)
+    }
+
+    fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+        vec![
+            ZkTraceTreeScope::Preprocessed,
+            ZkTraceTreeScope::OriginalTrace,
+            ZkTraceTreeScope::InteractionTrace {
+                interaction_index: 0,
+            },
+        ]
+    }
+
+    fn public_roots(&self) -> Vec<ZkColumnRange> {
+        let log_sizes = self.stmt0.log_sizes();
+        if log_sizes[0].is_empty() {
+            vec![]
+        } else {
+            vec![ZkColumnRange::new(0, 0, log_sizes[0].len())]
+        }
+    }
+
+    fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+        let log_sizes = self.stmt0.log_sizes();
+        zk_singleton_column_ranges(1, log_sizes[1].len())
+            .into_iter()
+            .map(|range| ZkPrivateRoot {
+                range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                reason: ZkPrivacyReason::Witness,
+            })
+            .collect()
+    }
+
+    fn dependency_edges(&self) -> Vec<ZkPrivacyDependency> {
+        let log_sizes = self.stmt0.log_sizes();
+        if log_sizes[1].is_empty() || log_sizes[2].is_empty() {
+            return vec![];
+        }
+
+        vec![ZkPrivacyDependency {
+            from: ZkColumnRange::new(1, 0, log_sizes[1].len()),
+            to: ZkColumnRange::new(2, 0, log_sizes[2].len()),
+            kind: ZkDependencyKind::LogUpRunningSum,
+        }]
+    }
+
+    fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+        ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure
+    }
+
+    fn application_domain(&self) -> &[u8] {
+        b"stwo.examples.blake2s.zk-public-statement.v1"
+    }
+
+    fn application_statement(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"blake2s-public-compression-statement-private-logup-blocked-v2");
+        bytes.extend_from_slice(&self.stmt0.log_size.to_le_bytes());
+        let log_sizes = self.stmt0.log_sizes();
+        bytes.extend_from_slice(&(log_sizes.0.len() as u64).to_le_bytes());
+        for tree_log_sizes in &log_sizes.0 {
+            bytes.extend_from_slice(&(tree_log_sizes.len() as u64).to_le_bytes());
+            for log_size in tree_log_sizes {
+                bytes.extend_from_slice(&log_size.to_le_bytes());
+            }
+        }
+        bytes.extend_from_slice(
+            &blake_max_constraint_log_degree_bound(self.stmt0.log_size).to_le_bytes(),
+        );
+        bytes
+    }
+}
+
 #[allow(unused)]
 pub fn prove_blake<MC: MerkleChannel>(log_size: u32, config: PcsConfig) -> (BlakeProof<MC::H>)
 where
@@ -521,8 +675,44 @@ mod tests {
 
     use stwo::core::pcs::PcsConfig;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::zk::{
+        build_zk_air_metadata_from_privacy_provider, ZkAirMetadataBuildError, ZkAirPrivacyProvider,
+        ZkPrivacyInferenceMode,
+    };
 
-    use crate::blake::air::{prove_blake, verify_blake};
+    use crate::blake::air::{prove_blake, verify_blake, BlakeStatement0, BlakeZkPrivacyProvider};
+
+    #[test]
+    fn test_blake_zk_provider_uses_statement_log_sizes() {
+        let stmt0 = BlakeStatement0 { log_size: 6 };
+        let provider = BlakeZkPrivacyProvider::new(&stmt0);
+
+        assert_eq!(provider.component_column_log_sizes().0, stmt0.log_sizes().0);
+        assert_eq!(
+            provider.public_roots()[0].column_end,
+            stmt0.log_sizes()[0].len()
+        );
+        assert_eq!(provider.private_roots().len(), stmt0.log_sizes()[1].len());
+        assert_eq!(
+            provider.dependency_edges()[0].to.column_end,
+            stmt0.log_sizes()[2].len()
+        );
+    }
+
+    #[test]
+    fn test_blake_zk_provider_fails_closed_on_private_logup_claims() {
+        let stmt0 = BlakeStatement0 { log_size: 6 };
+        let provider = BlakeZkPrivacyProvider::new(&stmt0);
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                PcsConfig::default().fri_config.log_blowup_factor,
+                ZkPrivacyInferenceMode::FailClosed,
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteLogupClaimMetadata)
+        ));
+    }
 
     // Note: this test is slow. Only run in release.
     #[cfg_attr(not(feature = "slow-tests"), ignore)]

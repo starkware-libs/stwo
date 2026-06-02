@@ -126,7 +126,7 @@ pub struct StarkProofSizeBreakdown {
     pub trace_decommitments: usize,
 }
 
-trait SizeEstimate {
+pub(crate) trait SizeEstimate {
     fn size_estimate(&self) -> usize;
 }
 

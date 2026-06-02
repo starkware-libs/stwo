@@ -10,7 +10,7 @@ use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point,
-    draw_zk_oods_sample_point_plan_with_semantic_domains, mix_zk_public_metadata,
+    draw_zk_oods_sample_point_plan_with_semantic_sample_domains, mix_zk_public_metadata,
     mix_zk_quotient_split_mask_profile, validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_witness_metadata,
@@ -205,16 +205,20 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
             .ok_or(ProvingError::MissingZkMaskOffsets)?;
         mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let (mut semantic_step_log_sizes, mut semantic_base_doublings) =
-            components.semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
-        semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
-        semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+        let (mut semantic_sample_step_log_sizes, mut semantic_sample_base_doublings) = components
+            .semantic_sample_step_log_sizes_and_lifts(include_all_preprocessed_columns)
+            .ok_or(ProvingError::MissingZkMaskOffsets)?;
+        semantic_sample_step_log_sizes.push(vec![
+            vec![max_log_degree_bound];
+            2 * SECURE_EXTENSION_DEGREE
+        ]);
+        semantic_sample_base_doublings.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
+        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_sample_domains(
             channel,
             &mask_offsets,
-            &semantic_step_log_sizes,
-            &semantic_base_doublings,
+            &semantic_sample_step_log_sizes,
+            &semantic_sample_base_doublings,
             &committed_column_log_sizes,
             lifting_log_size,
             &ZkOodsExclusionSet {
@@ -348,6 +352,7 @@ where
         metadata: zk_config.metadata.clone(),
         column_degree_bounds: zk_config.column_degree_bounds.clone(),
         quotient_split_mask_profile: zk_config.quotient_split_mask_profile,
+        logup_statistical_security_budgets: zk_config.logup_statistical_security_budgets.clone(),
     };
     let zk_degree_profile = derive_zk_stark_degree_bound_profile(
         base_column_log_degree_bounds.clone(),
@@ -504,17 +509,22 @@ where
                 .ok_or(ProvingError::MissingZkMaskOffsets)?;
             mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-            let (mut semantic_step_log_sizes, mut semantic_base_doublings) = component_provers
-                .components()
-                .semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
-            semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
-            semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+            let (mut semantic_sample_step_log_sizes, mut semantic_sample_base_doublings) =
+                component_provers
+                    .components()
+                    .semantic_sample_step_log_sizes_and_lifts(include_all_preprocessed_columns)
+                    .ok_or(ProvingError::MissingZkMaskOffsets)?;
+            semantic_sample_step_log_sizes.push(vec![
+                vec![max_log_degree_bound];
+                2 * SECURE_EXTENSION_DEGREE
+            ]);
+            semantic_sample_base_doublings.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-            let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
+            let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_sample_domains(
                 channel,
                 &mask_offsets,
-                &semantic_step_log_sizes,
-                &semantic_base_doublings,
+                &semantic_sample_step_log_sizes,
+                &semantic_sample_base_doublings,
                 &zk_committed_column_log_sizes,
                 lifting_log_size,
                 &oods_exclusion_set,
@@ -734,6 +744,8 @@ mod tests {
             entries: vec![ZkPrivateColumnScopeEntry {
                 range: private_range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: TEST_TRACE_LOG_SIZE,
+                semantic_trace_domain_log_sizes: vec![TEST_TRACE_LOG_SIZE],
             }],
         };
         let private_column_scope_hash =
@@ -746,6 +758,9 @@ mod tests {
             &[ZkRandomizerSpaceEntry {
                 range: private_range,
                 trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                semantic_trace_domains: vec![ZkCircleCosetEncoding::from(
+                    zk_trace_domain_half_coset(trace_domain),
+                )],
                 randomized_log_degree: TEST_RANDOMIZED_LOG_DEGREE,
                 randomizer_dimension: h_witness,
             }],
@@ -764,6 +779,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash(test_hash(2)),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: TEST_TRACE_LOG_SIZE,
                 h_witness,
@@ -804,6 +820,7 @@ mod tests {
             privacy_map: privacy_map.clone(),
             private_column_scope: Some(private_column_scope.clone()),
             quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            logup_statistical_security_budgets: Vec::new(),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -814,6 +831,7 @@ mod tests {
             metadata,
             column_degree_bounds,
             quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            logup_statistical_security_budgets: Vec::new(),
         };
         let verifier_audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,

@@ -670,28 +670,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
             return Ok(());
         }
 
-        let Some(randomized_log_degree) = zk_config
-            .metadata
-            .witness_randomization
-            .private_column_degree_bounds
-            .iter()
-            .find(|bound| private_ranges.contains(&bound.range))
-            .map(|bound| bound.log_degree_bound)
-        else {
-            return Err(ZkWitnessRandomizationError::Config(
-                ZkProvingConfigError::MissingPrivateColumnDegreeBounds,
-            ));
-        };
-        let trace_domain =
-            CanonicCoset::new(zk_config.metadata.degree_profile.trace_domain_log_size)
-                .circle_domain();
-        let randomized_domain = CanonicCoset::new(randomized_log_degree).circle_domain();
-        let context = PrecommitZkWitnessRandomizationContext::<B>::new(
-            zk_config,
-            trace_domain,
-            randomized_domain,
-        )?;
-
         for &range in &private_ranges {
             if range.column_end > self.polys.len() {
                 return Err(ZkWitnessRandomizationError::PrivateRangeOutOfBounds {
@@ -701,8 +679,64 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
             }
         }
 
+        let mut contexts = Vec::new();
+        for &range in &private_ranges {
+            let trace_log_size = zk_config
+                .private_column_trace_log_size(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            let semantic_trace_domain_log_sizes = zk_config
+                .private_column_semantic_trace_domain_log_sizes(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            let randomized_log_degree = zk_config
+                .private_column_randomized_log_degree(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            if !contexts.iter().any(|(key, _)| {
+                *key == (
+                    trace_log_size,
+                    semantic_trace_domain_log_sizes.clone(),
+                    randomized_log_degree,
+                )
+            }) {
+                let trace_domain = CanonicCoset::new(trace_log_size).circle_domain();
+                let randomized_domain = CanonicCoset::new(randomized_log_degree).circle_domain();
+                contexts.push((
+                    (
+                        trace_log_size,
+                        semantic_trace_domain_log_sizes.clone(),
+                        randomized_log_degree,
+                    ),
+                    PrecommitZkWitnessRandomizationContext::<B>::new(
+                        zk_config,
+                        trace_domain,
+                        semantic_trace_domain_log_sizes,
+                        randomized_domain,
+                    )?,
+                ));
+            }
+        }
+
         let mut randomized_polys = core::mem::take(&mut self.polys);
         for &range in &private_ranges {
+            let trace_log_size = zk_config
+                .private_column_trace_log_size(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            let semantic_trace_domain_log_sizes = zk_config
+                .private_column_semantic_trace_domain_log_sizes(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            let randomized_log_degree = zk_config
+                .private_column_randomized_log_degree(range)
+                .map_err(ZkWitnessRandomizationError::Config)?;
+            let context = contexts
+                .iter()
+                .find(|(key, _)| {
+                    *key == (
+                        trace_log_size,
+                        semantic_trace_domain_log_sizes.clone(),
+                        randomized_log_degree,
+                    )
+                })
+                .map(|(_, context)| context)
+                .expect("context for private range domain and degree must be created");
             for column_index in range.column_start..range.column_end {
                 randomized_polys[column_index] =
                     context.randomize_range(range, &randomized_polys[column_index], rng)?;
@@ -714,7 +748,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
             .extend(private_ranges.iter().copied());
         self.commitment_scheme
             .zk_witness_randomization_contexts
-            .push(context);
+            .extend(contexts.into_iter().map(|(_, context)| context));
 
         self.commit(channel);
         Ok(())

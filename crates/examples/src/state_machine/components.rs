@@ -7,6 +7,7 @@ use stwo::core::fields::qm31::{SecureField, QM31};
 use stwo::core::pcs::TreeVec;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use stwo::core::zk::ZkStarkProof;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
@@ -14,7 +15,7 @@ use stwo::prover::ComponentProver;
 use stwo_constraint_framework::relation_tracker::{add_to_relation_entries, RelationTrackerEntry};
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
-    PREPROCESSED_TRACE_IDX,
+    StatisticalLogupAggregateComponent, PREPROCESSED_TRACE_IDX,
 };
 
 const LOG_CONSTRAINT_DEGREE: u32 = 1;
@@ -26,6 +27,10 @@ pub type State = [M31; STATE_SIZE];
 
 pub type StateMachineOp0Component = FrameworkComponent<StateTransitionEval<0>>;
 pub type StateMachineOp1Component = FrameworkComponent<StateTransitionEval<1>>;
+pub type StateMachineStatisticalOp0Component =
+    FrameworkComponent<StatisticalStateTransitionEval<0>>;
+pub type StateMachineStatisticalOp1Component =
+    FrameworkComponent<StatisticalStateTransitionEval<1>>;
 
 /// State machine with state of size `STATE_SIZE`.
 /// Transition `COORDINATE` of state increments the state by 1 at that offset.
@@ -65,6 +70,26 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
     }
 }
 
+#[derive(Clone)]
+pub struct StatisticalStateTransitionEval<const COORDINATE: usize> {
+    pub transition: StateTransitionEval<COORDINATE>,
+    pub constraint_log_degree_bound: u32,
+}
+
+impl<const COORDINATE: usize> FrameworkEval for StatisticalStateTransitionEval<COORDINATE> {
+    fn log_size(&self) -> u32 {
+        self.transition.log_size()
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.constraint_log_degree_bound
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        self.transition.evaluate(eval)
+    }
+}
+
 pub struct StateMachineStatement0 {
     pub n: u32,
     pub m: u32,
@@ -101,6 +126,16 @@ impl StateMachineStatement1 {
     }
 }
 
+pub struct StateMachineStatisticalLogupStatement1 {
+    pub x_axis_masked_claim: SecureField,
+    pub y_axis_masked_claim: SecureField,
+}
+impl StateMachineStatisticalLogupStatement1 {
+    pub fn mix_into(&self, channel: &mut impl Channel) {
+        channel.mix_felts(&[self.x_axis_masked_claim, self.y_axis_masked_claim])
+    }
+}
+
 fn state_transition_info<const INDEX: usize>() -> InfoEvaluator {
     let component = StateTransitionEval::<INDEX> {
         log_n_rows: 1,
@@ -131,6 +166,30 @@ impl StateMachineComponents {
     }
 }
 
+pub struct StateMachineStatisticalLogupComponents {
+    pub component0: StateMachineStatisticalOp0Component,
+    pub component1: StateMachineStatisticalOp1Component,
+    pub aggregate_component: StatisticalLogupAggregateComponent,
+}
+
+impl StateMachineStatisticalLogupComponents {
+    pub fn components(&self) -> Vec<&dyn Component> {
+        vec![
+            &self.component0 as &dyn Component,
+            &self.component1 as &dyn Component,
+            &self.aggregate_component as &dyn Component,
+        ]
+    }
+
+    pub fn component_provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
+        vec![
+            &self.component0 as &dyn ComponentProver<SimdBackend>,
+            &self.component1 as &dyn ComponentProver<SimdBackend>,
+            &self.aggregate_component as &dyn ComponentProver<SimdBackend>,
+        ]
+    }
+}
+
 pub fn track_state_machine_relations(
     trace: &TreeVec<Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
     StateMachineComponents {
@@ -153,4 +212,11 @@ pub struct StateMachineProof<H: MerkleHasherLifted> {
     pub stmt0: StateMachineStatement0,
     pub stmt1: StateMachineStatement1,
     pub stark_proof: StarkProof<H>,
+}
+
+pub struct StateMachineStatisticalLogupProof<H: MerkleHasherLifted> {
+    pub public_input: [State; 2], // Initial and final state.
+    pub stmt0: StateMachineStatement0,
+    pub stmt1: StateMachineStatisticalLogupStatement1,
+    pub stark_proof: ZkStarkProof<H>,
 }

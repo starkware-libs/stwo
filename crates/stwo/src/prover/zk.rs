@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::One;
 use rand::rngs::StdRng;
 use rand::{CryptoRng, RngCore, SeedableRng};
 use std_shims::Vec;
@@ -13,16 +14,16 @@ use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
 use crate::core::zk::{
-    build_zk_randomizer_matrices_from_stwo_sample_metadata,
+    build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope,
     canonical_zk_quotient_split_mask_profile_hash, validate_zk_column_degree_bound_ranges,
     validate_zk_private_column_scope_for_witness_randomization, validate_zk_public_only_metadata,
     validate_zk_query_closure_for_witness_randomization, validate_zk_quotient_split_mask_profile,
     validate_zk_quotient_split_mask_query_budget,
     validate_zk_randomizer_rank_profile_for_witness_randomization, zk_trace_domain_half_coset,
     ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange, ZkFriBatchMaskProof,
-    ZkFriBatchMaskQueryValues, ZkMetadataValidationError, ZkPrivacyMap, ZkPrivateColumnScope,
-    ZkPrivateColumnScopeValidationError, ZkProofVersion, ZkPublicMetadata, ZkQueryClosure,
-    ZkQueryClosureValidationError, ZkQuotientSplitMaskProfile,
+    ZkFriBatchMaskQueryValues, ZkLogupStatisticalSecurityBudget, ZkMetadataValidationError,
+    ZkPrivacyMap, ZkPrivateColumnScope, ZkPrivateColumnScopeValidationError, ZkProofVersion,
+    ZkPublicMetadata, ZkQueryClosure, ZkQueryClosureValidationError, ZkQuotientSplitMaskProfile,
     ZkQuotientSplitMaskProfileValidationError, ZkQuotientSplitMaskQueryBudgetError,
     ZkRandomizerRankProfile, ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
     ZK_RANDOMIZER_MATRIX_MAX_DIMENSION,
@@ -61,6 +62,7 @@ pub struct ZkProvingConfig {
     pub privacy_map: ZkPrivacyMap,
     pub private_column_scope: Option<ZkPrivateColumnScope>,
     pub quotient_split_mask_profile: Option<ZkQuotientSplitMaskProfile>,
+    pub logup_statistical_security_budgets: Vec<ZkLogupStatisticalSecurityBudget>,
     pub query_closure: Option<ZkQueryClosure>,
     pub randomizer_rank_profile: Option<ZkRandomizerRankProfile>,
     pub derived_randomizer_metadata: Option<ZkDerivedRandomizerMetadata>,
@@ -74,6 +76,7 @@ pub struct ZkDerivedRandomizerMetadata {
     fri_first_layer_log_size: u32,
     trace_domain_half_coset: ZkCircleCosetEncoding,
     randomized_domain_half_coset: ZkCircleCosetEncoding,
+    randomized_domain_half_cosets: Vec<ZkCircleCosetEncoding>,
     query_closure: ZkQueryClosure,
     randomizer_rank_profile: ZkRandomizerRankProfile,
 }
@@ -97,6 +100,11 @@ impl ZkDerivedRandomizerMetadata {
     #[must_use]
     pub fn randomized_domain_half_coset(&self) -> ZkCircleCosetEncoding {
         self.randomized_domain_half_coset
+    }
+
+    #[must_use]
+    pub fn randomized_domain_half_cosets(&self) -> &[ZkCircleCosetEncoding] {
+        &self.randomized_domain_half_cosets
     }
 
     #[must_use]
@@ -180,26 +188,62 @@ pub enum ZkProvingConfigError {
 
 impl ZkProvingConfig {
     fn witness_randomized_log_degree(&self) -> Result<u32, ZkProvingConfigError> {
-        let Some(first_bound) = self
-            .metadata
-            .witness_randomization
-            .private_column_degree_bounds
-            .first()
-        else {
-            return Err(ZkProvingConfigError::MissingPrivateColumnDegreeBounds);
-        };
-        let expected = first_bound.log_degree_bound;
-        if self
-            .metadata
+        self.metadata
             .witness_randomization
             .private_column_degree_bounds
             .iter()
-            .any(|bound| bound.log_degree_bound != expected)
-        {
-            return Err(ZkProvingConfigError::PrivateColumnDegreeBoundsMismatch);
-        }
+            .map(|bound| bound.log_degree_bound)
+            .max()
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnDegreeBounds)
+    }
 
-        Ok(expected)
+    pub(crate) fn private_column_randomized_log_degree(
+        &self,
+        range: ZkColumnRange,
+    ) -> Result<u32, ZkProvingConfigError> {
+        self.metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .find(|bound| bound.range == range)
+            .map(|bound| bound.log_degree_bound)
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnDegreeBounds)
+    }
+
+    pub(crate) fn private_column_trace_log_size(
+        &self,
+        range: ZkColumnRange,
+    ) -> Result<u32, ZkProvingConfigError> {
+        self.private_column_scope
+            .as_ref()
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)?
+            .entries
+            .iter()
+            .find(|entry| entry.range == range)
+            .map(|entry| entry.trace_domain_log_size)
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)
+    }
+
+    pub(crate) fn private_column_semantic_trace_domain_log_sizes(
+        &self,
+        range: ZkColumnRange,
+    ) -> Result<Vec<u32>, ZkProvingConfigError> {
+        self.private_column_scope
+            .as_ref()
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)?
+            .entries
+            .iter()
+            .find(|entry| entry.range == range)
+            .map(|entry| entry.semantic_trace_domain_log_sizes.clone())
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)
+    }
+
+    fn has_private_column_randomized_log_degree(&self, log_degree: u32) -> bool {
+        self.metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .any(|bound| bound.log_degree_bound == log_degree)
     }
 
     pub fn derive_randomizer_metadata_from_stwo_samples(
@@ -244,10 +288,9 @@ impl ZkProvingConfig {
                 actual: fri_first_layer_log_size,
             });
         }
-        let expected_randomized_log_degree = self.witness_randomized_log_degree()?;
-        if randomized_domain.log_size() != expected_randomized_log_degree {
+        if !self.has_private_column_randomized_log_degree(randomized_domain.log_size()) {
             return Err(ZkProvingConfigError::RandomizedLogDegreeMismatch {
-                expected: expected_randomized_log_degree,
+                expected: self.witness_randomized_log_degree()?,
                 actual: randomized_domain.log_size(),
             });
         }
@@ -258,10 +301,13 @@ impl ZkProvingConfig {
             return Err(ZkProvingConfigError::NonCanonicalRandomizedDomain);
         }
 
-        let build = build_zk_randomizer_matrices_from_stwo_sample_metadata(
-            trace_domain,
+        let private_column_scope = self
+            .private_column_scope
+            .as_ref()
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)?;
+        let build = build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
             &self.privacy_map,
-            self.metadata.witness_randomization.h_witness,
+            private_column_scope,
             sampled_points,
             fri_query_positions,
             fri_first_layer_log_size,
@@ -282,6 +328,22 @@ impl ZkProvingConfig {
         )
         .map_err(ZkProvingConfigError::RandomizerRank)?;
 
+        let mut randomized_domain_half_cosets = self
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .map(|bound| {
+                ZkCircleCosetEncoding::from(
+                    crate::core::poly::circle::CanonicCoset::new(bound.log_degree_bound)
+                        .circle_domain()
+                        .half_coset,
+                )
+            })
+            .collect::<Vec<_>>();
+        randomized_domain_half_cosets.sort_unstable();
+        randomized_domain_half_cosets.dedup();
+
         self.query_closure = Some(build.closure);
         self.randomizer_rank_profile = Some(build.rank_profile);
         self.derived_randomizer_metadata = Some(ZkDerivedRandomizerMetadata {
@@ -291,6 +353,7 @@ impl ZkProvingConfig {
                 trace_domain,
             )),
             randomized_domain_half_coset: ZkCircleCosetEncoding::from(randomized_domain.half_coset),
+            randomized_domain_half_cosets,
             query_closure: self.query_closure.clone().expect("query closure just set"),
             randomizer_rank_profile: self
                 .randomizer_rank_profile
@@ -1140,6 +1203,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash(hash(2)),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: 15,
                 h_witness: 0,
@@ -1169,6 +1233,7 @@ mod tests {
             },
             private_column_scope: None,
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -1191,6 +1256,8 @@ mod tests {
             entries: vec![ZkPrivateColumnScopeEntry {
                 range: private_range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: 3,
+                semantic_trace_domain_log_sizes: vec![3],
             }],
         };
         let private_column_scope_hash =
@@ -1199,6 +1266,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash(hash(4)),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: 3,
                 h_witness: 32,
@@ -1240,6 +1308,7 @@ mod tests {
                 ..private_column_scope
             }),
             quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            logup_statistical_security_budgets: Vec::new(),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -1340,9 +1409,65 @@ mod tests {
         assert_eq!(query_closure.entries.len(), 5);
         assert_eq!(rank_profile.entries.len(), 1);
         assert_eq!(rank_profile.entries[0].query_count, derived_query_count);
-        assert_eq!(rank_profile.entries[0].randomizer_dimension, 32);
+        assert_eq!(rank_profile.entries[0].randomizer_dimension, 8);
         assert_eq!(rank_profile.entries[0].rank, derived_query_count);
         assert!(config.derived_randomizer_metadata.is_some());
+    }
+
+    #[test]
+    fn witness_and_quotient_accepts_mixed_private_randomized_degree_bounds() {
+        let mut config = witness_and_quotient_config();
+        let second_range = ZkColumnRange::new(0, 1, 2);
+        config.privacy_map.private_columns.push(second_range);
+        config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .push(ZkColumnDegreeBound {
+                range: second_range,
+                log_degree_bound: 14,
+            });
+        config.column_degree_bounds.push(ZkColumnDegreeBound {
+            range: second_range,
+            log_degree_bound: 14,
+        });
+        let scope = config
+            .private_column_scope
+            .as_mut()
+            .expect("test config must have private scope");
+        scope.entries.push(ZkPrivateColumnScopeEntry {
+            range: second_range,
+            usage: ZkPrivateColumnUsage::OrdinaryWitness,
+            trace_domain_log_size: 3,
+            semantic_trace_domain_log_sizes: vec![3],
+        });
+        scope.canonicalize();
+        scope.hash = canonical_zk_private_column_scope_hash(scope);
+        config
+            .metadata
+            .witness_randomization
+            .private_column_scope_hash = scope.hash;
+
+        assert_eq!(
+            config.private_column_randomized_log_degree(second_range),
+            Ok(14)
+        );
+        assert_eq!(config.witness_randomized_log_degree(), Ok(15));
+        assert!(config.has_private_column_randomized_log_degree(14));
+
+        let sampled_points = TreeVec(vec![vec![
+            vec![CirclePoint::<SecureField>::get_point(9_834_759_221)],
+            vec![CirclePoint::<SecureField>::get_point(3_211_580_087)],
+        ]]);
+        assert!(config
+            .derive_randomizer_metadata_from_stwo_samples_with_domains(
+                witness_and_quotient_trace_domain(),
+                CanonicCoset::new(14).circle_domain(),
+                witness_and_quotient_lifting_log_size(),
+                &sampled_points,
+                &witness_and_quotient_fri_query_positions(),
+            )
+            .is_ok());
     }
 
     fn precommit_compatible_witness_and_quotient_config() -> ZkProvingConfig {
@@ -1382,6 +1507,7 @@ mod tests {
         let context = super::PrecommitZkWitnessRandomizationContext::<CpuBackend>::new(
             &config,
             trace_domain,
+            vec![trace_domain.log_size()],
             randomized_domain,
         )
         .unwrap();
@@ -1405,6 +1531,7 @@ mod tests {
         let context = super::PrecommitZkWitnessRandomizationContext::<CpuBackend>::new(
             &config,
             trace_domain,
+            vec![trace_domain.log_size()],
             randomized_domain,
         )
         .unwrap();
@@ -1431,6 +1558,7 @@ mod tests {
         let context = super::PrecommitZkWitnessRandomizationContext::<CpuBackend>::new(
             &config,
             trace_domain,
+            vec![trace_domain.log_size()],
             randomized_domain,
         )
         .unwrap();
@@ -2395,6 +2523,7 @@ fn validate_witness_randomization_precommit_config(
 fn witness_randomization_binding_hash(
     config: &ZkProvingConfig,
     trace_domain: CircleDomain,
+    semantic_trace_domain_log_sizes: &[u32],
     randomized_domain: CircleDomain,
     range: ZkColumnRange,
 ) -> Result<[u8; 32], ZkWitnessRandomizationError> {
@@ -2418,6 +2547,10 @@ fn witness_randomization_binding_hash(
         u64::from(config.metadata.degree_profile.fri_first_layer_log_size),
     );
     push_domain(&mut bytes, trace_domain)?;
+    push_usize(&mut bytes, semantic_trace_domain_log_sizes.len())?;
+    for &log_size in semantic_trace_domain_log_sizes {
+        push_u64(&mut bytes, u64::from(log_size));
+    }
     push_domain(&mut bytes, randomized_domain)?;
     push_column_range(&mut bytes, range)?;
     push_u64(&mut bytes, config.metadata.witness_randomization.h_witness);
@@ -2427,6 +2560,7 @@ fn witness_randomization_binding_hash(
 fn witness_randomization_precommit_context_hash(
     config: &ZkProvingConfig,
     trace_domain: CircleDomain,
+    semantic_trace_domain_log_sizes: &[u32],
     randomized_domain: CircleDomain,
 ) -> Result<[u8; 32], ZkWitnessRandomizationError> {
     let mut bytes = Vec::new();
@@ -2449,6 +2583,10 @@ fn witness_randomization_precommit_context_hash(
         u64::from(config.metadata.degree_profile.fri_first_layer_log_size),
     );
     push_domain(&mut bytes, trace_domain)?;
+    push_usize(&mut bytes, semantic_trace_domain_log_sizes.len())?;
+    for &log_size in semantic_trace_domain_log_sizes {
+        push_u64(&mut bytes, u64::from(log_size));
+    }
     push_domain(&mut bytes, randomized_domain)?;
     push_u64(&mut bytes, config.metadata.witness_randomization.h_witness);
 
@@ -2460,6 +2598,7 @@ fn witness_randomization_precommit_context_hash(
         bytes.extend_from_slice(&witness_randomization_binding_hash(
             config,
             trace_domain,
+            semantic_trace_domain_log_sizes,
             randomized_domain,
             range,
         )?);
@@ -2495,6 +2634,7 @@ fn witness_randomization_precommit_context_hash(
 /// caller-supplied twiddle mismatches, and avoids per-column natural-order round trips.
 struct ZkWitnessRandomizationContext<B: PolyOps> {
     trace_domain: CircleDomain,
+    semantic_domains: Vec<CircleDomain>,
     randomized_domain: CircleDomain,
     vanishing_values: Col<B, BaseField>,
     twiddles: TwiddleTree<B>,
@@ -2505,6 +2645,7 @@ struct ZkWitnessRandomizationContext<B: PolyOps> {
 impl<B: PolyOps> ZkWitnessRandomizationContext<B> {
     fn new(
         trace_domain: CircleDomain,
+        semantic_domains: Vec<CircleDomain>,
         randomized_domain: CircleDomain,
         randomizer_dimension: usize,
     ) -> Result<Self, ZkWitnessRandomizationError> {
@@ -2515,19 +2656,33 @@ impl<B: PolyOps> ZkWitnessRandomizationContext<B> {
         let (randomizer_log_size, randomizer_coefficient_count) =
             randomizer_coefficient_space(randomizer_dimension)?;
 
-        if randomized_domain.log_size() <= trace_domain.log_size() {
+        let max_semantic_domain_log_size = semantic_domains
+            .iter()
+            .map(CircleDomain::log_size)
+            .max()
+            .unwrap_or(trace_domain.log_size());
+        if randomized_domain.log_size() <= max_semantic_domain_log_size {
             return Err(ZkWitnessRandomizationError::RandomizedDomainNotLarger {
-                trace_domain_log_size: trace_domain.log_size(),
+                trace_domain_log_size: max_semantic_domain_log_size,
                 randomized_domain_log_size: randomized_domain.log_size(),
             });
         }
 
-        let required_domain_size = trace_domain
-            .size()
-            .checked_add(randomizer_coefficient_count);
+        let semantic_vanishing_degree_bound =
+            semantic_domains.iter().try_fold(0usize, |acc, domain| {
+                acc.checked_add(domain.size()).ok_or(
+                    ZkWitnessRandomizationError::RandomizedDomainTooSmall {
+                        trace_domain_size: usize::MAX,
+                        randomizer_coefficient_count,
+                        randomized_domain_size: randomized_domain.size(),
+                    },
+                )
+            })?;
+        let required_domain_size =
+            semantic_vanishing_degree_bound.checked_add(randomizer_coefficient_count);
         if required_domain_size.is_none_or(|required| required > randomized_domain.size()) {
             return Err(ZkWitnessRandomizationError::RandomizedDomainTooSmall {
-                trace_domain_size: trace_domain.size(),
+                trace_domain_size: semantic_vanishing_degree_bound,
                 randomizer_coefficient_count,
                 randomized_domain_size: randomized_domain.size(),
             });
@@ -2535,7 +2690,13 @@ impl<B: PolyOps> ZkWitnessRandomizationContext<B> {
 
         let vanishing_values_natural: Col<B, BaseField> = randomized_domain
             .iter()
-            .map(|point| full_trace_domain_vanishing(trace_domain, point))
+            .map(|point| {
+                semantic_domains
+                    .iter()
+                    .fold(BaseField::one(), |acc, &domain| {
+                        acc * full_trace_domain_vanishing(domain, point)
+                    })
+            })
             .collect();
         if (0..vanishing_values_natural.len())
             .any(|index| vanishing_values_natural.at(index).is_zero())
@@ -2551,6 +2712,7 @@ impl<B: PolyOps> ZkWitnessRandomizationContext<B> {
 
         Ok(Self {
             trace_domain,
+            semantic_domains,
             randomized_domain,
             vanishing_values,
             twiddles: B::precompute_twiddles(randomized_domain.half_coset),
@@ -2695,24 +2857,44 @@ impl<B: PolyOps> PrecommitZkWitnessRandomizationContext<B> {
     pub(crate) fn new(
         config: &ZkProvingConfig,
         trace_domain: CircleDomain,
+        semantic_trace_domain_log_sizes: Vec<u32>,
         randomized_domain: CircleDomain,
     ) -> Result<Self, ZkWitnessRandomizationError> {
         validate_witness_randomization_precommit_config(config)
             .map_err(ZkWitnessRandomizationError::Config)?;
 
-        if config.metadata.degree_profile.trace_domain_log_size != trace_domain.log_size() {
+        let private_column_scope =
+            config
+                .private_column_scope
+                .as_ref()
+                .ok_or(ZkWitnessRandomizationError::Config(
+                    ZkProvingConfigError::MissingPrivateColumnScope,
+                ))?;
+        if !private_column_scope
+            .entries
+            .iter()
+            .any(|entry| entry.trace_domain_log_size == trace_domain.log_size())
+        {
             return Err(ZkWitnessRandomizationError::TraceDomainLogSizeMismatch {
-                expected: config.metadata.degree_profile.trace_domain_log_size,
+                expected: private_column_scope
+                    .entries
+                    .iter()
+                    .map(|entry| entry.trace_domain_log_size)
+                    .max()
+                    .unwrap_or(config.metadata.degree_profile.trace_domain_log_size),
                 actual: trace_domain.log_size(),
             });
         }
-        let expected_randomized_log_degree = config
-            .witness_randomized_log_degree()
-            .map_err(ZkWitnessRandomizationError::Config)?;
-        if expected_randomized_log_degree != randomized_domain.log_size() {
+        let semantic_domains = semantic_trace_domain_log_sizes
+            .iter()
+            .map(|&log_size| crate::core::poly::circle::CanonicCoset::new(log_size).circle_domain())
+            .collect::<Vec<_>>();
+        if !config.has_private_column_randomized_log_degree(randomized_domain.log_size()) {
             return Err(
                 ZkWitnessRandomizationError::RandomizedDomainLogSizeMismatch {
-                    expected: expected_randomized_log_degree,
+                    expected: config
+                        .witness_randomized_log_degree()
+                        .map_err(ZkWitnessRandomizationError::Config)?,
                     actual: randomized_domain.log_size(),
                 },
             );
@@ -2724,32 +2906,51 @@ impl<B: PolyOps> PrecommitZkWitnessRandomizationContext<B> {
             return Err(ZkWitnessRandomizationError::NonCanonicalRandomizedDomain);
         }
 
-        let randomizer_dimension = usize::try_from(config.metadata.witness_randomization.h_witness)
-            .map_err(
-                |_| ZkWitnessRandomizationError::RandomizerDimensionTooLarge {
-                    dimension: config.metadata.witness_randomization.h_witness,
-                },
-            )?;
+        let randomizer_dimension_u64 = 1u64.checked_shl(trace_domain.log_size()).ok_or(
+            ZkWitnessRandomizationError::RandomizerDimensionTooLarge {
+                dimension: u64::MAX,
+            },
+        )?;
+        let randomizer_dimension = usize::try_from(randomizer_dimension_u64).map_err(|_| {
+            ZkWitnessRandomizationError::RandomizerDimensionTooLarge {
+                dimension: randomizer_dimension_u64,
+            }
+        })?;
         let context = ZkWitnessRandomizationContext::<B>::new(
             trace_domain,
+            semantic_domains,
             randomized_domain,
             randomizer_dimension,
         )?;
 
         let mut entries = Vec::with_capacity(config.privacy_map.private_columns.len());
-        for &range in &config.privacy_map.private_columns {
+        for entry in private_column_scope.entries.iter().filter(|entry| {
+            entry.trace_domain_log_size == trace_domain.log_size()
+                && entry.semantic_trace_domain_log_sizes == semantic_trace_domain_log_sizes
+                && config
+                    .private_column_randomized_log_degree(entry.range)
+                    .is_ok_and(|log_degree| log_degree == randomized_domain.log_size())
+        }) {
             entries.push(ZkWitnessRandomizationPlanEntry {
-                range,
+                range: entry.range,
                 binding_hash: witness_randomization_binding_hash(
                     config,
                     trace_domain,
+                    &semantic_trace_domain_log_sizes,
                     randomized_domain,
-                    range,
+                    entry.range,
                 )?,
             });
         }
-        let precommit_binding_hash =
-            witness_randomization_precommit_context_hash(config, trace_domain, randomized_domain)?;
+        if entries.is_empty() {
+            return Err(ZkWitnessRandomizationError::EmptyRandomizerSpace);
+        }
+        let precommit_binding_hash = witness_randomization_precommit_context_hash(
+            config,
+            trace_domain,
+            &semantic_trace_domain_log_sizes,
+            randomized_domain,
+        )?;
 
         Ok(Self {
             context,
@@ -2816,6 +3017,12 @@ impl<B: PolyOps> PrecommitZkWitnessRandomizationContext<B> {
         let precommit_binding_hash = witness_randomization_precommit_context_hash(
             config,
             self.context.trace_domain,
+            &self
+                .context
+                .semantic_domains
+                .iter()
+                .map(CircleDomain::log_size)
+                .collect::<Vec<_>>(),
             self.context.randomized_domain,
         )?;
         if precommit_binding_hash != self.precommit_binding_hash {
@@ -2830,13 +3037,6 @@ impl<B: PolyOps> PrecommitZkWitnessRandomizationContext<B> {
             fri_query_positions,
         )
     }
-}
-
-fn full_trace_coset_from_circle_domain(trace_domain: CircleDomain) -> Coset {
-    Coset::new(
-        trace_domain.half_coset.initial_index,
-        trace_domain.log_size(),
-    )
 }
 
 #[allow(dead_code)]
@@ -2873,15 +3073,22 @@ fn validate_post_sampling_witness_randomization_audit_for_domains(
     )
     .map_err(ZkWitnessRandomizationError::RandomizerRankProfile)?;
 
-    let sampled_metadata = build_zk_randomizer_matrices_from_stwo_sample_metadata(
-        full_trace_coset_from_circle_domain(trace_domain),
-        &config.privacy_map,
-        config.metadata.witness_randomization.h_witness,
-        sampled_points,
-        fri_query_positions,
-        config.metadata.degree_profile.fri_first_layer_log_size,
-    )
-    .map_err(ZkWitnessRandomizationError::SampleMetadata)?;
+    let private_column_scope =
+        config
+            .private_column_scope
+            .as_ref()
+            .ok_or(ZkWitnessRandomizationError::Config(
+                ZkProvingConfigError::MissingPrivateColumnScope,
+            ))?;
+    let sampled_metadata =
+        build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
+            &config.privacy_map,
+            private_column_scope,
+            sampled_points,
+            fri_query_positions,
+            config.metadata.degree_profile.fri_first_layer_log_size,
+        )
+        .map_err(ZkWitnessRandomizationError::SampleMetadata)?;
     if &sampled_metadata.closure != query_closure
         || &sampled_metadata.rank_profile != randomizer_rank_profile
     {
@@ -2898,14 +3105,24 @@ fn validate_post_sampling_witness_randomization_audit_for_domains(
         return Err(ZkWitnessRandomizationError::DerivedRandomizerMetadataMismatch);
     }
     let actual_trace_domain = ZkCircleCosetEncoding::from(trace_domain.half_coset);
-    if derived_randomizer_metadata.trace_domain_half_coset() != actual_trace_domain {
+    let trace_domain_is_declared = private_column_scope.entries.iter().any(|entry| {
+        entry.trace_domain_log_size == trace_domain.log_size()
+            && crate::core::poly::circle::CanonicCoset::try_new(entry.trace_domain_log_size)
+                .map(|coset| ZkCircleCosetEncoding::from(coset.circle_domain().half_coset))
+                .map(|encoding| encoding == actual_trace_domain)
+                .unwrap_or(false)
+    });
+    if !trace_domain_is_declared {
         return Err(ZkWitnessRandomizationError::TraceDomainEncodingMismatch {
             expected: derived_randomizer_metadata.trace_domain_half_coset(),
             actual: actual_trace_domain,
         });
     }
     let actual_randomized_domain = ZkCircleCosetEncoding::from(randomized_domain.half_coset);
-    if derived_randomizer_metadata.randomized_domain_half_coset() != actual_randomized_domain {
+    if !derived_randomizer_metadata
+        .randomized_domain_half_cosets()
+        .contains(&actual_randomized_domain)
+    {
         return Err(
             ZkWitnessRandomizationError::RandomizedDomainEncodingMismatch {
                 expected: derived_randomizer_metadata.randomized_domain_half_coset(),
@@ -2955,6 +3172,7 @@ mod witness_randomization_tests {
         let randomized_domain = CanonicCoset::new(4).circle_domain();
         let context = super::ZkWitnessRandomizationContext::<CpuBackend>::new(
             trace_domain,
+            vec![trace_domain],
             randomized_domain,
             trace_domain.size(),
         )
@@ -2978,6 +3196,7 @@ mod witness_randomization_tests {
         let randomized_domain = CanonicCoset::new(4).circle_domain();
         let context = super::ZkWitnessRandomizationContext::<CpuBackend>::new(
             trace_domain,
+            vec![trace_domain],
             randomized_domain,
             trace_domain.size(),
         )
@@ -3015,6 +3234,7 @@ mod witness_randomization_tests {
         assert!(matches!(
             super::ZkWitnessRandomizationContext::<CpuBackend>::new(
                 trace_domain,
+                vec![trace_domain],
                 trace_domain,
                 trace_domain.size(),
             ),
@@ -3030,6 +3250,7 @@ mod witness_randomization_tests {
         assert!(matches!(
             super::ZkWitnessRandomizationContext::<CpuBackend>::new(
                 trace_domain,
+                vec![trace_domain],
                 randomized_domain,
                 9,
             ),

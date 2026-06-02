@@ -10,6 +10,27 @@ pub mod accumulation;
 mod components;
 pub use components::Components;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AbsoluteColumnMaskPoints {
+    pub tree_index: usize,
+    pub column_index: usize,
+    pub points: Vec<CirclePoint<SecureField>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AbsoluteColumnMaskOffsets {
+    pub tree_index: usize,
+    pub column_index: usize,
+    pub offsets: Vec<isize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AbsoluteColumnMaskSemanticStepLogSizes {
+    pub tree_index: usize,
+    pub column_index: usize,
+    pub step_log_sizes: Vec<u32>,
+}
+
 /// Arithmetic Intermediate Representation (AIR).
 ///
 /// An Air instance is assumed to already contain all the information needed to evaluate the
@@ -50,6 +71,40 @@ pub trait Component {
     /// that do not expose structured offsets are rejected by the private ZK path.
     fn mask_offsets(&self) -> Option<TreeVec<ColumnVec<Vec<isize>>>> {
         None
+    }
+
+    /// Returns additional mask points for already-committed absolute columns.
+    ///
+    /// This is used by global/aggregate constraints that read columns owned by
+    /// other components. These points must not create new committed columns.
+    fn absolute_mask_points(
+        &self,
+        _point: CirclePoint<SecureField>,
+        _max_log_degree_bound: u32,
+    ) -> Vec<AbsoluteColumnMaskPoints> {
+        Vec::new()
+    }
+
+    /// Returns additional mask offsets for already-committed absolute columns.
+    fn absolute_mask_offsets(&self) -> Option<Vec<AbsoluteColumnMaskOffsets>> {
+        Some(Vec::new())
+    }
+
+    /// Returns the semantic step domain for each additional absolute opening.
+    ///
+    /// Private-witness ZK needs this when an aggregate/global constraint reads
+    /// an already-committed column at a semantic point different from the
+    /// owning component's point. The component lift is supplied by
+    /// [`Components`] from the aggregate component itself.
+    fn absolute_mask_semantic_step_log_sizes(
+        &self,
+    ) -> Option<Vec<AbsoluteColumnMaskSemanticStepLogSizes>> {
+        let offsets = self.absolute_mask_offsets()?;
+        if offsets.is_empty() {
+            Some(Vec::new())
+        } else {
+            None
+        }
     }
 
     fn preprocessed_column_indices(&self) -> ColumnVec<usize>;

@@ -241,6 +241,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash([2; 32]),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: lifting_log_size - log_blowup_factor,
                 h_witness: 0,
@@ -269,6 +270,7 @@ mod tests {
             },
             private_column_scope: None,
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -279,6 +281,7 @@ mod tests {
             metadata,
             column_degree_bounds: Vec::new(),
             quotient_split_mask_profile: None,
+            logup_statistical_security_budgets: Vec::new(),
         };
 
         (prover_config, verifier_config)
@@ -333,6 +336,8 @@ mod tests {
             entries: vec![ZkPrivateColumnScopeEntry {
                 range,
                 usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: trace_log_size,
+                semantic_trace_domain_log_sizes: vec![trace_log_size],
             }],
         };
         let private_column_scope_hash =
@@ -344,6 +349,9 @@ mod tests {
             &[ZkRandomizerSpaceEntry {
                 range,
                 trace_domain: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(trace_domain)),
+                semantic_trace_domains: vec![ZkCircleCosetEncoding::from(
+                    zk_trace_domain_half_coset(trace_domain),
+                )],
                 randomized_log_degree,
                 randomizer_dimension: h_witness,
             }],
@@ -360,6 +368,7 @@ mod tests {
             version: ZkProofVersion::V1,
             privacy_map_hash,
             public_statement_hash: ZkPublicStatementHash(nonzero_hash(2)),
+            logup_statistical_security_budget_hash: [0x5a; 32],
             degree_profile: ZkDegreeProfile {
                 trace_domain_log_size: trace_log_size,
                 h_witness,
@@ -400,6 +409,7 @@ mod tests {
             privacy_map: privacy_map.clone(),
             private_column_scope: Some(private_column_scope.clone()),
             quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            logup_statistical_security_budgets: Vec::new(),
             query_closure: None,
             randomizer_rank_profile: None,
             derived_randomizer_metadata: None,
@@ -410,6 +420,7 @@ mod tests {
             metadata,
             column_degree_bounds,
             quotient_split_mask_profile: Some(quotient_split_mask_profile),
+            logup_statistical_security_budgets: Vec::new(),
         };
         let verifier_audit = ZkWitnessRandomizationVerifierAudit {
             privacy_map,

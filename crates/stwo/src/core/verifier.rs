@@ -12,7 +12,7 @@ use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point,
-    draw_zk_oods_sample_point_plan_with_semantic_domains, mix_zk_public_metadata,
+    draw_zk_oods_sample_point_plan_with_semantic_sample_domains, mix_zk_public_metadata,
     mix_zk_quotient_split_mask_profile, validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_public_metadata_against_verifier_config,
@@ -114,16 +114,24 @@ pub fn verify_ex<MC: MerkleChannel>(
             })?;
         mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let (mut semantic_step_log_sizes, mut semantic_base_doublings) =
-            components.semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
-        semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
-        semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+        let (mut semantic_sample_step_log_sizes, mut semantic_sample_base_doublings) = components
+            .semantic_sample_step_log_sizes_and_lifts(include_all_preprocessed_columns)
+            .ok_or_else(|| {
+                VerificationError::InvalidStructure(String::from(
+                    "Lifted component does not expose semantic sample metadata",
+                ))
+            })?;
+        semantic_sample_step_log_sizes.push(vec![
+            vec![max_log_degree_bound];
+            2 * SECURE_EXTENSION_DEGREE
+        ]);
+        semantic_sample_base_doublings.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
+        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_sample_domains(
             channel,
             &mask_offsets,
-            &semantic_step_log_sizes,
-            &semantic_base_doublings,
+            &semantic_sample_step_log_sizes,
+            &semantic_sample_base_doublings,
             &committed_column_log_sizes,
             lifting_log_size,
             &ZkOodsExclusionSet {
@@ -426,16 +434,24 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
             })?;
         mask_offsets.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let (mut semantic_step_log_sizes, mut semantic_base_doublings) =
-            components.semantic_step_log_sizes_and_lifts(include_all_preprocessed_columns);
-        semantic_step_log_sizes.push(vec![max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE]);
-        semantic_base_doublings.push(vec![0; 2 * SECURE_EXTENSION_DEGREE]);
+        let (mut semantic_sample_step_log_sizes, mut semantic_sample_base_doublings) = components
+            .semantic_sample_step_log_sizes_and_lifts(include_all_preprocessed_columns)
+            .ok_or_else(|| {
+                VerificationError::InvalidStructure(String::from(
+                    "Private ZK component does not expose semantic sample metadata",
+                ))
+            })?;
+        semantic_sample_step_log_sizes.push(vec![
+            vec![max_log_degree_bound];
+            2 * SECURE_EXTENSION_DEGREE
+        ]);
+        semantic_sample_base_doublings.push(vec![vec![0]; 2 * SECURE_EXTENSION_DEGREE]);
 
-        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_domains(
+        let sample_point_plan = draw_zk_oods_sample_point_plan_with_semantic_sample_domains(
             channel,
             &mask_offsets,
-            &semantic_step_log_sizes,
-            &semantic_base_doublings,
+            &semantic_sample_step_log_sizes,
+            &semantic_sample_base_doublings,
             &zk_committed_column_log_sizes,
             lifting_log_size,
             &oods_exclusion_set,
