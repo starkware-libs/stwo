@@ -1,4 +1,0 @@
-fold_line               time:   [400.63 µs 401.08 µs 401.61 µs]
-                        change: [-1.5833% -1.3514% -1.1140%] (p = 0.00 < 0.05)
-                        Performance has improved.
-

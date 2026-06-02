@@ -1,4 +1,0 @@
-{"name":"stwo-no-default-tests","command":"cargo test --locked --no-default-features --package stwo","status":0,"elapsed_seconds":1}
-{"name":"stwo-prover-tests","command":"cargo test --locked --package stwo --features prover","status":0,"elapsed_seconds":3}
-{"name":"stwo-pcs-bench","command":"cargo bench --locked --features prover,parallel --bench pcs","status":0,"elapsed_seconds":53}
-{"name":"stwo-fri-bench","command":"cargo bench --locked --features prover,parallel --bench fri","status":0,"elapsed_seconds":21}
