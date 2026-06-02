@@ -86,6 +86,43 @@ pub fn gen_interaction_trace(
     logup_gen.finalize_last()
 }
 
+pub fn gen_masked_interaction_trace(
+    trace: &ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
+    inc_index: usize,
+    lookup_elements: &StateMachineElements,
+    masked_claim: QM31,
+) -> (
+    ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
+    QM31,
+    QM31,
+) {
+    let log_size = trace[0].domain.log_size();
+
+    let ones = PackedM31::broadcast(M31::one());
+    let mut logup_gen = LogupTraceGenerator::new(log_size);
+    let mut col_gen = logup_gen.new_col();
+
+    for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+        let mut packed_state: [PackedM31; STATE_SIZE] = trace
+            .iter()
+            .map(|col| col.data[vec_row])
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        let input_denom: PackedQM31 = lookup_elements.combine(&packed_state);
+        packed_state[inc_index] += ones;
+        let output_denom: PackedQM31 = lookup_elements.combine(&packed_state);
+        col_gen.write_frac(
+            vec_row,
+            output_denom - input_denom,
+            input_denom * output_denom,
+        );
+    }
+    col_gen.finalize_col();
+
+    logup_gen.finalize_last_masked_with_private_correction(masked_claim)
+}
+
 #[cfg(test)]
 mod tests {
     use stwo::core::fields::m31::M31;

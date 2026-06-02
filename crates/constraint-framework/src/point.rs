@@ -1,3 +1,4 @@
+use core::array;
 use core::ops::Mul;
 
 use std_shims::{vec, Vec};
@@ -6,7 +7,7 @@ use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::pcs::TreeVec;
 use stwo::core::{ColumnVec, Fraction};
 
-use super::logup::LogupAtRow;
+use super::logup::{LogupAtRow, LogupClaim};
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 
 /// Evaluates expressions at a point out of domain.
@@ -25,13 +26,29 @@ impl<'a> PointEvaluator<'a> {
         log_size: u32,
         claimed_sum: SecureField,
     ) -> Self {
+        Self::new_with_logup_claim(
+            mask,
+            evaluation_accumulator,
+            denom_inverse,
+            log_size,
+            LogupClaim::Public(claimed_sum),
+        )
+    }
+
+    pub fn new_with_logup_claim(
+        mask: TreeVec<ColumnVec<&'a Vec<SecureField>>>,
+        evaluation_accumulator: &'a mut PointEvaluationAccumulator,
+        denom_inverse: SecureField,
+        log_size: u32,
+        logup_claim: LogupClaim,
+    ) -> Self {
         let col_index = vec![0; mask.len()];
         Self {
             mask,
             evaluation_accumulator,
             col_index,
             denom_inverse,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
+            logup: LogupAtRow::new_with_claim(INTERACTION_TRACE_IDX, logup_claim, log_size),
         }
     }
 }
@@ -47,8 +64,8 @@ impl EvalAtRow for PointEvaluator<'_> {
         let col_index = self.col_index[interaction];
         self.col_index[interaction] += 1;
         let mask = self.mask[interaction][col_index].clone();
-        assert_eq!(mask.len(), N);
-        mask.try_into().unwrap()
+        assert!(mask.len() >= N);
+        array::from_fn(|i| mask[i])
     }
     fn add_constraint<G>(&mut self, constraint: G)
     where

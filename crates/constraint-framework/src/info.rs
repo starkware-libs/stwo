@@ -12,7 +12,7 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
 use stwo::core::Fraction;
 
-use super::logup::LogupAtRow;
+use super::logup::{LogupAtRow, LogupClaim};
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 
@@ -34,11 +34,23 @@ impl InfoEvaluator {
         preprocessed_columns: Vec<PreProcessedColumnId>,
         claimed_sum: SecureField,
     ) -> Self {
+        Self::new_with_logup_claim(
+            log_size,
+            preprocessed_columns,
+            LogupClaim::Public(claimed_sum),
+        )
+    }
+
+    pub fn new_with_logup_claim(
+        log_size: u32,
+        preprocessed_columns: Vec<PreProcessedColumnId>,
+        logup_claim: LogupClaim,
+    ) -> Self {
         Self {
             mask_offsets: Default::default(),
             n_constraints: Default::default(),
             preprocessed_columns,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
+            logup: LogupAtRow::new_with_claim(INTERACTION_TRACE_IDX, logup_claim, log_size),
             arithmetic_counts: Default::default(),
             logup_counts: LogupCountPerRow::new(),
         }

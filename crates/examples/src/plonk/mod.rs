@@ -289,14 +289,148 @@ impl Plonk {
 mod tests {
     use std::env;
 
+    use num_traits::Zero;
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sChannel;
+    use stwo::core::fields::qm31::SecureField;
     use stwo::core::fri::FriConfig;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeSubspan, TreeVec};
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
+    use stwo::core::zk::{
+        build_zk_air_metadata_from_privacy_provider, zk_singleton_column_ranges, ZkAirId,
+        ZkAirMetadataBuildError, ZkAirPrivacyProvider, ZkColumnRange, ZkDependencyKind,
+        ZkDependencyMetadataCompleteness, ZkPrivacyDependency, ZkPrivacyInferenceMode,
+        ZkPrivacyReason, ZkPrivateColumnUsage, ZkPrivateRoot, ZkTraceTreeScope,
+    };
+    use stwo_constraint_framework::TraceLocationAllocator;
 
-    use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
+    use crate::plonk::{prove_fibonacci_plonk, PlonkComponent, PlonkEval, PlonkLookupElements};
+
+    struct PlonkZkPrivacyProvider {
+        component: PlonkComponent,
+        log_n_rows: u32,
+    }
+
+    impl PlonkZkPrivacyProvider {
+        fn new(log_n_rows: u32) -> Self {
+            Self {
+                component: plonk_component_for_metadata(log_n_rows),
+                log_n_rows,
+            }
+        }
+    }
+
+    fn plonk_component_for_metadata(log_n_rows: u32) -> PlonkComponent {
+        let dummy_trace_location = TreeSubspan {
+            tree_index: 0,
+            col_start: 0,
+            col_end: 0,
+        };
+
+        PlonkComponent::new(
+            &mut TraceLocationAllocator::default(),
+            PlonkEval {
+                log_n_rows,
+                lookup_elements: PlonkLookupElements::dummy(),
+                claimed_sum: SecureField::zero(),
+                base_trace_location: dummy_trace_location,
+                interaction_trace_location: dummy_trace_location,
+                constants_trace_location: dummy_trace_location,
+            },
+            SecureField::zero(),
+        )
+    }
+
+    impl ZkAirPrivacyProvider for PlonkZkPrivacyProvider {
+        fn air_id(&self) -> ZkAirId {
+            ZkAirId(b"stwo.examples.plonk.private-logup.blocked.zk.v1".to_vec())
+        }
+
+        fn component_column_log_sizes(&self) -> TreeVec<Vec<u32>> {
+            self.component.trace_log_degree_bounds()
+        }
+
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            self.component.max_constraint_log_degree_bound()
+        }
+
+        fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+            vec![
+                ZkTraceTreeScope::Preprocessed,
+                ZkTraceTreeScope::OriginalTrace,
+                ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 0,
+                },
+            ]
+        }
+
+        fn public_roots(&self) -> Vec<ZkColumnRange> {
+            let log_sizes = self.component.trace_log_degree_bounds();
+            if log_sizes[0].is_empty() {
+                vec![]
+            } else {
+                vec![ZkColumnRange::new(0, 0, log_sizes[0].len())]
+            }
+        }
+
+        fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+            let log_sizes = self.component.trace_log_degree_bounds();
+            zk_singleton_column_ranges(1, log_sizes[1].len())
+                .into_iter()
+                .map(|range| ZkPrivateRoot {
+                    range,
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                    reason: ZkPrivacyReason::Witness,
+                })
+                .collect()
+        }
+
+        fn dependency_edges(&self) -> Vec<ZkPrivacyDependency> {
+            let log_sizes = self.component.trace_log_degree_bounds();
+            if log_sizes[1].is_empty() || log_sizes[2].is_empty() {
+                return vec![];
+            }
+
+            vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, log_sizes[1].len()),
+                to: ZkColumnRange::new(2, 0, log_sizes[2].len()),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }]
+        }
+
+        fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+            ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure
+        }
+
+        fn application_domain(&self) -> &[u8] {
+            b"stwo.examples.plonk.zk-public-statement.v1"
+        }
+
+        fn application_statement(&self) -> Vec<u8> {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(b"fibonacci-plonk-public-circuit-private-logup-blocked-v2");
+            bytes.extend_from_slice(&self.log_n_rows.to_le_bytes());
+            for label in [
+                b"wire_a".as_slice(),
+                b"wire_b".as_slice(),
+                b"wire_c".as_slice(),
+                b"op".as_slice(),
+            ] {
+                bytes.extend_from_slice(&(label.len() as u64).to_le_bytes());
+                bytes.extend_from_slice(label);
+            }
+            let log_sizes = self.component.trace_log_degree_bounds();
+            bytes.extend_from_slice(&(log_sizes.0.len() as u64).to_le_bytes());
+            for tree_log_sizes in &log_sizes.0 {
+                bytes.extend_from_slice(&(tree_log_sizes.len() as u64).to_le_bytes());
+                for log_size in tree_log_sizes {
+                    bytes.extend_from_slice(&log_size.to_le_bytes());
+                }
+            }
+            bytes
+        }
+    }
 
     #[test_log::test]
     fn test_simd_plonk_prove() {
@@ -335,5 +469,65 @@ mod tests {
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test]
+    fn test_plonk_zk_provider_uses_component_trace_bounds_and_air_bounds() {
+        let log_n_rows = 10;
+        let provider = PlonkZkPrivacyProvider::new(log_n_rows);
+        let component = plonk_component_for_metadata(log_n_rows);
+        let log_sizes = component.trace_log_degree_bounds();
+
+        assert_eq!(provider.component_column_log_sizes().0, log_sizes.0);
+        assert_eq!(
+            provider.max_constraint_log_degree_bound(),
+            component.max_constraint_log_degree_bound()
+        );
+        assert_eq!(
+            provider.trace_tree_scopes(),
+            vec![
+                ZkTraceTreeScope::Preprocessed,
+                ZkTraceTreeScope::OriginalTrace,
+                ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 0,
+                },
+            ]
+        );
+        assert_eq!(
+            provider.public_roots(),
+            vec![ZkColumnRange::new(0, 0, log_sizes[0].len())]
+        );
+
+        let private_roots = provider.private_roots();
+        assert_eq!(private_roots.len(), log_sizes[1].len());
+        for (column, root) in private_roots.iter().enumerate() {
+            assert_eq!(root.range, ZkColumnRange::new(1, column, column + 1));
+            assert!(root.range.is_singleton());
+            assert_eq!(root.usage, ZkPrivateColumnUsage::OrdinaryWitness);
+            assert_eq!(root.reason, ZkPrivacyReason::Witness);
+        }
+
+        assert_eq!(
+            provider.dependency_edges(),
+            vec![ZkPrivacyDependency {
+                from: ZkColumnRange::new(1, 0, log_sizes[1].len()),
+                to: ZkColumnRange::new(2, 0, log_sizes[2].len()),
+                kind: ZkDependencyKind::LogUpRunningSum,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_plonk_zk_provider_fails_closed_on_private_logup_claims() {
+        let provider = PlonkZkPrivacyProvider::new(10);
+
+        assert!(matches!(
+            build_zk_air_metadata_from_privacy_provider(
+                &provider,
+                PcsConfig::default().fri_config.log_blowup_factor,
+                ZkPrivacyInferenceMode::FailClosed,
+            ),
+            Err(ZkAirMetadataBuildError::IncompleteLogupClaimMetadata)
+        ));
     }
 }

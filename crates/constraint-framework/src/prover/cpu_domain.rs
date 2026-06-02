@@ -10,7 +10,7 @@ use stwo::prover::backend::CpuBackend;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 
-use crate::logup::LogupAtRow;
+use crate::logup::{LogupAtRow, LogupClaim};
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS};
 
 /// Evaluates constraints at an evaluation domain points.
@@ -37,6 +37,27 @@ impl<'a> CpuDomainEvaluator<'a> {
         log_size: u32,
         claimed_sum: SecureField,
     ) -> Self {
+        Self::new_with_logup_claim(
+            trace_eval,
+            row,
+            random_coeff_powers,
+            domain_log_size,
+            eval_log_size,
+            log_size,
+            LogupClaim::Public(claimed_sum),
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn new_with_logup_claim(
+        trace_eval: &'a TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        row: usize,
+        random_coeff_powers: &'a [SecureField],
+        domain_log_size: u32,
+        eval_log_size: u32,
+        log_size: u32,
+        logup_claim: LogupClaim,
+    ) -> Self {
         Self {
             trace_eval,
             column_index_per_interaction: {
@@ -49,7 +70,7 @@ impl<'a> CpuDomainEvaluator<'a> {
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
+            logup: LogupAtRow::new_with_claim(INTERACTION_TRACE_IDX, logup_claim, log_size),
         }
     }
 }

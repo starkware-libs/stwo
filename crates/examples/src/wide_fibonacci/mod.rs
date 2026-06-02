@@ -104,6 +104,8 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
 mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sM31Channel;
     #[cfg(not(target_arch = "wasm32"))]
@@ -116,11 +118,19 @@ mod tests {
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
-    use stwo::core::verifier::verify;
+    use stwo::core::verifier::{verify, verify_zk_with_witness_randomization_audit};
+    use stwo::core::zk::{
+        build_zk_config_from_air_privacy_provider, zk_singleton_column_ranges, ZkAirId,
+        ZkAirPrivacyProvider, ZkColumnRange, ZkDependencyMetadataCompleteness,
+        ZkPrivacyInferenceMode, ZkPrivacyReason, ZkPrivateColumnUsage, ZkPrivateRoot,
+        ZkTraceTreeScope, ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    };
+    use stwo::core::ColumnVec;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::{Column, CpuBackend};
     use stwo::prover::poly::circle::PolyOps;
-    use stwo::prover::{prove, CommitmentSchemeProver};
+    use stwo::prover::zk::{ZkDerivationGate, ZkDerivationReview, ZkProvingConfig};
+    use stwo::prover::{prove, prove_zk, CommitmentSchemeProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -129,6 +139,85 @@ mod tests {
     use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
+    const ZK_FIB_SEQUENCE_LENGTH: usize = 3;
+    const ZK_FIB_LOG_N_INSTANCES: u32 = 5;
+    const ZK_FIB_RANDOMIZED_LOG_DEGREE: u32 = ZK_FIB_LOG_N_INSTANCES + 1;
+    const ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE: u32 = ZK_FIB_RANDOMIZED_LOG_DEGREE + 3;
+
+    struct WideFibZkPrivacyProvider<const N: usize> {
+        component: WideFibonacciComponent<N>,
+        log_n_rows: u32,
+    }
+
+    impl<const N: usize> WideFibZkPrivacyProvider<N> {
+        fn new(log_n_rows: u32) -> Self {
+            Self {
+                component: WideFibonacciComponent::new(
+                    &mut TraceLocationAllocator::default(),
+                    WideFibonacciEval::<N> { log_n_rows },
+                    SecureField::zero(),
+                ),
+                log_n_rows,
+            }
+        }
+    }
+
+    impl<const N: usize> ZkAirPrivacyProvider for WideFibZkPrivacyProvider<N> {
+        fn air_id(&self) -> ZkAirId {
+            ZkAirId(b"stwo.examples.wide-fibonacci.private-witness.zk.v1".to_vec())
+        }
+
+        fn component_column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+            self.component.trace_log_degree_bounds()
+        }
+
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            self.component.max_constraint_log_degree_bound()
+        }
+
+        fn trace_tree_scopes(&self) -> Vec<ZkTraceTreeScope> {
+            vec![
+                ZkTraceTreeScope::Preprocessed,
+                ZkTraceTreeScope::OriginalTrace,
+            ]
+        }
+
+        fn public_roots(&self) -> Vec<ZkColumnRange> {
+            vec![]
+        }
+
+        fn private_roots(&self) -> Vec<ZkPrivateRoot> {
+            let component_column_log_sizes = self.component.trace_log_degree_bounds();
+            zk_singleton_column_ranges(1, component_column_log_sizes[1].len())
+                .into_iter()
+                .map(|range| ZkPrivateRoot {
+                    range,
+                    usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                    reason: ZkPrivacyReason::Witness,
+                })
+                .collect()
+        }
+
+        fn dependency_edges(&self) -> Vec<stwo::core::zk::ZkPrivacyDependency> {
+            vec![]
+        }
+
+        fn dependency_metadata_completeness(&self) -> ZkDependencyMetadataCompleteness {
+            ZkDependencyMetadataCompleteness::CompleteTraceAndInteractionClosure
+        }
+
+        fn application_domain(&self) -> &[u8] {
+            b"stwo.examples.wide-fibonacci.zk-public-statement.v1"
+        }
+
+        fn application_statement(&self) -> Vec<u8> {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(b"private-wide-fibonacci-witness-v1");
+            bytes.extend_from_slice(&(N as u64).to_le_bytes());
+            bytes.extend_from_slice(&self.log_n_rows.to_le_bytes());
+            bytes
+        }
+    }
 
     fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
         (0..1 << log_n_instances)
@@ -141,6 +230,65 @@ mod tests {
 
     fn fibonacci_constraint_evaluator<const N: u32>(eval: AssertEvaluator<'_>) {
         WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: N }.evaluate(eval);
+    }
+
+    fn test_hash(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
+
+    fn test_derivation_reviews() -> Vec<ZkDerivationReview> {
+        [
+            ZkDerivationGate::StwoSplitQueryExpansion,
+            ZkDerivationGate::CircleRandomizerSpace,
+            ZkDerivationGate::OodsDomainExclusion,
+            ZkDerivationGate::ZkAwareDegreeMetadata,
+            ZkDerivationGate::FriBatchMaskDegree,
+            ZkDerivationGate::PrivateLookupPermutationExclusion,
+            ZkDerivationGate::ProofDataSecrecy,
+            ZkDerivationGate::ZkPerformanceControls,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, gate)| ZkDerivationReview {
+            gate,
+            review_hash: test_hash(index as u8 + 30),
+        })
+        .collect()
+    }
+
+    fn private_wide_fibonacci_zk_configs(
+        fri_log_blowup_factor: u32,
+    ) -> (
+        ZkProvingConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+    ) {
+        let provider =
+            WideFibZkPrivacyProvider::<ZK_FIB_SEQUENCE_LENGTH>::new(ZK_FIB_LOG_N_INSTANCES);
+        let artifacts = build_zk_config_from_air_privacy_provider(
+            &provider,
+            fri_log_blowup_factor,
+            ZkPrivacyInferenceMode::FailClosed,
+        )
+        .expect("WideFib provider-derived ZK metadata must be valid");
+        let prover_config = ZkProvingConfig {
+            metadata: artifacts.metadata.clone(),
+            privacy_map: artifacts.privacy_map.clone(),
+            private_column_scope: Some(artifacts.verifier_audit.private_column_scope.clone()),
+            quotient_split_mask_profile: artifacts.verifier_config.quotient_split_mask_profile,
+            logup_statistical_security_budgets: Vec::new(),
+            query_closure: None,
+            randomizer_rank_profile: None,
+            derived_randomizer_metadata: None,
+            column_degree_bounds: artifacts.column_degree_bounds.clone(),
+            derivation_reviews: test_derivation_reviews(),
+        };
+
+        (
+            prover_config,
+            artifacts.verifier_config,
+            artifacts.verifier_audit,
+        )
     }
 
     #[test]
@@ -241,6 +389,185 @@ mod tests {
             commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
             commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        }
+    }
+
+    #[test_log::test]
+    fn test_wide_fib_zk_private_witness_prove_with_blake() {
+        let config = PcsConfig {
+            fri_config: FriConfig::new(1, 1, 3, 1),
+            lifting_log_size: Some(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE),
+            ..PcsConfig::default()
+        };
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let prover_channel = &mut Blake2sM31Channel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_wide_fibonacci_zk_configs(config.fri_config.log_blowup_factor);
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(prover_channel);
+
+        let trace = generate_trace::<ZK_FIB_SEQUENCE_LENGTH, CpuBackend>(&generate_test_inputs(
+            ZK_FIB_LOG_N_INSTANCES,
+        ));
+        let mut witness_rng = StdRng::seed_from_u64(101);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, prover_channel)
+            .unwrap();
+
+        let component = WideFibonacciComponent::new(
+            &mut TraceLocationAllocator::default(),
+            WideFibonacciEval::<ZK_FIB_SEQUENCE_LENGTH> {
+                log_n_rows: ZK_FIB_LOG_N_INSTANCES,
+            },
+            SecureField::zero(),
+        );
+        let mut proof_rng = StdRng::seed_from_u64(102);
+        let proof = prove_zk::<CpuBackend, Blake2sM31MerkleChannel, _>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+        )
+        .unwrap();
+
+        let verifier_channel = &mut Blake2sM31Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[0],
+            &[],
+            verifier_channel,
+        );
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[1],
+            &vec![ZK_FIB_RANDOMIZED_LOG_DEGREE; ZK_FIB_SEQUENCE_LENGTH],
+            verifier_channel,
+        );
+
+        verify_zk_with_witness_randomization_audit(
+            &[&component],
+            verifier_channel,
+            commitment_scheme,
+            proof,
+            &zk_verifier_config,
+            &zk_verifier_audit,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_wide_fib_zk_private_witness_repeated_proofs_hide_private_material() {
+        let config = PcsConfig {
+            fri_config: FriConfig::new(1, 1, 3, 1),
+            lifting_log_size: Some(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE),
+            ..PcsConfig::default()
+        };
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(ZK_FIB_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_wide_fibonacci_zk_configs(config.fri_config.log_blowup_factor);
+        let component = WideFibonacciComponent::new(
+            &mut TraceLocationAllocator::default(),
+            WideFibonacciEval::<ZK_FIB_SEQUENCE_LENGTH> {
+                log_n_rows: ZK_FIB_LOG_N_INSTANCES,
+            },
+            SecureField::zero(),
+        );
+
+        let prove_once = |witness_rng_seed: u64, proof_rng_seed: u64| {
+            let prover_channel = &mut Blake2sM31Channel::default();
+            let mut commitment_scheme =
+                CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(
+                    config, &twiddles,
+                );
+            commitment_scheme.set_store_polynomials_coefficients();
+
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(vec![]);
+            tree_builder.commit(prover_channel);
+
+            let trace = generate_trace::<ZK_FIB_SEQUENCE_LENGTH, CpuBackend>(
+                &generate_test_inputs(ZK_FIB_LOG_N_INSTANCES),
+            );
+            let mut witness_rng = StdRng::seed_from_u64(witness_rng_seed);
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(trace);
+            tree_builder
+                .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, prover_channel)
+                .unwrap();
+
+            let mut proof_rng = StdRng::seed_from_u64(proof_rng_seed);
+            prove_zk::<CpuBackend, Blake2sM31MerkleChannel, _>(
+                &[&component],
+                prover_channel,
+                commitment_scheme,
+                &zk_prover_config,
+                &mut proof_rng,
+            )
+            .unwrap()
+        };
+
+        let proof_a = prove_once(201, 202);
+        let proof_b = prove_once(301, 302);
+
+        assert_eq!(proof_a.0.public_metadata, proof_b.0.public_metadata);
+        assert_eq!(
+            proof_a.0.randomized_pcs_proof.commitments[0],
+            proof_b.0.randomized_pcs_proof.commitments[0]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[1],
+            proof_b.0.randomized_pcs_proof.commitments[1]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[2],
+            proof_b.0.randomized_pcs_proof.commitments[2]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.sampled_values[1],
+            proof_b.0.randomized_pcs_proof.sampled_values[1]
+        );
+        assert_ne!(
+            proof_a.0.fri_batch_mask.commitment,
+            proof_b.0.fri_batch_mask.commitment
+        );
+
+        for proof in [proof_a, proof_b] {
+            let verifier_channel = &mut Blake2sM31Channel::default();
+            let commitment_scheme =
+                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+            commitment_scheme.commit(
+                proof.0.randomized_pcs_proof.commitments[0],
+                &[],
+                verifier_channel,
+            );
+            commitment_scheme.commit(
+                proof.0.randomized_pcs_proof.commitments[1],
+                &vec![ZK_FIB_RANDOMIZED_LOG_DEGREE; ZK_FIB_SEQUENCE_LENGTH],
+                verifier_channel,
+            );
+
+            verify_zk_with_witness_randomization_audit(
+                &[&component],
+                verifier_channel,
+                commitment_scheme,
+                proof,
+                &zk_verifier_config,
+                &zk_verifier_audit,
+            )
+            .unwrap();
         }
     }
 

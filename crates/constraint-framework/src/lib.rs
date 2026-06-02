@@ -17,7 +17,10 @@ use core::array;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
-pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
+pub use component::{
+    FrameworkComponent, FrameworkEval, StatisticalLogupAggregateComponent,
+    StatisticalLogupCorrectionRef, TraceLocationAllocator,
+};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
@@ -213,7 +216,14 @@ macro_rules! logup_proxy {
             // Instead of checking diff = num / denom, check diff = num / denom - cumsum_shift.
             // This makes (num / denom - cumsum_shift) have sum zero, which makes the constraint
             // uniform - apply on all rows.
-            let shifted_diff = diff + self.logup.cumsum_shift.clone();
+            let shifted_diff = if self.logup.claim.uses_private_correction() {
+                let [prev_correction, cur_correction] =
+                    self.next_extension_interaction_mask(self.logup.interaction, [-1, 0]);
+                self.add_constraint(cur_correction.clone() - prev_correction);
+                diff + self.logup.cumsum_shift.clone() - cur_correction
+            } else {
+                diff + self.logup.cumsum_shift.clone()
+            };
 
             self.add_constraint(shifted_diff * last_frac.denominator - last_frac.numerator);
 

@@ -1,0 +1,218 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+
+\title{Structure of the STWO Private-Witness ZK Integration}
+\author{Staff Crypto Researcher \and Staff Security Researcher}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Status and Scope}
+
+This note describes the reviewed structure of the current STWO private-witness
+zero-knowledge integration. It is an integration note, not a production-readiness
+claim. The public STWO prover and verifier remain unchanged; the ZK path is
+additive and is guarded by verifier-owned metadata checks.
+
+The integration currently covers private witness randomization, verifier-bound
+privacy metadata, dynamic ZK degree accounting, quotient/composition masking
+metadata, FRI sample planning guardrails, and target-bearing private LogUp policy.
+Private LogUp is accepted only when hidden claims have a verifier-checkable
+algebraic target. AIRs without such a target remain fail-closed.
+
+\section{Code Structure}
+
+The integration is organized around three concepts.
+
+\paragraph{AIR privacy provider.}
+An AIR-specific provider declares which committed columns are public or private,
+which private roots imply dependent private columns, which semantic trace domains
+those columns must preserve, and which LogUp claims are semantically public,
+target-bearing private, or unsupported. The framework does not guess privacy from
+column names; the AIR declares the policy and the verifier binds the same policy.
+
+\paragraph{Canonical ZK metadata builder.}
+The generic builder canonicalizes the AIR provider output into verifier-owned
+metadata: privacy-map hash, public-statement hash, private-column scope hash,
+randomizer-space hash, per-column degree overlays, quotient split mask profile,
+LogUp claim manifest, and statistical-budget records. This is the mechanism that
+turns AIR-specific privacy declarations into a reusable STWO ZK plan.
+
+\paragraph{Masked proving and audited verification.}
+The prover uses the canonical metadata to randomize private witness polynomials
+and to build masked opening data. The verifier receives or derives the expected
+metadata from verifier-owned configuration, not from the proof alone, and rejects
+proofs whose privacy map, degree profile, sample-point plan, quotient profile,
+LogUp policy, or statistical budget do not match that configuration. Example AIR
+wrappers derive this configuration from their provider state; the generic API
+therefore requires callers to preserve that verifier-owned sequencing discipline.
+
+\section{Witness Masking}
+
+For a private witness polynomial \(w(X)\) over semantic trace domain \(H\), the
+masking follows the standard vanishing-polynomial construction:
+
+\[
+    \widehat{w}(X) = w(X) + Z_H(X) r(X),
+\]
+
+where \(Z_H(X)\) vanishes on \(H\), and \(r(X)\) is fresh prover randomness for
+the proof. On every point in \(H\), the masked polynomial agrees with the original
+witness:
+
+\[
+    x \in H \implies \widehat{w}(x) = w(x).
+\]
+
+Away from \(H\), openings are statistically hidden by the randomizer, subject to
+the declared degree bound and the field-size security budget.
+
+Some STWO traces use private columns that participate in more than one semantic
+domain. In that case the implementation uses the vanishing polynomial for the
+declared domain set:
+
+\[
+    \widehat{w}(X)
+    =
+    w(X)
+    +
+    \left(\prod_{H_i \in \mathcal{H}_{\mathrm{sem}}} Z_{H_i}(X)\right) r(X).
+\]
+
+This preserves all declared semantic-domain evaluations while still randomizing
+off-domain openings. The degree increase is derived from the total vanishing
+degree of the declared domain set rather than from a hardcoded AIR constant.
+
+\section{Degree Accounting}
+
+The masked witness degree is not treated as a fixed offset. The ZK degree profile
+is derived from:
+
+\[
+    \deg(w),\quad
+    \deg\!\left(\prod_i Z_{H_i}\right),\quad
+    \deg(r),\quad
+    \text{AIR constraint expansion},\quad
+    \text{composition split},\quad
+    \text{FRI blowup}.
+\]
+
+The verifier binds the resulting per-column overlays and quotient split profile.
+This prevents an implementation from silently shrinking the randomizer space,
+omitting a private dependency, or using a proof-local quotient layout that the
+verifier did not authorize.
+
+\section{Quotient and Composition Masking}
+
+The composition quotient is evaluated against the randomized private trace. The
+quotient is then split into STWO composition columns as usual, but the ZK path
+binds the split layout and expected mask profile into verifier metadata. The
+important invariant is that quotient masking is not a prover-only decoration:
+the verifier checks that the degree and split profile match the ZK metadata it
+derived before accepting the proof.
+
+\section{FRI Sample Planning}
+
+STWO can open columns that live on different committed domains. The ZK path uses
+a semantic sample-point plan that records how each committed-domain point relates
+to the AIR semantic point and to the FRI lifting layer. For a committed point
+\(p_i\), semantic point \(z_i\), committed log size \(c_i\), and FRI lifting log
+size \(L\), the verifier-owned plan enforces the relation
+
+\[
+    \operatorname{double}^{L-c_i}(p_i) = z_i.
+\]
+
+This prevents private masking from using sample points that are inconsistent with
+the original AIR semantics or with the FRI query plan.
+
+\section{Target-Bearing Private LogUp}
+
+LogUp introduces a separate privacy issue. A LogUp claimed sum can itself be a
+witness-derived fingerprint. Hiding it locally is not enough: if the verifier no
+longer checks an algebraic target, lookup soundness can become vacuous.
+
+The accepted policies are:
+
+\[
+    \mathsf{SemanticallyPublic},\qquad
+    \mathsf{StatisticalAggregate}\{\mathsf{aggregate\_id}\},\qquad
+    \mathsf{PrivateUnsupported}.
+\]
+
+A target-bearing private aggregate must have a verifier-checkable target
+
+\[
+    T \in \{0,\ \mathsf{PublicExpression}\}.
+\]
+
+For private claims \(s_i\), masked claims \(m_i\), correction shifts \(c_i\), and
+claim-domain sizes \(|H_i|\), verification checks
+
+\[
+    \sum_i \left(m_i - |H_i| c_i\right) = T.
+\]
+
+The correction hides each private claim while preserving the public aggregate
+relation. If no valid target exists, the AIR remains fail-closed. This is why
+standalone Poseidon private LogUp is not enabled by the current integration: its
+standalone claimed sum is witness-derived and does not currently have a reviewed
+zero, public-expression, or aggregate target.
+
+\section{Transcript Binding}
+
+The verifier binds ZK metadata before challenges that can be affected by private
+data. In the core ZK path, metadata is bound before composition, OODS, sampled
+value, and FRI-query challenges. AIR-specific wrappers must additionally bind the
+same verifier-owned metadata before any lookup challenge they draw outside the
+core verifier. The relevant challenge boundaries are commitments, lookup
+challenges, composition challenges, OODS sampling, sampled values, and FRI
+queries. The security property is that the prover cannot choose a privacy map,
+randomizer space, LogUp policy, or sample-point layout after seeing challenges
+that would make that choice favorable.
+
+\section{What This Improves in STWO}
+
+The integration improves STWO by adding a reusable private-witness framework
+instead of one-off masking for a single example. The main improvements are:
+
+\begin{itemize}
+    \item verifier-owned privacy metadata and canonical hashes;
+    \item AIR-declared public/private column policy;
+    \item private witness masking over STWO semantic domains;
+    \item support for mixed semantic-domain masking;
+    \item dynamic degree-bound derivation from the declared domain set;
+    \item quotient split mask-profile binding;
+    \item FRI sample-point consistency checks;
+    \item target-bearing private LogUp policy;
+    \item fail-closed handling for AIRs without verifier-checkable LogUp targets;
+    \item additive compatibility with ordinary public STWO proving.
+\end{itemize}
+
+\section{Current Limitations}
+
+This is not a claim that every STWO AIR is already private. Each AIR must still
+declare a privacy provider and, for private LogUp, a verifier-checkable target.
+
+Standalone Poseidon private LogUp remains fail-closed. Exposing its raw
+claimed-sum would leak a witness-derived fingerprint, while hiding it without a
+target would fail to prove lookup balance. Poseidon can be enabled only after a
+reviewed zero, public-expression, or aggregate target is derived for the concrete
+statement being proved.
+
+Benchmark artifacts and baseline reports are intentionally not part of this note.
+Performance measurement should be generated on demand from benchmarks, not kept
+as stale repository documentation.
+
+\section{Conclusion}
+
+The current integration maps the paper-shaped vanishing-polynomial masking idea
+onto STWO's committed trace, quotient, and FRI infrastructure. The key design
+choice is that privacy is verifier-owned and target-bearing: the prover may mask
+private witness material, but the verifier still binds the public statement,
+degree budget, sample plan, quotient profile, and LogUp algebraic target before
+accepting.
+
+\end{document}

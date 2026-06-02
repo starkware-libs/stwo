@@ -10,11 +10,32 @@ use stwo::core::Fraction;
 
 use super::EvalAtRow;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LogupClaim {
+    Public(SecureField),
+    MaskedWithPrivateCorrection(SecureField),
+}
+
+impl LogupClaim {
+    #[must_use]
+    pub const fn value(self) -> SecureField {
+        match self {
+            Self::Public(value) | Self::MaskedWithPrivateCorrection(value) => value,
+        }
+    }
+
+    #[must_use]
+    pub const fn uses_private_correction(self) -> bool {
+        matches!(self, Self::MaskedWithPrivateCorrection(_))
+    }
+}
+
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
 pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
+    pub claim: LogupClaim,
     /// The total sum of all the fractions divided by n_rows.
     pub cumsum_shift: SecureField,
     /// The evaluation of the last cumulative sum column.
@@ -30,9 +51,26 @@ impl<E: EvalAtRow> Default for LogupAtRow<E> {
 }
 impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
+        Self::new_with_claim(interaction, LogupClaim::Public(claimed_sum), log_size)
+    }
+
+    pub fn new_masked_with_private_correction(
+        interaction: usize,
+        masked_claim: SecureField,
+        log_size: u32,
+    ) -> Self {
+        Self::new_with_claim(
+            interaction,
+            LogupClaim::MaskedWithPrivateCorrection(masked_claim),
+            log_size,
+        )
+    }
+
+    pub fn new_with_claim(interaction: usize, claim: LogupClaim, log_size: u32) -> Self {
         Self {
             interaction,
-            cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
+            claim,
+            cumsum_shift: claim.value() / BaseField::from_u32_unchecked(1 << log_size),
             fracs: vec![],
             is_finalized: true,
             log_size,
@@ -43,6 +81,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn dummy() -> Self {
         Self {
             interaction: 100,
+            claim: LogupClaim::Public(SecureField::one()),
             cumsum_shift: SecureField::one(),
             fracs: vec![],
             is_finalized: true,

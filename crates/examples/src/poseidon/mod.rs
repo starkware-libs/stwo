@@ -1,5 +1,7 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
 
+pub mod zk;
+
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
@@ -398,20 +400,298 @@ mod tests {
     use std::{array, env};
 
     use itertools::Itertools;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::fields::m31::M31;
+    use stwo::core::fields::qm31::SecureField;
     use stwo::core::fri::FriConfig;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
-    use stwo::core::verifier::verify;
-    use stwo_constraint_framework::assert_constraints_on_polys;
+    use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+    use stwo::core::verifier::{
+        verify, verify_zk_with_witness_randomization_audit, VerificationError,
+    };
+    use stwo::core::zk::{
+        build_stwo_zk_air_metadata, canonical_zk_privacy_map_hash,
+        derive_stwo_zk_air_degree_bounds, zk_trace_domain_log_size_from_column_bounds,
+        ZkAirMetadataBuildError, ZkColumnRange, ZkLogupClaimManifestEntry,
+        ZkLogupClaimMetadataCompleteness, ZkLogupClaimPolicy, ZkLogupClaimVisibility,
+        ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkStarkProof, ZkTraceTreeScope,
+        ZkTraceTreeScopeBinding, ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    };
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::poly::circle::PolyOps;
+    use stwo::prover::zk::{ZkDerivationGate, ZkDerivationReview, ZkProvingConfig};
+    use stwo::prover::{prove_zk, CommitmentSchemeProver};
+    use stwo_constraint_framework::{assert_constraints_on_polys, TraceLocationAllocator};
 
     use crate::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, PoseidonElements,
+        gen_trace, prove_poseidon, PoseidonComponent, PoseidonElements, PoseidonEval, LOG_EXPAND,
+        N_LOG_INSTANCES_PER_ROW,
     };
+
+    const ZK_POSEIDON_LOG_N_INSTANCES: u32 = 8;
+    const ZK_POSEIDON_LOG_N_ROWS: u32 =
+        ZK_POSEIDON_LOG_N_INSTANCES - N_LOG_INSTANCES_PER_ROW as u32;
+    const ZK_POSEIDON_RANDOMIZED_LOG_DEGREE: u32 = ZK_POSEIDON_LOG_N_ROWS + 1;
+    const ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR: u32 = 1;
+
+    fn poseidon_zk_private_constraint_log_expansion(log_n_rows: u32) -> u32 {
+        let component = poseidon_zk_metadata_component(log_n_rows);
+        super::zk::poseidon_zk_private_constraint_log_expansion(
+            &component,
+            log_n_rows,
+            super::zk::poseidon_zk_randomized_log_degree(log_n_rows),
+        )
+        .unwrap()
+    }
+
+    fn zk_poseidon_degree_bounds() -> super::zk::PoseidonZkDegreeBounds {
+        super::zk::derive_poseidon_zk_degree_bounds_from_log_expansion(
+            ZK_POSEIDON_LOG_N_ROWS,
+            ZK_POSEIDON_RANDOMIZED_LOG_DEGREE,
+            poseidon_zk_private_constraint_log_expansion(ZK_POSEIDON_LOG_N_ROWS),
+            ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR,
+        )
+    }
+
+    fn zk_poseidon_fri_first_layer_log_size() -> u32 {
+        zk_poseidon_degree_bounds().fri_first_layer_log_size
+    }
+    fn poseidon_zk_metadata_component(log_n_rows: u32) -> PoseidonComponent {
+        super::zk::poseidon_zk_metadata_component(log_n_rows)
+    }
+
+    fn poseidon_zk_canonical_metadata_result(
+        component: &PoseidonComponent,
+    ) -> Result<super::zk::PoseidonZkCanonicalMetadata, super::zk::PoseidonZkMetadataError> {
+        super::zk::poseidon_zk_canonical_metadata(component, ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR)
+    }
+
+    fn poseidon_zk_canonical_metadata(
+        component: &PoseidonComponent,
+    ) -> super::zk::PoseidonZkCanonicalMetadata {
+        poseidon_zk_canonical_metadata_result(component).unwrap()
+    }
+
+    fn test_hash(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
+
+    fn test_derivation_reviews() -> Vec<ZkDerivationReview> {
+        [
+            ZkDerivationGate::StwoSplitQueryExpansion,
+            ZkDerivationGate::CircleRandomizerSpace,
+            ZkDerivationGate::OodsDomainExclusion,
+            ZkDerivationGate::ZkAwareDegreeMetadata,
+            ZkDerivationGate::FriBatchMaskDegree,
+            ZkDerivationGate::PrivateLookupPermutationExclusion,
+            ZkDerivationGate::ProofDataSecrecy,
+            ZkDerivationGate::ZkPerformanceControls,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, gate)| ZkDerivationReview {
+            gate,
+            review_hash: test_hash(index as u8 + 80),
+        })
+        .collect()
+    }
+
+    fn private_poseidon_zk_configs(
+        component: &PoseidonComponent,
+    ) -> (
+        ZkProvingConfig,
+        ZkVerificationConfig,
+        ZkWitnessRandomizationVerifierAudit,
+    ) {
+        let (prover_config, verifier_config, verifier_audit, _) = super::zk::poseidon_zk_configs(
+            component,
+            ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR,
+            test_derivation_reviews(),
+        )
+        .unwrap();
+
+        (prover_config, verifier_config, verifier_audit)
+    }
+
+    fn test_semantically_public_logup_claim_policy(interaction_index: u32) -> ZkLogupClaimPolicy {
+        ZkLogupClaimPolicy {
+            interaction_index,
+            claim_index: 0,
+            visibility: ZkLogupClaimVisibility::SemanticallyPublic,
+            semantic_domain: b"stwo.examples.poseidon.test-public-logup-claim.v1".to_vec(),
+            semantic_statement: b"test fixture declares this LogUp scalar public".to_vec(),
+        }
+    }
+
+    fn verify_poseidon_zk_private_witness_proof_result(
+        config: PcsConfig,
+        component: &PoseidonComponent,
+        proof: ZkStarkProof<Blake2sMerkleHasher>,
+        zk_verifier_config: &ZkVerificationConfig,
+        zk_verifier_audit: &ZkWitnessRandomizationVerifierAudit,
+        bind_metadata_before_lookup: bool,
+    ) -> Result<(), VerificationError> {
+        let canonical_metadata = poseidon_zk_canonical_metadata(component);
+        let verifier_channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        if proof.0.randomized_pcs_proof.commitments.len() < 3 {
+            return Err(VerificationError::InvalidStructure(
+                "Poseidon ZK proof is missing trace commitments".to_string(),
+            ));
+        }
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[0],
+            &canonical_metadata.component_column_log_sizes[0],
+            verifier_channel,
+        );
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[1],
+            &vec![
+                canonical_metadata.randomized_witness_log_degree;
+                canonical_metadata.component_column_log_sizes[1].len()
+            ],
+            verifier_channel,
+        );
+        if bind_metadata_before_lookup {
+            super::zk::mix_poseidon_zk_verifier_metadata_before_lookup(
+                verifier_channel,
+                zk_verifier_config,
+            );
+        }
+        let lookup_elements = PoseidonElements::draw(verifier_channel);
+        if lookup_elements != component.lookup_elements {
+            return Err(VerificationError::InvalidStructure(
+                "Poseidon lookup challenge mismatch".to_string(),
+            ));
+        }
+        commitment_scheme.commit(
+            proof.0.randomized_pcs_proof.commitments[2],
+            &vec![
+                canonical_metadata.randomized_witness_log_degree;
+                canonical_metadata.component_column_log_sizes[2].len()
+            ],
+            verifier_channel,
+        );
+
+        verify_zk_with_witness_randomization_audit(
+            &[component],
+            verifier_channel,
+            commitment_scheme,
+            proof,
+            zk_verifier_config,
+            zk_verifier_audit,
+        )
+    }
+
+    fn verify_poseidon_zk_private_witness_proof(
+        config: PcsConfig,
+        component: &PoseidonComponent,
+        proof: ZkStarkProof<Blake2sMerkleHasher>,
+        zk_verifier_config: &ZkVerificationConfig,
+        zk_verifier_audit: &ZkWitnessRandomizationVerifierAudit,
+    ) {
+        verify_poseidon_zk_private_witness_proof_result(
+            config,
+            component,
+            proof,
+            zk_verifier_config,
+            zk_verifier_audit,
+            true,
+        )
+        .unwrap();
+    }
+
+    struct PoseidonZkPrivateProofFixture {
+        config: PcsConfig,
+        component: PoseidonComponent,
+        proof: ZkStarkProof<Blake2sMerkleHasher>,
+        zk_verifier_config: ZkVerificationConfig,
+        zk_verifier_audit: ZkWitnessRandomizationVerifierAudit,
+    }
+
+    fn poseidon_zk_test_pcs_config() -> PcsConfig {
+        PcsConfig {
+            fri_config: FriConfig::new(ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR, 1, 3, 1),
+            lifting_log_size: Some(zk_poseidon_fri_first_layer_log_size()),
+            ..PcsConfig::default()
+        }
+    }
+
+    fn prove_poseidon_zk_private_witness_for_test(
+        witness_rng_seed: u64,
+        proof_rng_seed: u64,
+    ) -> PoseidonZkPrivateProofFixture {
+        let config = poseidon_zk_test_pcs_config();
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(zk_poseidon_fri_first_layer_log_size()).half_coset(),
+        );
+        let metadata_component = poseidon_zk_metadata_component(ZK_POSEIDON_LOG_N_ROWS);
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_poseidon_zk_configs(&metadata_component);
+        let prover_channel = &mut Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(prover_channel);
+
+        let (trace, lookup_data) = gen_trace(ZK_POSEIDON_LOG_N_ROWS);
+        let mut witness_rng = StdRng::seed_from_u64(witness_rng_seed);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, prover_channel)
+            .unwrap();
+
+        super::zk::mix_poseidon_zk_prover_metadata_before_lookup(prover_channel, &zk_prover_config);
+        let lookup_elements = PoseidonElements::draw(prover_channel);
+        let (trace, claimed_sum) =
+            gen_interaction_trace(ZK_POSEIDON_LOG_N_ROWS, lookup_data, &lookup_elements);
+        let mut interaction_rng = StdRng::seed_from_u64(witness_rng_seed ^ 0x9e37_79b9_7f4a_7c15);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut interaction_rng, prover_channel)
+            .unwrap();
+
+        let component = PoseidonComponent::new(
+            &mut TraceLocationAllocator::default(),
+            PoseidonEval {
+                log_n_rows: ZK_POSEIDON_LOG_N_ROWS,
+                lookup_elements,
+                claimed_sum,
+            },
+            claimed_sum,
+        );
+        assert_eq!(
+            &component.trace_log_degree_bounds().0,
+            &metadata_component.trace_log_degree_bounds().0
+        );
+        let mut proof_rng = StdRng::seed_from_u64(proof_rng_seed);
+        let proof = prove_zk::<SimdBackend, Blake2sMerkleChannel, _>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+        )
+        .unwrap();
+
+        PoseidonZkPrivateProofFixture {
+            config,
+            component,
+            proof,
+            zk_verifier_config,
+            zk_verifier_audit,
+        }
+    }
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
@@ -486,7 +766,6 @@ mod tests {
         );
     }
 
-    #[ignore = "AIRs with constraint degree >= 2 are not supported yet in the lifted protocol."]
     #[test_log::test]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with
@@ -529,6 +808,540 @@ mod tests {
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test]
+    fn test_poseidon_zk_degree_bounds_are_formula_driven() {
+        let bounds = zk_poseidon_degree_bounds();
+
+        assert_eq!(bounds.trace_log_degree, ZK_POSEIDON_LOG_N_ROWS);
+        assert_eq!(
+            bounds.randomized_private_column_log_degree,
+            ZK_POSEIDON_RANDOMIZED_LOG_DEGREE
+        );
+        assert_eq!(bounds.public_air_constraint_log_expansion, LOG_EXPAND);
+        assert_eq!(
+            bounds.private_constraint_log_expansion,
+            super::zk::poseidon_zk_masked_private_constraint_log_expansion(
+                LOG_EXPAND,
+                ZK_POSEIDON_LOG_N_ROWS,
+                ZK_POSEIDON_RANDOMIZED_LOG_DEGREE,
+            )
+        );
+        assert_eq!(
+            bounds.full_composition_log_degree_bound,
+            bounds.randomized_private_column_log_degree + bounds.private_constraint_log_expansion
+        );
+        assert_eq!(
+            bounds.split_composition_log_degree_bound,
+            bounds.full_composition_log_degree_bound - bounds.composition_log_split
+        );
+        assert_eq!(
+            bounds.left_masked_split_log_degree_bound,
+            bounds.full_composition_log_degree_bound
+        );
+        assert_eq!(
+            bounds.right_masked_split_log_degree_bound,
+            bounds.split_composition_log_degree_bound
+        );
+        assert_eq!(
+            bounds.fri_first_layer_log_size,
+            bounds.left_masked_split_log_degree_bound + bounds.fri_log_blowup_factor
+        );
+    }
+
+    #[test]
+    fn test_poseidon_zk_canonical_metadata_rejects_private_logup_claim_leakage() {
+        let component = poseidon_zk_metadata_component(ZK_POSEIDON_LOG_N_ROWS);
+
+        assert!(matches!(
+            poseidon_zk_canonical_metadata_result(&component),
+            Err(super::zk::PoseidonZkMetadataError::Air(
+                ZkAirMetadataBuildError::IncompleteLogupClaimMetadata
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_poseidon_zk_reusable_api_rejects_private_logup_claim_leakage() {
+        let component = super::zk::poseidon_zk_metadata_component(ZK_POSEIDON_LOG_N_ROWS);
+        assert!(matches!(
+            super::zk::poseidon_zk_configs(
+                &component,
+                ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR,
+                test_derivation_reviews(),
+            ),
+            Err(super::zk::PoseidonZkMetadataError::Air(
+                ZkAirMetadataBuildError::IncompleteLogupClaimMetadata
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_generic_zk_air_metadata_builder_covers_multiple_interactions_and_fails_closed() {
+        let component_bounds = TreeVec::new(vec![vec![], vec![5, 5], vec![5], vec![5, 5]]);
+        let trace_domain_log_size =
+            zk_trace_domain_log_size_from_column_bounds(&component_bounds).unwrap();
+        let randomized_log_degree = trace_domain_log_size + 1;
+        let private_expansion = super::zk::poseidon_zk_masked_private_constraint_log_expansion(
+            LOG_EXPAND,
+            trace_domain_log_size,
+            randomized_log_degree,
+        );
+        let degree_bounds = derive_stwo_zk_air_degree_bounds(
+            trace_domain_log_size,
+            randomized_log_degree,
+            LOG_EXPAND,
+            private_expansion,
+            ZK_POSEIDON_FRI_LOG_BLOWUP_FACTOR,
+            stwo::core::verifier::COMPOSITION_LOG_SPLIT,
+        )
+        .unwrap();
+        let scope_bindings = vec![
+            ZkTraceTreeScopeBinding {
+                tree_index: 0,
+                scope: ZkTraceTreeScope::Preprocessed,
+                column_log_degree_bounds: component_bounds[0].clone(),
+            },
+            ZkTraceTreeScopeBinding {
+                tree_index: 1,
+                scope: ZkTraceTreeScope::OriginalTrace,
+                column_log_degree_bounds: component_bounds[1].clone(),
+            },
+            ZkTraceTreeScopeBinding {
+                tree_index: 2,
+                scope: ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 0,
+                },
+                column_log_degree_bounds: component_bounds[2].clone(),
+            },
+            ZkTraceTreeScopeBinding {
+                tree_index: 3,
+                scope: ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 1,
+                },
+                column_log_degree_bounds: component_bounds[3].clone(),
+            },
+        ];
+        let private_scope_entry =
+            |range: ZkColumnRange, usage: ZkPrivateColumnUsage| ZkPrivateColumnScopeEntry {
+                range,
+                usage,
+                trace_domain_log_size: component_bounds[range.tree_index][range.column_start],
+                semantic_trace_domain_log_sizes: vec![
+                    component_bounds[range.tree_index][range.column_start],
+                ],
+            };
+        let private_scope_entries = vec![
+            private_scope_entry(
+                ZkColumnRange::new(1, 0, 1),
+                ZkPrivateColumnUsage::OrdinaryWitness,
+            ),
+            private_scope_entry(
+                ZkColumnRange::new(1, 1, 2),
+                ZkPrivateColumnUsage::OrdinaryWitness,
+            ),
+            private_scope_entry(ZkColumnRange::new(2, 0, 1), ZkPrivateColumnUsage::LogUp),
+            private_scope_entry(ZkColumnRange::new(3, 0, 1), ZkPrivateColumnUsage::LogUp),
+            private_scope_entry(ZkColumnRange::new(3, 1, 2), ZkPrivateColumnUsage::LogUp),
+        ];
+
+        let metadata = build_stwo_zk_air_metadata(
+            component_bounds.clone(),
+            trace_domain_log_size,
+            randomized_log_degree,
+            degree_bounds,
+            scope_bindings.clone(),
+            vec![],
+            private_scope_entries.clone(),
+            ZkLogupClaimMetadataCompleteness::Complete,
+            vec![
+                ZkLogupClaimManifestEntry {
+                    interaction_index: 0,
+                    claim_count: 1,
+                },
+                ZkLogupClaimManifestEntry {
+                    interaction_index: 1,
+                    claim_count: 1,
+                },
+            ],
+            vec![
+                test_semantically_public_logup_claim_policy(0),
+                test_semantically_public_logup_claim_policy(1),
+            ],
+            b"stwo.examples.test.zk-air-metadata.v1",
+            b"two-logup-interaction-trees",
+        )
+        .unwrap();
+        assert_eq!(metadata.private_ranges.len(), 5);
+        assert_eq!(
+            metadata.trace_tree_scope_bindings.len(),
+            component_bounds.len() + 1
+        );
+        assert!(metadata
+            .trace_tree_scope_bindings
+            .iter()
+            .any(|binding| binding.scope
+                == ZkTraceTreeScope::InteractionTrace {
+                    interaction_index: 1
+                }));
+
+        let omitted_interaction_range = ZkColumnRange::new(3, 1, 2);
+        let mut omitted_private_scope_entries = private_scope_entries;
+        omitted_private_scope_entries.retain(|entry| entry.range != omitted_interaction_range);
+        assert_eq!(
+            build_stwo_zk_air_metadata(
+                component_bounds,
+                trace_domain_log_size,
+                randomized_log_degree,
+                degree_bounds,
+                scope_bindings,
+                vec![],
+                omitted_private_scope_entries,
+                ZkLogupClaimMetadataCompleteness::Complete,
+                vec![
+                    ZkLogupClaimManifestEntry {
+                        interaction_index: 0,
+                        claim_count: 1,
+                    },
+                    ZkLogupClaimManifestEntry {
+                        interaction_index: 1,
+                        claim_count: 1,
+                    },
+                ],
+                vec![
+                    test_semantically_public_logup_claim_policy(0),
+                    test_semantically_public_logup_claim_policy(1),
+                ],
+                b"stwo.examples.test.zk-air-metadata.v1",
+                b"two-logup-interaction-trees",
+            )
+            .unwrap_err(),
+            ZkAirMetadataBuildError::MissingPrivateInteractionColumn {
+                range: omitted_interaction_range,
+            }
+        );
+    }
+
+    #[test]
+    fn test_poseidon_zk_logup_interaction_columns_require_private_claim_protocol() {
+        let component = poseidon_zk_metadata_component(ZK_POSEIDON_LOG_N_ROWS);
+        assert!(ZkPrivateColumnUsage::LogUp.eligible_for_witness_randomization());
+        assert!(matches!(
+            poseidon_zk_canonical_metadata_result(&component),
+            Err(super::zk::PoseidonZkMetadataError::Air(
+                ZkAirMetadataBuildError::IncompleteLogupClaimMetadata
+            ))
+        ));
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_private_proof_surface_does_not_dump_full_private_trace() {
+        let fixture = prove_poseidon_zk_private_witness_for_test(701, 702);
+        let metadata = poseidon_zk_canonical_metadata(&fixture.component);
+        let randomized_pcs_proof = &fixture.proof.0.randomized_pcs_proof;
+        let trace_row_count = 1usize << metadata.trace_domain_log_size;
+
+        assert_eq!(
+            randomized_pcs_proof.sampled_values[1].len(),
+            metadata.component_column_log_sizes[1].len()
+        );
+        assert!(randomized_pcs_proof.sampled_values[1]
+            .iter()
+            .all(|column| column.len() < trace_row_count));
+        assert!(randomized_pcs_proof.queried_values[1]
+            .iter()
+            .all(|column| column.len() < trace_row_count));
+        assert_eq!(
+            randomized_pcs_proof.sampled_values[2].len(),
+            metadata.component_column_log_sizes[2].len()
+        );
+        assert!(randomized_pcs_proof.sampled_values[2]
+            .iter()
+            .all(|column| column.len() < trace_row_count));
+        assert!(randomized_pcs_proof.queried_values[2]
+            .iter()
+            .all(|column| column.len() < trace_row_count));
+        assert_eq!(
+            fixture.proof.0.public_metadata.privacy_map_hash,
+            fixture.zk_verifier_audit.privacy_map.hash
+        );
+        assert_eq!(
+            fixture
+                .proof
+                .0
+                .public_metadata
+                .witness_randomization
+                .private_column_scope_hash,
+            fixture.zk_verifier_audit.private_column_scope.hash
+        );
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_wrong_privacy_map() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(801, 802);
+        fixture.zk_verifier_audit.privacy_map.hash.0[0] ^= 1;
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_omitted_private_logup_range() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(803, 804);
+        let metadata = poseidon_zk_canonical_metadata(&fixture.component);
+        let omitted = metadata.interaction_trace_private_ranges[0];
+        fixture
+            .zk_verifier_audit
+            .privacy_map
+            .private_columns
+            .retain(|range| *range != omitted);
+        fixture.zk_verifier_audit.privacy_map.hash =
+            canonical_zk_privacy_map_hash(&fixture.zk_verifier_audit.privacy_map);
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_wrong_logup_private_scope() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(825, 826);
+        let metadata = poseidon_zk_canonical_metadata(&fixture.component);
+        let interaction_range = metadata.interaction_trace_private_ranges[0];
+        let entry = fixture
+            .zk_verifier_audit
+            .private_column_scope
+            .entries
+            .iter_mut()
+            .find(|entry| entry.range == interaction_range)
+            .expect("interaction range must be scoped");
+        entry.usage = ZkPrivateColumnUsage::OrdinaryWitness;
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_wrong_public_statement_metadata() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(805, 806);
+        fixture.zk_verifier_config.metadata.public_statement_hash.0[0] ^= 1;
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_underbudgeted_degree_metadata() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(807, 808);
+        fixture
+            .zk_verifier_config
+            .metadata
+            .degree_profile
+            .fri_first_layer_log_size -= 1;
+        fixture
+            .zk_verifier_config
+            .metadata
+            .quotient_integration
+            .fri_first_layer_log_size -= 1;
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_missing_prelookup_metadata_binding() {
+        let fixture = prove_poseidon_zk_private_witness_for_test(809, 810);
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            false,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_malformed_commitment_structure_without_panic() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(813, 814);
+        fixture.proof.0.randomized_pcs_proof.commitments.pop();
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_wrong_quotient_mask_profile() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(811, 812);
+        let mut profile = fixture
+            .zk_verifier_config
+            .quotient_split_mask_profile
+            .expect("Poseidon ZK verifier config must include quotient split profile");
+        profile.right_masked_log_degree_bound += 1;
+        fixture.zk_verifier_config.quotient_split_mask_profile = Some(profile);
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_tampered_masked_opening_after_transcript_fixed() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(821, 822);
+        fixture.proof.0.randomized_pcs_proof.sampled_values[1][0][0] += SecureField::from(M31(1));
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_verifier_rejects_tampered_masked_logup_opening_after_transcript_fixed() {
+        let mut fixture = prove_poseidon_zk_private_witness_for_test(823, 824);
+        fixture.proof.0.randomized_pcs_proof.sampled_values[2][0][0] += SecureField::from(M31(1));
+
+        assert!(verify_poseidon_zk_private_witness_proof_result(
+            fixture.config,
+            &fixture.component,
+            fixture.proof,
+            &fixture.zk_verifier_config,
+            &fixture.zk_verifier_audit,
+            true,
+        )
+        .is_err());
+    }
+
+    #[ignore = "Blocked: private LogUp claimed_sum is witness-derived until a reviewed private-claim protocol replaces public scalar claims."]
+    #[test]
+    fn test_poseidon_zk_private_witness_repeated_proofs_hide_private_material() {
+        let fixture_a = prove_poseidon_zk_private_witness_for_test(401, 402);
+        let fixture_b = prove_poseidon_zk_private_witness_for_test(501, 502);
+        let PoseidonZkPrivateProofFixture {
+            config: config_a,
+            component: component_a,
+            proof: proof_a,
+            zk_verifier_config: zk_verifier_config_a,
+            zk_verifier_audit: zk_verifier_audit_a,
+        } = fixture_a;
+        let PoseidonZkPrivateProofFixture {
+            config: config_b,
+            component: component_b,
+            proof: proof_b,
+            zk_verifier_config: zk_verifier_config_b,
+            zk_verifier_audit: zk_verifier_audit_b,
+        } = fixture_b;
+
+        assert_eq!(proof_a.0.public_metadata, proof_b.0.public_metadata);
+        assert_eq!(
+            proof_a.0.randomized_pcs_proof.commitments[0],
+            proof_b.0.randomized_pcs_proof.commitments[0]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[1],
+            proof_b.0.randomized_pcs_proof.commitments[1]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[2],
+            proof_b.0.randomized_pcs_proof.commitments[2]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.commitments[3],
+            proof_b.0.randomized_pcs_proof.commitments[3]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.sampled_values[1],
+            proof_b.0.randomized_pcs_proof.sampled_values[1]
+        );
+        assert_ne!(
+            proof_a.0.randomized_pcs_proof.sampled_values[2],
+            proof_b.0.randomized_pcs_proof.sampled_values[2]
+        );
+        assert_ne!(
+            proof_a.0.fri_batch_mask.commitment,
+            proof_b.0.fri_batch_mask.commitment
+        );
+
+        verify_poseidon_zk_private_witness_proof(
+            config_a,
+            &component_a,
+            proof_a,
+            &zk_verifier_config_a,
+            &zk_verifier_audit_a,
+        );
+        verify_poseidon_zk_private_witness_proof(
+            config_b,
+            &component_b,
+            proof_b,
+            &zk_verifier_config_b,
+            &zk_verifier_audit_b,
+        );
     }
 
     #[ignore = "AIRs with constraint degree >= 2 are not supported yet in the lifted protocol."]

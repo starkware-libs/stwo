@@ -14,7 +14,7 @@ use stwo::parallel_iter;
 use stwo::prover::backend::{Backend, Column};
 use stwo::prover::poly::circle::CircleCoefficients;
 
-use crate::logup::LogupAtRow;
+use crate::logup::{LogupAtRow, LogupClaim};
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
 
 /// Evaluates expressions at a trace domain row, and asserts constraints. Mainly used for testing.
@@ -32,12 +32,21 @@ impl<'a> AssertEvaluator<'a> {
         log_size: u32,
         claimed_sum: SecureField,
     ) -> Self {
+        Self::new_with_logup_claim(trace, row, log_size, LogupClaim::Public(claimed_sum))
+    }
+
+    pub fn new_with_logup_claim(
+        trace: &'a TreeVec<Vec<&Vec<BaseField>>>,
+        row: usize,
+        log_size: u32,
+        logup_claim: LogupClaim,
+    ) -> Self {
         Self {
             trace,
             col_index: TreeVec::new(vec![0; trace.len()]),
             row,
             constraint_counter: 0,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
+            logup: LogupAtRow::new_with_claim(INTERACTION_TRACE_IDX, logup_claim, log_size),
         }
     }
 }

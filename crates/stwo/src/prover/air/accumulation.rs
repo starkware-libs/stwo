@@ -68,6 +68,44 @@ impl EvaluationMode {
             log_expansion: common_log_expansion.unwrap_or(0),
         }
     }
+
+    /// Determines the evaluation mode from explicit per-component trace and
+    /// constraint degree bounds.
+    ///
+    /// Returns `None` if any constraint bound is smaller than the
+    /// corresponding trace bound, or if the arrays are not aligned.
+    pub fn infer_from_component_bounds(
+        trace_log_degree_bounds: &[u32],
+        constraint_log_degree_bounds: &[u32],
+        log_blowup_factor: u32,
+    ) -> Option<Self> {
+        if trace_log_degree_bounds.len() != constraint_log_degree_bounds.len() {
+            return None;
+        }
+
+        let mut common_log_expansion: Option<u32> = None;
+        for (&trace_log_size, &constraint_log_degree_bound) in trace_log_degree_bounds
+            .iter()
+            .zip(constraint_log_degree_bounds)
+        {
+            let constraint_log_degree = constraint_log_degree_bound.checked_sub(trace_log_size)?;
+            if constraint_log_degree > log_blowup_factor {
+                return Some(EvaluationMode::ExtendToEvalDomain);
+            }
+            let log_expansion = log_blowup_factor - constraint_log_degree;
+            match common_log_expansion {
+                None => common_log_expansion = Some(log_expansion),
+                Some(prev) if prev != log_expansion => {
+                    return Some(EvaluationMode::ExtendToEvalDomain);
+                }
+                _ => {}
+            }
+        }
+
+        Some(EvaluationMode::SubDomain {
+            log_expansion: common_log_expansion.unwrap_or(0),
+        })
+    }
 }
 
 // TODO(ShaharS), rename terminology to constraints instead of columns.
@@ -242,6 +280,23 @@ mod tests {
     use crate::prover::backend::cpu::CpuCircleEvaluation;
     use crate::prover::poly::circle::PolyOps;
     use crate::qm31;
+
+    #[test]
+    fn evaluation_mode_infer_from_explicit_component_bounds() {
+        assert!(matches!(
+            EvaluationMode::infer_from_component_bounds(&[5], &[6], 2),
+            Some(EvaluationMode::SubDomain { log_expansion: 1 }),
+        ));
+        assert!(matches!(
+            EvaluationMode::infer_from_component_bounds(&[5], &[8], 2),
+            Some(EvaluationMode::ExtendToEvalDomain),
+        ));
+        assert!(matches!(
+            EvaluationMode::infer_from_component_bounds(&[5, 4], &[6, 6], 2),
+            Some(EvaluationMode::ExtendToEvalDomain),
+        ));
+        assert!(EvaluationMode::infer_from_component_bounds(&[6], &[5], 2).is_none());
+    }
 
     #[test]
     fn test_domain_evaluation_accumulator_lifted() {

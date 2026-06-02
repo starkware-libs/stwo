@@ -7,11 +7,13 @@ use super::assignment::{ExprVarAssignment, ExprVariables};
 use super::degree::NamedExprs;
 use super::{BaseExpr, ExtExpr};
 use crate::expr::ColumnExpr;
+use crate::logup::LogupClaim;
 use crate::preprocessed_columns::PreProcessedColumnId;
 use crate::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
+    pub claim: LogupClaim,
     pub claimed_sum: ExtExpr,
     pub fracs: Vec<Fraction<ExtExpr, ExtExpr>>,
     pub is_finalized: bool,
@@ -26,6 +28,7 @@ impl FormalLogupAtRow {
 
         Self {
             interaction,
+            claim: LogupClaim::Public(Default::default()),
             // TODO(alont): Should these be Expr::SecureField?
             claimed_sum: ExtExpr::Param(claimed_sum_name.clone()),
             fracs: vec![],
