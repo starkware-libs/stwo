@@ -1,8 +1,9 @@
 //! Reusable Poseidon ZK metadata and transcript helpers.
 //!
 //! This module derives Poseidon ZK geometry for private original-trace columns.
-//! Full private LogUp is intentionally fail-closed until a reviewed protocol
-//! hides witness-derived LogUp claimed-sum scalars.
+//! Private LogUp is intentionally fail-closed unless the AIR declares a
+//! verifier-checkable target for each private LogUp claim. A masked local
+//! correction by itself hides the scalar but does not prove lookup balance.
 
 use stwo::core::air::Component;
 use stwo::core::channel::Channel;

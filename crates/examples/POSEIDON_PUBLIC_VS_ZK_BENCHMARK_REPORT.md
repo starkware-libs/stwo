@@ -1,8 +1,8 @@
-# Poseidon public vs ZK benchmark report
+# Poseidon public vs pre-target-bearing masking benchmark report
 
 `log_n_instances`: 10
 
-ZK mode: original trace and LogUp interaction running-sum columns private; claimed_sum remains public for lookup soundness.
+Pre-target-bearing masking mode: original trace and LogUp interaction running-sum columns are randomized, but `claimed_sum` remains public for lookup soundness. This is not a sound private LogUp ZK benchmark under the target-bearing signoff rule.
 
 Metadata builder: `stwo::core::zk::build_stwo_zk_air_metadata`; Poseidon supplies AIR-specific tree policy and reviewed degree expansion.
 

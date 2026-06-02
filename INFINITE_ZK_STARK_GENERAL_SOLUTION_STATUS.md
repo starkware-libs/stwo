@@ -21,8 +21,10 @@ STARK ZK construction in STWO and later in Infinite.
   one scope binding per committed trace tree, no duplicate tree scopes, no
   public/private overlap, singleton private ranges, explicit eligible private
   usage, and full `LogUp` coverage for every `InteractionTrace` tree.
-- Poseidon ZK proof path still verifies original STWO public Poseidon and
-  private Poseidon ZK tests through explicit ZK APIs.
+- Poseidon still verifies original STWO public Poseidon. Poseidon private LogUp
+  remains fail-closed pending a reviewed verifier-checkable `Zero`,
+  `PublicExpression`, or aggregate target for its witness-derived
+  `claimed_sum`.
 
 ## Generality boundary
 
@@ -58,6 +60,11 @@ The existing Poseidon example still uses placeholder round constants. This is
 a pre-existing example-correctness caveat, not a ZK masking soundness change.
 Production Poseidon constants should be integrated from a primary source before
 using the example as a production Poseidon2 hash.
+
+Poseidon private LogUp is not currently enabled as a sound private ZK proof
+path. Earlier masked Poseidon benchmark/report wiring measures a
+pre-target-bearing path where `claimed_sum` remains public; treat that data as
+baseline engineering telemetry, not as a private LogUp ZK benchmark.
 
 ## Benchmarks
 

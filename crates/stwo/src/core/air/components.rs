@@ -157,32 +157,32 @@ impl Components<'_> {
         include_all_preprocessed_columns: bool,
     ) -> Option<(TreeVec<ColumnVec<Vec<u32>>>, TreeVec<ColumnVec<Vec<u32>>>)> {
         let composition_log_degree_bound = self.composition_log_degree_bound();
-        let component_step_log_sizes =
-            self.components
-                .iter()
-                .map(|component| {
-                    let component_offsets = component.mask_offsets()?;
-                    let component_bounds = component.trace_log_degree_bounds();
-                    Some(TreeVec(
-                        component_offsets
-                            .iter()
-                            .enumerate()
-                            .map(|(tree_index, offset_tree)| {
-                                if tree_index == PREPROCESSED_TRACE_IDX {
-                                    return vec![vec![]; offset_tree.len()];
-                                }
-                                offset_tree
-                                    .iter()
-                                    .zip(&component_bounds[tree_index])
-                                    .map(|(column_offsets, &log_size)| {
-                                        vec![log_size; column_offsets.len()]
-                                    })
-                                    .collect()
-                            })
-                            .collect(),
-                    ))
-                })
-                .collect::<Option<Vec<_>>>()?;
+        let component_step_log_sizes = self
+            .components
+            .iter()
+            .map(|component| {
+                let component_offsets = component.mask_offsets()?;
+                let component_bounds = component.trace_log_degree_bounds();
+                Some(TreeVec(
+                    component_offsets
+                        .iter()
+                        .enumerate()
+                        .map(|(tree_index, offset_tree)| {
+                            if tree_index == PREPROCESSED_TRACE_IDX {
+                                return vec![vec![]; offset_tree.len()];
+                            }
+                            offset_tree
+                                .iter()
+                                .zip(&component_bounds[tree_index])
+                                .map(|(column_offsets, &log_size)| {
+                                    vec![log_size; column_offsets.len()]
+                                })
+                                .collect()
+                        })
+                        .collect(),
+                ))
+            })
+            .collect::<Option<Vec<_>>>()?;
         let component_base_lifts = self
             .components
             .iter()
