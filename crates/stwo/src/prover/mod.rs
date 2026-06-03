@@ -11,14 +11,15 @@ use crate::core::verifier::{COMPOSITION_LOG_SPLIT, PREPROCESSED_TRACE_IDX};
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point,
     draw_zk_oods_sample_point_plan_with_semantic_sample_domains, mix_zk_public_metadata,
-    mix_zk_quotient_split_mask_profile, validate_zk_committed_column_log_sizes,
+    mix_zk_quotient_split_mask_profile, reject_zk_logup_statistical_security_budget_activation,
+    validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_sample_points_outside_exclusion_set, validate_zk_witness_metadata,
     zk_metadata_requires_private_stark_activation, zk_oods_exclusion_set,
     zk_trace_domain_log_size_from_column_bounds, ExtendedZkStarkProof,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsExclusionSet, ZkOodsSamplePointPlanningError,
-    ZkOodsSamplePointValidationError, ZkOodsSamplingError, ZkStarkDegreeBoundProfileError,
-    ZkStarkProof, ZkVerificationConfig,
+    ZkCommittedColumnLogSizeValidationError, ZkLogupStatisticalAggregatePolicyError,
+    ZkOodsExclusionSet, ZkOodsSamplePointPlanningError, ZkOodsSamplePointValidationError,
+    ZkOodsSamplingError, ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
 };
 use crate::prover::backend::BackendForChannel;
 use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureCirclePoly};
@@ -320,6 +321,12 @@ where
     MC: MerkleChannel,
     R: RngCore + CryptoRng + ?Sized,
 {
+    reject_zk_logup_statistical_security_budget_activation(
+        &zk_config.metadata,
+        &zk_config.logup_statistical_security_budgets,
+    )
+    .map_err(ProvingError::ZkLogupStatisticalAggregatePolicy)?;
+
     let requires_private_witness_integration = !zk_config.privacy_map.private_columns.is_empty()
         || zk_metadata_requires_private_stark_activation(&zk_config.metadata);
     if requires_private_witness_integration {
@@ -592,6 +599,8 @@ pub enum ProvingError {
     ConstraintsNotSatisfied,
     #[error("Invalid ZK proving config: {0:?}.")]
     ZkConfig(ZkProvingConfigError),
+    #[error("Unsupported ZK LogUp statistical aggregate activation: {0:?}.")]
+    ZkLogupStatisticalAggregatePolicy(ZkLogupStatisticalAggregatePolicyError),
     #[error("Could not sample a valid ZK OODS point: {0:?}.")]
     ZkOodsSampling(ZkOodsSamplingError),
     #[error("Invalid ZK OODS sample point: {0:?}.")]
@@ -630,13 +639,16 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::zk::{
+        canonical_zk_logup_statistical_security_budget_hash,
         canonical_zk_private_column_scope_hash, canonical_zk_randomizer_space_hash,
         canonical_zk_split_derivation_hash, expected_zk_fri_batch_degree_bound,
         zk_trace_domain_half_coset, ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange,
-        ZkDegreeProfile, ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope,
-        ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata,
-        ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry,
-        ZkVerificationConfig, ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+        ZkDegreeProfile, ZkLogupStatisticalAggregatePolicyError, ZkLogupStatisticalSecurityBudget,
+        ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope, ZkPrivateColumnScopeEntry,
+        ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata, ZkPublicStatementHash,
+        ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry, ZkVerificationConfig,
+        ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+        ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
     };
     use crate::core::ColumnVec;
     use crate::prover::backend::cpu::CpuBackend;
@@ -728,6 +740,19 @@ mod tests {
             review_hash: test_hash(index as u8 + 10),
         })
         .collect()
+    }
+
+    fn test_logup_statistical_security_budget() -> ZkLogupStatisticalSecurityBudget {
+        ZkLogupStatisticalSecurityBudget {
+            aggregate_id: 0,
+            extension_field_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+            private_lookup_term_count_bound: 1,
+            lookup_challenge_count: 1,
+            expected_proof_volume: 1,
+            safety_margin_bits: 0,
+            computed_security_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+            min_statistical_security_bits: 80,
+        }
     }
 
     fn private_stark_test_configs() -> (
@@ -980,6 +1005,144 @@ mod tests {
             verifier_config,
             verifier_audit,
         )
+    }
+
+    #[test]
+    fn private_witness_zk_stark_prove_zk_ex_rejects_logup_statistical_budgets() {
+        let config = private_stark_test_pcs_config();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(TEST_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let mut prover_channel = Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let (mut zk_prover_config, ..) = private_stark_test_configs();
+        let budget = test_logup_statistical_security_budget();
+        zk_prover_config
+            .metadata
+            .logup_statistical_security_budget_hash =
+            canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+        zk_prover_config.logup_statistical_security_budgets = vec![budget];
+        commit_private_stark_test_inputs(
+            &mut commitment_scheme,
+            &mut prover_channel,
+            &zk_prover_config,
+            91,
+        );
+
+        let component = NoConstraintPrivateComponent;
+        let mut proof_rng = StdRng::seed_from_u64(92);
+        let result = prove_zk_ex::<CpuBackend, Blake2sMerkleChannel, _>(
+            &[&component],
+            &mut prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+            false,
+        );
+
+        assert!(matches!(
+            result,
+            Err(ProvingError::ZkLogupStatisticalAggregatePolicy(
+                ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets
+            ))
+        ));
+    }
+
+    #[test]
+    fn private_witness_zk_stark_verify_zk_ex_rejects_logup_statistical_budgets() {
+        let (config, mut verifier_config, _verifier_audit, proof) =
+            prove_private_stark_test_proof(93, 94);
+        verifier_config.logup_statistical_security_budgets =
+            vec![test_logup_statistical_security_budget()];
+
+        let component = NoConstraintPrivateComponent;
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof);
+        let result = crate::core::verifier::verify_zk_ex::<Blake2sMerkleChannel>(
+            &[&component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof,
+            &verifier_config,
+            false,
+        );
+
+        assert!(matches!(
+            result,
+            Err(
+                crate::core::verifier::VerificationError::ZkLogupStatisticalAggregatePolicy(
+                    ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn private_witness_zk_stark_verify_zk_ex_rejects_logup_statistical_budget_hash() {
+        let (config, mut verifier_config, _verifier_audit, proof) =
+            prove_private_stark_test_proof(95, 96);
+        let budget = test_logup_statistical_security_budget();
+        verifier_config
+            .metadata
+            .logup_statistical_security_budget_hash =
+            canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+
+        let component = NoConstraintPrivateComponent;
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof);
+        let result = crate::core::verifier::verify_zk_ex::<Blake2sMerkleChannel>(
+            &[&component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof,
+            &verifier_config,
+            false,
+        );
+
+        assert!(matches!(
+            result,
+            Err(
+                crate::core::verifier::VerificationError::ZkLogupStatisticalAggregatePolicy(
+                    ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgetHash
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn private_witness_zk_stark_verify_zk_ex_rejects_proof_logup_statistical_budget_hash() {
+        let (config, verifier_config, _verifier_audit, mut proof) =
+            prove_private_stark_test_proof(97, 98);
+        let budget = test_logup_statistical_security_budget();
+        proof
+            .0
+            .public_metadata
+            .logup_statistical_security_budget_hash =
+            canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+
+        let component = NoConstraintPrivateComponent;
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof);
+        let result = crate::core::verifier::verify_zk_ex::<Blake2sMerkleChannel>(
+            &[&component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof,
+            &verifier_config,
+            false,
+        );
+
+        assert!(matches!(
+            result,
+            Err(
+                crate::core::verifier::VerificationError::ZkLogupStatisticalAggregatePolicy(
+                    ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgetHash
+                )
+            )
+        ));
     }
 
     #[test]

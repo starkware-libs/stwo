@@ -17,11 +17,13 @@ use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::zk::{
     mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
+    reject_zk_logup_statistical_security_budget_activation,
     validate_zk_public_metadata_against_verifier_config, validate_zk_public_only_metadata,
     validate_zk_sampled_values_shape, validate_zk_witness_metadata,
-    validate_zk_witness_randomization_audit_for_verifier, zk_fri_batch_mask_fri_config,
-    zk_fri_batch_mask_query_positions, ZkColumnDegreeBound, ZkCommitmentSchemeProof,
-    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    validate_zk_witness_randomization_audit_for_verifier_with_opening_geometry,
+    zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions, ZkColumnDegreeBound,
+    ZkCommitmentSchemeProof, ZkPrivateColumnOpeningGeometry, ZkVerificationConfig,
+    ZkWitnessRandomizationVerifierAudit,
 };
 use crate::core::ColumnVec;
 
@@ -222,6 +224,14 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         witness_randomization_audit: Option<&ZkWitnessRandomizationVerifierAudit>,
         channel: &mut MC::C,
     ) -> Result<(), VerificationError> {
+        reject_zk_logup_statistical_security_budget_activation(
+            &zk_config.metadata,
+            &zk_config.logup_statistical_security_budgets,
+        )
+        .map_err(VerificationError::ZkLogupStatisticalAggregatePolicy)?;
+        reject_zk_logup_statistical_security_budget_activation(&proof.public_metadata, &[])
+            .map_err(VerificationError::ZkLogupStatisticalAggregatePolicy)?;
+
         if proof.version != zk_config.metadata.version
             || proof.public_metadata != zk_config.metadata
         {
@@ -419,12 +429,38 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 "ZK PCS sampled-value shape does not match sampled points",
             ))
         })?;
-        validate_zk_witness_randomization_audit_for_verifier(
+        let mut private_opening_geometry = Vec::new();
+        for bound in &zk_config
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+        {
+            let Some(tree) = self.trees.0.get(bound.range.tree_index) else {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "ZK private opening geometry references a missing commitment tree",
+                )));
+            };
+            let Some(&committed_column_log_size) =
+                tree.column_log_sizes.get(bound.range.column_start)
+            else {
+                return Err(VerificationError::InvalidStructure(String::from(
+                    "ZK private opening geometry references a missing commitment column",
+                )));
+            };
+            private_opening_geometry.push(ZkPrivateColumnOpeningGeometry {
+                range: bound.range,
+                tree_height: tree.height,
+                committed_column_log_size,
+            });
+        }
+        validate_zk_witness_randomization_audit_for_verifier_with_opening_geometry(
             zk_config,
             witness_randomization_audit,
             &sampled_points,
             &query_positions,
             lifting_log_size,
+            &private_opening_geometry,
+            self.config.fri_config.log_blowup_factor,
         )
         .map_err(|_| {
             VerificationError::InvalidStructure(String::from(

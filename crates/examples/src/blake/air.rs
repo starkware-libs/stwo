@@ -11,6 +11,7 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::{verify, VerificationError};
+#[cfg(test)]
 use stwo::core::zk::{
     zk_singleton_column_ranges, ZkAirId, ZkAirPrivacyProvider, ZkColumnRange, ZkDependencyKind,
     ZkDependencyMetadataCompleteness, ZkPrivacyDependency, ZkPrivacyReason, ZkPrivateColumnUsage,
@@ -22,7 +23,9 @@ use stwo::prover::backend::BackendForChannel;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_constraint_framework::{FrameworkEval, TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
+#[cfg(test)]
+use stwo_constraint_framework::FrameworkEval;
+use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;

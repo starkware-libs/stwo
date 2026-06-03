@@ -12,7 +12,7 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::ComplexConjugate;
 use crate::core::fri::{FriConfig, FriProof, FriProofAux};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
-use crate::core::pcs::utils::TreeVec;
+use crate::core::pcs::utils::{prepare_preprocessed_query_positions, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::get_folding_alphas;
 use crate::core::proof::SizeEstimate;
@@ -384,6 +384,28 @@ pub struct ZkLogupStatisticalSecurityBudget {
 
 pub const ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS: u32 = 124;
 pub const ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH: [u8; 32] = [0x5a; 32];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZkLogupStatisticalAggregatePolicyError {
+    NonEmptySecurityBudgets,
+    NonEmptySecurityBudgetHash,
+}
+
+pub fn reject_zk_logup_statistical_security_budget_activation(
+    metadata: &ZkPublicMetadata,
+    budgets: &[ZkLogupStatisticalSecurityBudget],
+) -> Result<(), ZkLogupStatisticalAggregatePolicyError> {
+    if !budgets.is_empty() {
+        return Err(ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets);
+    }
+    if metadata.logup_statistical_security_budget_hash
+        != ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH
+    {
+        return Err(ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgetHash);
+    }
+
+    Ok(())
+}
 
 pub trait ZkAirPrivacyProvider {
     fn air_id(&self) -> ZkAirId;
@@ -2454,21 +2476,21 @@ pub fn validate_zk_query_closure_for_witness_randomization(
         }
 
         if entry.kind == ZkQueryClosureKind::FriPosition {
-            let expected_domain_id = metadata.degree_profile.fri_first_layer_log_size as u64;
-            if entry.domain_id != expected_domain_id {
+            let max_domain_id = metadata.degree_profile.fri_first_layer_log_size as u64;
+            if entry.domain_id > max_domain_id {
                 return Err(ZkQueryClosureValidationError::QueryDomainMismatch {
                     entry,
-                    expected: expected_domain_id,
+                    expected: max_domain_id,
                     actual: entry.domain_id,
                 });
             }
-            if expected_domain_id >= u64::BITS as u64 {
+            if entry.domain_id >= u64::BITS as u64 {
                 return Err(ZkQueryClosureValidationError::QueryDomainTooLarge {
                     entry,
-                    log_size: expected_domain_id,
+                    log_size: entry.domain_id,
                 });
             }
-            let domain_size = 1u64 << expected_domain_id;
+            let domain_size = 1u64 << entry.domain_id;
             let position = entry.point_or_position[0];
             if position >= domain_size {
                 return Err(ZkQueryClosureValidationError::QueryPositionOutOfDomain {
@@ -2722,12 +2744,58 @@ pub enum ZkRandomizerMatrixBuildError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZkSampleMetadataBuildError {
-    NonSingletonPrivateRange { range: ZkColumnRange },
-    MissingTree { tree_index: usize },
-    MissingColumn { range: ZkColumnRange },
-    QueryPositionOutOfDomain { position: usize, domain_size: usize },
-    TraceDomainTooLarge { log_size: u32 },
-    LiftingDomainTooLarge { log_size: u32 },
+    NonSingletonPrivateRange {
+        range: ZkColumnRange,
+    },
+    MissingTree {
+        tree_index: usize,
+    },
+    MissingColumn {
+        range: ZkColumnRange,
+    },
+    MissingOpeningGeometry {
+        range: ZkColumnRange,
+    },
+    DuplicateOpeningGeometry {
+        range: ZkColumnRange,
+    },
+    InvalidOpeningGeometry {
+        range: ZkColumnRange,
+    },
+    MissingPrivateColumnDegreeBound {
+        range: ZkColumnRange,
+    },
+    DuplicatePrivateColumnDegreeBound {
+        range: ZkColumnRange,
+    },
+    InvalidPrivateColumnDegreeBound {
+        range: ZkColumnRange,
+    },
+    PrivateColumnDegreeBoundTooSmall {
+        range: ZkColumnRange,
+        required: u32,
+        actual: u32,
+    },
+    CommittedColumnLogSizeOverflow {
+        range: ZkColumnRange,
+        log_degree_bound: u32,
+        log_blowup_factor: u32,
+    },
+    CommittedColumnLogSizeMismatch {
+        range: ZkColumnRange,
+        expected: u32,
+        actual: u32,
+    },
+    QueryPositionOutOfDomain {
+        position: usize,
+        domain_size: usize,
+    },
+    TraceDomainTooLarge {
+        log_size: u32,
+    },
+    LiftingDomainTooLarge {
+        log_size: u32,
+    },
     RandomizerMatrix(ZkRandomizerMatrixBuildError),
 }
 
@@ -2738,6 +2806,269 @@ fn zk_randomizer_dimension_from_trace_log_size(
         .ok_or(ZkSampleMetadataBuildError::TraceDomainTooLarge {
             log_size: trace_log_size,
         })
+}
+
+fn validate_zk_private_opening_geometry_for_witness_randomization(
+    privacy_map: &ZkPrivacyMap,
+    private_column_scope: &ZkPrivateColumnScope,
+    private_column_degree_bounds: &[ZkColumnDegreeBound],
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+    lifting_log_size: u32,
+    log_blowup_factor: u32,
+) -> Result<(), ZkSampleMetadataBuildError> {
+    let mut seen_geometry = BTreeSet::new();
+    for geometry in opening_geometry {
+        if !geometry.range.is_singleton()
+            || !privacy_map.private_columns.contains(&geometry.range)
+            || geometry.tree_height > lifting_log_size
+            || geometry.committed_column_log_size > geometry.tree_height
+        {
+            return Err(ZkSampleMetadataBuildError::InvalidOpeningGeometry {
+                range: geometry.range,
+            });
+        }
+        if !seen_geometry.insert(geometry.range) {
+            return Err(ZkSampleMetadataBuildError::DuplicateOpeningGeometry {
+                range: geometry.range,
+            });
+        }
+    }
+
+    let mut seen_bounds = BTreeSet::new();
+    for bound in private_column_degree_bounds {
+        if !bound.range.is_singleton() || !privacy_map.private_columns.contains(&bound.range) {
+            return Err(
+                ZkSampleMetadataBuildError::InvalidPrivateColumnDegreeBound { range: bound.range },
+            );
+        }
+        if !seen_bounds.insert(bound.range) {
+            return Err(
+                ZkSampleMetadataBuildError::DuplicatePrivateColumnDegreeBound {
+                    range: bound.range,
+                },
+            );
+        }
+    }
+
+    for &range in &privacy_map.private_columns {
+        if !private_column_scope
+            .entries
+            .iter()
+            .any(|entry| entry.range == range)
+        {
+            return Err(ZkSampleMetadataBuildError::MissingPrivateColumnDegreeBound { range });
+        }
+    }
+
+    for entry in &private_column_scope.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            continue;
+        }
+        let geometry = opening_geometry
+            .iter()
+            .find(|geometry| geometry.range == entry.range)
+            .ok_or(ZkSampleMetadataBuildError::MissingOpeningGeometry { range: entry.range })?;
+        let bound = private_column_degree_bounds
+            .iter()
+            .find(|bound| bound.range == entry.range)
+            .ok_or(
+                ZkSampleMetadataBuildError::MissingPrivateColumnDegreeBound { range: entry.range },
+            )?;
+        let required_log_degree = zk_private_column_randomized_log_degree(entry).map_err(|_| {
+            ZkSampleMetadataBuildError::InvalidPrivateColumnDegreeBound { range: entry.range }
+        })?;
+        if bound.log_degree_bound < required_log_degree {
+            return Err(
+                ZkSampleMetadataBuildError::PrivateColumnDegreeBoundTooSmall {
+                    range: entry.range,
+                    required: required_log_degree,
+                    actual: bound.log_degree_bound,
+                },
+            );
+        }
+        let expected_committed_log_size = bound
+            .log_degree_bound
+            .checked_add(log_blowup_factor)
+            .ok_or(ZkSampleMetadataBuildError::CommittedColumnLogSizeOverflow {
+                range: entry.range,
+                log_degree_bound: bound.log_degree_bound,
+                log_blowup_factor,
+            })?;
+        if geometry.committed_column_log_size != expected_committed_log_size {
+            return Err(ZkSampleMetadataBuildError::CommittedColumnLogSizeMismatch {
+                range: entry.range,
+                expected: expected_committed_log_size,
+                actual: geometry.committed_column_log_size,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn zk_private_opening_geometry_for_range(
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+    range: ZkColumnRange,
+) -> Result<ZkPrivateColumnOpeningGeometry, ZkSampleMetadataBuildError> {
+    opening_geometry
+        .iter()
+        .copied()
+        .find(|geometry| geometry.range == range)
+        .ok_or(ZkSampleMetadataBuildError::MissingOpeningGeometry { range })
+}
+
+fn zk_project_fri_position_to_committed_column_position(
+    range: ZkColumnRange,
+    position: usize,
+    lifting_log_size: u32,
+    geometry: ZkPrivateColumnOpeningGeometry,
+) -> Result<usize, ZkSampleMetadataBuildError> {
+    let domain_size = 1usize.checked_shl(lifting_log_size).ok_or(
+        ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: lifting_log_size,
+        },
+    )?;
+    if position >= domain_size {
+        return Err(ZkSampleMetadataBuildError::QueryPositionOutOfDomain {
+            position,
+            domain_size,
+        });
+    }
+    let committed_domain_size = 1usize
+        .checked_shl(geometry.committed_column_log_size)
+        .ok_or(ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: geometry.committed_column_log_size,
+        })?;
+    let tree_position = if geometry.tree_height == 0 {
+        0
+    } else if geometry.tree_height == lifting_log_size {
+        position
+    } else {
+        prepare_preprocessed_query_positions(&[position], lifting_log_size, geometry.tree_height)
+            .into_iter()
+            .next()
+            .ok_or(ZkSampleMetadataBuildError::InvalidOpeningGeometry { range })?
+    };
+    let column_shift = geometry
+        .tree_height
+        .checked_sub(geometry.committed_column_log_size)
+        .ok_or(ZkSampleMetadataBuildError::InvalidOpeningGeometry { range })?;
+    let row_projection_shift = column_shift
+        .checked_add(1)
+        .ok_or(ZkSampleMetadataBuildError::InvalidOpeningGeometry { range })?;
+    let projected_position = (tree_position >> row_projection_shift << 1) + (tree_position & 1);
+    if projected_position >= committed_domain_size {
+        return Err(ZkSampleMetadataBuildError::QueryPositionOutOfDomain {
+            position: projected_position,
+            domain_size: committed_domain_size,
+        });
+    }
+
+    Ok(projected_position)
+}
+
+fn zk_committed_column_point_at_position(
+    position: usize,
+    committed_column_log_size: u32,
+) -> Result<CirclePoint<SecureField>, ZkSampleMetadataBuildError> {
+    let domain_size = 1usize.checked_shl(committed_column_log_size).ok_or(
+        ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: committed_column_log_size,
+        },
+    )?;
+    if position >= domain_size {
+        return Err(ZkSampleMetadataBuildError::QueryPositionOutOfDomain {
+            position,
+            domain_size,
+        });
+    }
+
+    let committed_domain = CanonicCoset::try_new(committed_column_log_size)
+        .map_err(|_| ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: committed_column_log_size,
+        })?
+        .circle_domain();
+    let domain_index = bit_reverse_index(position, committed_column_log_size);
+
+    Ok(committed_domain.at(domain_index).into_ef::<SecureField>())
+}
+
+pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+    privacy_map: &ZkPrivacyMap,
+    private_column_scope: &ZkPrivateColumnScope,
+    private_column_degree_bounds: &[ZkColumnDegreeBound],
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+    log_blowup_factor: u32,
+) -> Result<ZkRandomizerMatrixBuild, ZkSampleMetadataBuildError> {
+    validate_zk_private_opening_geometry_for_witness_randomization(
+        privacy_map,
+        private_column_scope,
+        private_column_degree_bounds,
+        opening_geometry,
+        lifting_log_size,
+        log_blowup_factor,
+    )?;
+
+    let mut closure_entries = Vec::new();
+    let mut matrices = Vec::new();
+    let mut rank_entries = Vec::new();
+
+    for entry in &private_column_scope.entries {
+        if !privacy_map.private_columns.contains(&entry.range) {
+            continue;
+        }
+        let semantic_domains = entry
+            .semantic_trace_domain_log_sizes
+            .iter()
+            .map(|&log_size| {
+                CanonicCoset::try_new(log_size)
+                    .map(|domain| domain.coset)
+                    .map_err(|_| ZkSampleMetadataBuildError::TraceDomainTooLarge { log_size })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let scoped_privacy_map = ZkPrivacyMap {
+            version: privacy_map.version,
+            private_columns: vec![entry.range],
+            hash: privacy_map.hash,
+        };
+        let geometry = zk_private_opening_geometry_for_range(opening_geometry, entry.range)?;
+        let functionals =
+            zk_randomizer_query_functionals_from_stwo_sample_metadata_with_opening_geometry(
+                &scoped_privacy_map,
+                sampled_points,
+                fri_query_positions,
+                lifting_log_size,
+                &[geometry],
+            )?;
+        let build = build_zk_randomizer_matrices_for_witness_randomization_with_semantic_domains(
+            &semantic_domains,
+            &scoped_privacy_map,
+            zk_randomizer_dimension_from_trace_log_size(entry.trace_domain_log_size)?,
+            &functionals,
+        )
+        .map_err(ZkSampleMetadataBuildError::RandomizerMatrix)?;
+        closure_entries.extend(build.closure.entries);
+        matrices.extend(build.matrices);
+        rank_entries.extend(build.rank_profile.entries);
+    }
+
+    let mut closure = ZkQueryClosure {
+        entries: closure_entries,
+    };
+    closure.canonicalize();
+    let mut rank_profile = ZkRandomizerRankProfile {
+        entries: rank_entries,
+    };
+    rank_profile.canonicalize();
+
+    Ok(ZkRandomizerMatrixBuild {
+        closure,
+        matrices,
+        rank_profile,
+    })
 }
 
 pub fn build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
@@ -2904,6 +3235,87 @@ fn zk_randomizer_query_functionals_from_stwo_sample_metadata(
                 kind: ZkQueryClosureKind::FriPosition,
                 domain_id: lifting_log_size as u64,
                 point_or_position: encode_zk_query_position(position),
+                point,
+                coordinate_index: 0,
+            });
+        }
+    }
+
+    Ok(functionals)
+}
+
+fn zk_randomizer_query_functionals_from_stwo_sample_metadata_with_opening_geometry(
+    privacy_map: &ZkPrivacyMap,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+) -> Result<Vec<ZkRandomizerQueryFunctional>, ZkSampleMetadataBuildError> {
+    let domain_size = 1usize.checked_shl(lifting_log_size).ok_or(
+        ZkSampleMetadataBuildError::LiftingDomainTooLarge {
+            log_size: lifting_log_size,
+        },
+    )?;
+    if let Some(&position) = fri_query_positions
+        .iter()
+        .find(|&&position| position >= domain_size)
+    {
+        return Err(ZkSampleMetadataBuildError::QueryPositionOutOfDomain {
+            position,
+            domain_size,
+        });
+    }
+
+    let mut functionals = Vec::new();
+
+    for &range in &privacy_map.private_columns {
+        if !range.is_singleton() {
+            return Err(ZkSampleMetadataBuildError::NonSingletonPrivateRange { range });
+        }
+        let geometry = zk_private_opening_geometry_for_range(opening_geometry, range)?;
+        let tree = sampled_points.get(range.tree_index).ok_or(
+            ZkSampleMetadataBuildError::MissingTree {
+                tree_index: range.tree_index,
+            },
+        )?;
+        let column_points = tree
+            .get(range.column_start)
+            .ok_or(ZkSampleMetadataBuildError::MissingColumn { range })?;
+
+        let oods_doubling = lifting_log_size
+            .checked_sub(geometry.committed_column_log_size)
+            .ok_or(ZkSampleMetadataBuildError::InvalidOpeningGeometry { range })?;
+        for &raw_point in column_points {
+            let point = raw_point.repeated_double(oods_doubling);
+            let point_encoding = encode_zk_query_point(point);
+            for coordinate_index in 0..SECURE_EXTENSION_DEGREE {
+                functionals.push(ZkRandomizerQueryFunctional {
+                    range,
+                    kind: ZkQueryClosureKind::OodsExtension,
+                    domain_id: geometry.committed_column_log_size as u64,
+                    point_or_position: point_encoding,
+                    point,
+                    coordinate_index: coordinate_index as u8,
+                });
+            }
+        }
+
+        for &position in fri_query_positions {
+            let committed_position = zk_project_fri_position_to_committed_column_position(
+                range,
+                position,
+                lifting_log_size,
+                geometry,
+            )?;
+            let point = zk_committed_column_point_at_position(
+                committed_position,
+                geometry.committed_column_log_size,
+            )?;
+            functionals.push(ZkRandomizerQueryFunctional {
+                range,
+                kind: ZkQueryClosureKind::FriPosition,
+                domain_id: geometry.committed_column_log_size as u64,
+                point_or_position: encode_zk_query_position(committed_position),
                 point,
                 coordinate_index: 0,
             });
@@ -3158,6 +3570,13 @@ pub struct ZkDegreeProfile {
 pub struct ZkColumnDegreeBound {
     pub range: ZkColumnRange,
     pub log_degree_bound: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZkPrivateColumnOpeningGeometry {
+    pub range: ZkColumnRange,
+    pub tree_height: u32,
+    pub committed_column_log_size: u32,
 }
 
 /// Public profile for Phase 2 witness randomization.
@@ -4455,6 +4874,43 @@ pub fn validate_zk_witness_randomization_audit_for_verifier(
     fri_query_positions: &[usize],
     lifting_log_size: u32,
 ) -> Result<(), ZkWitnessRandomizationVerifierAuditError> {
+    validate_zk_witness_randomization_audit_for_verifier_impl(
+        verifier_config,
+        audit,
+        sampled_points,
+        fri_query_positions,
+        lifting_log_size,
+        None,
+    )
+}
+
+pub fn validate_zk_witness_randomization_audit_for_verifier_with_opening_geometry(
+    verifier_config: &ZkVerificationConfig,
+    audit: Option<&ZkWitnessRandomizationVerifierAudit>,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+    log_blowup_factor: u32,
+) -> Result<(), ZkWitnessRandomizationVerifierAuditError> {
+    validate_zk_witness_randomization_audit_for_verifier_impl(
+        verifier_config,
+        audit,
+        sampled_points,
+        fri_query_positions,
+        lifting_log_size,
+        Some((opening_geometry, log_blowup_factor)),
+    )
+}
+
+fn validate_zk_witness_randomization_audit_for_verifier_impl(
+    verifier_config: &ZkVerificationConfig,
+    audit: Option<&ZkWitnessRandomizationVerifierAudit>,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    lifting_log_size: u32,
+    opening_geometry: Option<(&[ZkPrivateColumnOpeningGeometry], u32)>,
+) -> Result<(), ZkWitnessRandomizationVerifierAuditError> {
     let metadata = &verifier_config.metadata;
     if !zk_metadata_has_private_witness_randomization(metadata) {
         return if audit.is_some() {
@@ -4563,7 +5019,18 @@ pub fn validate_zk_witness_randomization_audit_for_verifier(
     {
         return Err(ZkWitnessRandomizationVerifierAuditError::RandomizerSpaceHashMismatch);
     }
-    let sampled_metadata =
+    let sampled_metadata = if let Some((opening_geometry, log_blowup_factor)) = opening_geometry {
+        build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+            &audit.privacy_map,
+            &audit.private_column_scope,
+            &metadata.witness_randomization.private_column_degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            lifting_log_size,
+            opening_geometry,
+            log_blowup_factor,
+        )
+    } else {
         build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
             &audit.privacy_map,
             &audit.private_column_scope,
@@ -4571,7 +5038,8 @@ pub fn validate_zk_witness_randomization_audit_for_verifier(
             fri_query_positions,
             lifting_log_size,
         )
-        .map_err(ZkWitnessRandomizationVerifierAuditError::SampleMetadata)?;
+    }
+    .map_err(ZkWitnessRandomizationVerifierAuditError::SampleMetadata)?;
     validate_zk_query_closure_for_witness_randomization(
         &audit.privacy_map,
         metadata,
@@ -7928,6 +8396,31 @@ mod tests {
     }
 
     #[test]
+    fn verifier_witness_randomization_audit_with_geometry_accepts_same_height() {
+        let (verifier_config, audit, sampled_points, fri_query_positions) =
+            verifier_witness_audit_fixture(8);
+        let range = ZkColumnRange::new(0, 0, 1);
+        let opening_geometry = vec![ZkPrivateColumnOpeningGeometry {
+            range,
+            tree_height: 4,
+            committed_column_log_size: 4,
+        }];
+
+        assert_eq!(
+            validate_zk_witness_randomization_audit_for_verifier_with_opening_geometry(
+                &verifier_config,
+                Some(&audit),
+                &sampled_points,
+                &fri_query_positions,
+                4,
+                &opening_geometry,
+                0,
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn verifier_witness_randomization_audit_rejects_missing_audit() {
         let (verifier_config, _audit, sampled_points, fri_query_positions) =
             verifier_witness_audit_fixture(8);
@@ -7986,6 +8479,256 @@ mod tests {
                     actual: 4,
                 },
             ))
+        );
+    }
+
+    fn geometry_sample_metadata_fixture(
+        bound_log_degree: u32,
+        committed_column_log_size: u32,
+    ) -> (
+        ZkPrivacyMap,
+        ZkPrivateColumnScope,
+        Vec<ZkColumnDegreeBound>,
+        TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        Vec<usize>,
+        Vec<ZkPrivateColumnOpeningGeometry>,
+    ) {
+        let range = ZkColumnRange::new(0, 0, 1);
+        let privacy_map = ZkPrivacyMap {
+            version: ZkProofVersion::V1,
+            private_columns: vec![range],
+            hash: ZkPrivacyMapHash(nonzero_hash()),
+        };
+        let private_column_scope = ZkPrivateColumnScope {
+            version: ZkProofVersion::V1,
+            hash: nonzero_hash(),
+            entries: vec![ZkPrivateColumnScopeEntry {
+                range,
+                usage: ZkPrivateColumnUsage::OrdinaryWitness,
+                trace_domain_log_size: 3,
+                semantic_trace_domain_log_sizes: vec![3],
+            }],
+        };
+        let degree_bounds = vec![ZkColumnDegreeBound {
+            range,
+            log_degree_bound: bound_log_degree,
+        }];
+        let sampled_point = CirclePoint::<SecureField>::get_point(9834759221);
+        let sampled_points = TreeVec(vec![vec![vec![sampled_point]]]);
+        let fri_query_positions = vec![7];
+        let opening_geometry = vec![ZkPrivateColumnOpeningGeometry {
+            range,
+            tree_height: committed_column_log_size,
+            committed_column_log_size,
+        }];
+
+        (
+            privacy_map,
+            private_column_scope,
+            degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        )
+    }
+
+    #[test]
+    fn geometry_sample_metadata_builder_projects_openings_to_committed_domain() {
+        let (
+            privacy_map,
+            private_column_scope,
+            degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        ) = geometry_sample_metadata_fixture(4, 5);
+        let range = ZkColumnRange::new(0, 0, 1);
+        let lifting_log_size = 6;
+        let build =
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &degree_bounds,
+                &sampled_points,
+                &fri_query_positions,
+                lifting_log_size,
+                &opening_geometry,
+                1,
+            )
+            .unwrap();
+        let opened_point = sampled_points[0][0][0].repeated_double(1);
+        let projected_fri_position = prepare_preprocessed_query_positions(
+            &fri_query_positions,
+            lifting_log_size,
+            opening_geometry[0].tree_height,
+        )[0];
+
+        assert!(build.closure.entries.contains(&ZkQueryClosureEntry::new(
+            range,
+            ZkQueryClosureKind::OodsExtension,
+            5,
+            encode_zk_query_point(opened_point),
+            0,
+        )));
+        assert!(build.closure.entries.contains(&ZkQueryClosureEntry::new(
+            range,
+            ZkQueryClosureKind::FriPosition,
+            5,
+            encode_zk_query_position(projected_fri_position),
+            0,
+        )));
+    }
+
+    #[test]
+    fn geometry_sample_metadata_differs_from_legacy_raw_point_builder() {
+        let (
+            privacy_map,
+            private_column_scope,
+            degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        ) = geometry_sample_metadata_fixture(4, 5);
+        let lifting_log_size = 6;
+        let legacy = build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope(
+            &privacy_map,
+            &private_column_scope,
+            &sampled_points,
+            &fri_query_positions,
+            lifting_log_size,
+        )
+        .unwrap();
+        let geometry =
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &degree_bounds,
+                &sampled_points,
+                &fri_query_positions,
+                lifting_log_size,
+                &opening_geometry,
+                1,
+            )
+            .unwrap();
+
+        assert_ne!(legacy.closure, geometry.closure);
+    }
+
+    #[test]
+    fn geometry_sample_metadata_rejects_product_degree_too_small() {
+        let (
+            privacy_map,
+            private_column_scope,
+            degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        ) = geometry_sample_metadata_fixture(3, 4);
+        let range = ZkColumnRange::new(0, 0, 1);
+
+        assert_eq!(
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &degree_bounds,
+                &sampled_points,
+                &fri_query_positions,
+                6,
+                &opening_geometry,
+                1,
+            ),
+            Err(ZkSampleMetadataBuildError::PrivateColumnDegreeBoundTooSmall {
+                range,
+                required: 4,
+                actual: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn geometry_sample_metadata_rejects_committed_log_size_mismatch() {
+        let (
+            privacy_map,
+            private_column_scope,
+            degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            mut opening_geometry,
+        ) = geometry_sample_metadata_fixture(4, 5);
+        opening_geometry[0].committed_column_log_size = 4;
+        let range = ZkColumnRange::new(0, 0, 1);
+
+        assert_eq!(
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &degree_bounds,
+                &sampled_points,
+                &fri_query_positions,
+                6,
+                &opening_geometry,
+                1,
+            ),
+            Err(ZkSampleMetadataBuildError::CommittedColumnLogSizeMismatch {
+                range,
+                expected: 5,
+                actual: 4,
+            })
+        );
+    }
+
+    #[test]
+    fn geometry_sample_metadata_rejects_duplicate_degree_bounds() {
+        let (
+            privacy_map,
+            private_column_scope,
+            mut degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        ) = geometry_sample_metadata_fixture(4, 5);
+        degree_bounds.push(degree_bounds[0]);
+        let range = ZkColumnRange::new(0, 0, 1);
+
+        assert_eq!(
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &degree_bounds,
+                &sampled_points,
+                &fri_query_positions,
+                6,
+                &opening_geometry,
+                1,
+            ),
+            Err(ZkSampleMetadataBuildError::DuplicatePrivateColumnDegreeBound { range })
+        );
+    }
+
+    #[test]
+    fn geometry_sample_metadata_rejects_missing_degree_bounds() {
+        let (
+            privacy_map,
+            private_column_scope,
+            _degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+        ) = geometry_sample_metadata_fixture(4, 5);
+        let range = ZkColumnRange::new(0, 0, 1);
+
+        assert_eq!(
+            build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+                &privacy_map,
+                &private_column_scope,
+                &[],
+                &sampled_points,
+                &fri_query_positions,
+                6,
+                &opening_geometry,
+                1,
+            ),
+            Err(ZkSampleMetadataBuildError::MissingPrivateColumnDegreeBound { range })
         );
     }
 

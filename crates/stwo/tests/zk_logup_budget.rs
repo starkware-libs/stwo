@@ -4,14 +4,16 @@ use stwo::core::pcs::TreeVec;
 use stwo::core::zk::{
     canonical_zk_logup_statistical_security_budget_hash, canonical_zk_privacy_map_hash,
     canonical_zk_private_column_scope_hash, expected_zk_column_degree_bounds,
+    reject_zk_logup_statistical_security_budget_activation,
     validate_zk_public_metadata_against_verifier_config,
     validate_zk_witness_randomization_audit_for_verifier, ZkColumnDegreeBound, ZkColumnRange,
-    ZkDegreeProfile, ZkLogupStatisticalSecurityBudget, ZkPrivacyMap, ZkPrivacyMapHash,
-    ZkPrivateColumnScope, ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkProofVersion,
-    ZkPublicMetadata, ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkVerificationConfig,
-    ZkVerificationConfigValidationError, ZkWitnessRandomizationProfile,
-    ZkWitnessRandomizationVerifierAudit, ZkWitnessRandomizationVerifierAuditError,
-    ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH, ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+    ZkDegreeProfile, ZkLogupStatisticalAggregatePolicyError, ZkLogupStatisticalSecurityBudget,
+    ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope, ZkPrivateColumnScopeEntry,
+    ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata, ZkPublicStatementHash,
+    ZkQuotientIntegrationProfile, ZkVerificationConfig, ZkVerificationConfigValidationError,
+    ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+    ZkWitnessRandomizationVerifierAuditError, ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH,
+    ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
 };
 
 fn logup_budget() -> ZkLogupStatisticalSecurityBudget {
@@ -101,6 +103,57 @@ fn metadata(
             quotient_degree_bounds: vec![quotient_bound],
         },
     }
+}
+
+#[test]
+fn logup_statistical_activation_policy_accepts_empty_budget_state() {
+    let (privacy_map, private_column_scope, private_bound, quotient_bound) = private_logup_policy();
+    let metadata = metadata(
+        &privacy_map,
+        &private_column_scope,
+        private_bound,
+        quotient_bound,
+        ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH,
+    );
+
+    assert_eq!(
+        reject_zk_logup_statistical_security_budget_activation(&metadata, &[]),
+        Ok(())
+    );
+}
+
+#[test]
+fn logup_statistical_activation_policy_rejects_nonempty_budgets() {
+    let (privacy_map, private_column_scope, private_bound, quotient_bound) = private_logup_policy();
+    let metadata = metadata(
+        &privacy_map,
+        &private_column_scope,
+        private_bound,
+        quotient_bound,
+        ZK_EMPTY_LOGUP_STATISTICAL_SECURITY_BUDGET_HASH,
+    );
+
+    assert_eq!(
+        reject_zk_logup_statistical_security_budget_activation(&metadata, &[logup_budget()]),
+        Err(ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets)
+    );
+}
+
+#[test]
+fn logup_statistical_activation_policy_rejects_nondefault_budget_hash() {
+    let (privacy_map, private_column_scope, private_bound, quotient_bound) = private_logup_policy();
+    let metadata = metadata(
+        &privacy_map,
+        &private_column_scope,
+        private_bound,
+        quotient_bound,
+        canonical_zk_logup_statistical_security_budget_hash(&[logup_budget()]),
+    );
+
+    assert_eq!(
+        reject_zk_logup_statistical_security_budget_activation(&metadata, &[]),
+        Err(ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgetHash)
+    );
 }
 
 #[test]

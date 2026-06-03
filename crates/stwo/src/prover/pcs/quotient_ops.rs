@@ -185,13 +185,16 @@ mod tests {
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::verifier::VerificationError;
     use crate::core::zk::{
+        canonical_zk_logup_statistical_security_budget_hash,
         canonical_zk_private_column_scope_hash, canonical_zk_randomizer_space_hash,
         canonical_zk_split_derivation_hash, expected_zk_fri_batch_degree_bound,
         zk_trace_domain_half_coset, ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange,
-        ZkDegreeProfile, ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope,
-        ZkPrivateColumnScopeEntry, ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata,
-        ZkPublicStatementHash, ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry,
-        ZkVerificationConfig, ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+        ZkDegreeProfile, ZkLogupStatisticalAggregatePolicyError, ZkLogupStatisticalSecurityBudget,
+        ZkPrivacyMap, ZkPrivacyMapHash, ZkPrivateColumnScope, ZkPrivateColumnScopeEntry,
+        ZkPrivateColumnUsage, ZkProofVersion, ZkPublicMetadata, ZkPublicStatementHash,
+        ZkQuotientIntegrationProfile, ZkRandomizerSpaceEntry, ZkVerificationConfig,
+        ZkWitnessRandomizationProfile, ZkWitnessRandomizationVerifierAudit,
+        ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
     };
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::simd::column::BaseColumn;
@@ -199,7 +202,9 @@ mod tests {
     use crate::prover::backend::{Backend, BackendForChannel, Column, CpuBackend};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
     use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
-    use crate::prover::zk::{ZkDerivationGate, ZkDerivationReview, ZkProvingConfig};
+    use crate::prover::zk::{
+        ZkDerivationGate, ZkDerivationReview, ZkProvingConfig, ZkProvingConfigError,
+    };
     use crate::prover::{CommitmentSchemeProver, SecureField};
 
     struct DeterministicTestCryptoRng(SmallRng);
@@ -229,6 +234,19 @@ mod tests {
     }
 
     impl CryptoRng for DeterministicTestCryptoRng {}
+
+    fn test_logup_statistical_security_budget() -> ZkLogupStatisticalSecurityBudget {
+        ZkLogupStatisticalSecurityBudget {
+            aggregate_id: 0,
+            extension_field_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+            private_lookup_term_count_bound: 1,
+            lookup_challenge_count: 1,
+            expected_proof_volume: 1,
+            safety_margin_bits: 0,
+            computed_security_bits: ZK_QM31_STATISTICAL_EXTENSION_FIELD_BITS,
+            min_statistical_security_bits: 80,
+        }
+    }
 
     fn zk_public_only_configs(
         lifting_log_size: u32,
@@ -722,6 +740,224 @@ mod tests {
     #[test]
     fn test_zk_pcs_prove_and_verify_simd() {
         assert!(prove_and_verify_zk_pcs::<SimdBackend, true>().is_ok());
+    }
+
+    #[test]
+    fn test_zk_pcs_prove_rejects_logup_statistical_budgets() {
+        const N_COLS: usize = 10;
+        const LIFTING_LOG_SIZE: u32 = 8;
+
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig::default();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(LIFTING_LOG_SIZE + config.fri_config.log_blowup_factor).half_coset(),
+        );
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+        let polys = prepare_polys::<CpuBackend, N_COLS, LIFTING_LOG_SIZE>();
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(polys);
+        tree_builder.commit(&mut channel);
+
+        let lifting_log_size = commitment_scheme
+            .trees
+            .last()
+            .unwrap()
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        let (mut zk_prover_config, _) =
+            zk_public_only_configs(lifting_log_size, config.fri_config.log_blowup_factor);
+        let budget = test_logup_statistical_security_budget();
+        zk_prover_config
+            .metadata
+            .logup_statistical_security_budget_hash =
+            canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+        zk_prover_config.logup_statistical_security_budgets = vec![budget];
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![(0..N_COLS)
+            .map(|_| samples.into_iter().take(1).collect_vec())
+            .collect_vec()];
+        let mut zk_rng = DeterministicTestCryptoRng::seed_from_u64(1);
+
+        let result = commitment_scheme.prove_values_zk(
+            TreeVec(sampled_points),
+            &zk_prover_config,
+            &mut zk_rng,
+            &mut channel,
+        );
+
+        assert!(matches!(
+            result,
+            Err(ZkProvingConfigError::LogupStatisticalAggregatePolicy(
+                ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_zk_pcs_verify_rejects_logup_statistical_budgets() {
+        const N_COLS: usize = 10;
+        const LIFTING_LOG_SIZE: u32 = 8;
+
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig::default();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(LIFTING_LOG_SIZE + config.fri_config.log_blowup_factor).half_coset(),
+        );
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+        let polys = prepare_polys::<CpuBackend, N_COLS, LIFTING_LOG_SIZE>();
+        let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(polys);
+        tree_builder.commit(&mut channel);
+
+        let lifting_log_size = commitment_scheme
+            .trees
+            .last()
+            .unwrap()
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        let (zk_prover_config, mut zk_verifier_config) =
+            zk_public_only_configs(lifting_log_size, config.fri_config.log_blowup_factor);
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![(0..N_COLS)
+            .map(|_| samples.into_iter().take(1).collect_vec())
+            .collect_vec()];
+        let mut zk_rng = DeterministicTestCryptoRng::seed_from_u64(1);
+        let mut proof = commitment_scheme
+            .prove_values_zk(
+                TreeVec(sampled_points.clone()),
+                &zk_prover_config,
+                &mut zk_rng,
+                &mut channel,
+            )
+            .unwrap();
+
+        let budget = test_logup_statistical_security_budget();
+        let budget_hash = canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+        zk_verifier_config
+            .metadata
+            .logup_statistical_security_budget_hash = budget_hash;
+        zk_verifier_config.logup_statistical_security_budgets = vec![budget];
+        proof
+            .proof
+            .public_metadata
+            .logup_statistical_security_budget_hash = budget_hash;
+        let mut channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[0],
+            &sizes,
+            &mut channel,
+        );
+
+        let result = verifier.verify_values_zk(
+            TreeVec(sampled_points),
+            proof.proof,
+            &zk_verifier_config,
+            &mut channel,
+        );
+
+        assert!(matches!(
+            result,
+            Err(VerificationError::ZkLogupStatisticalAggregatePolicy(
+                ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgets
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_zk_pcs_verify_rejects_proof_logup_statistical_budget_hash() {
+        const N_COLS: usize = 10;
+        const LIFTING_LOG_SIZE: u32 = 8;
+
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig::default();
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(LIFTING_LOG_SIZE + config.fri_config.log_blowup_factor).half_coset(),
+        );
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+        let polys = prepare_polys::<CpuBackend, N_COLS, LIFTING_LOG_SIZE>();
+        let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(polys);
+        tree_builder.commit(&mut channel);
+
+        let lifting_log_size = commitment_scheme
+            .trees
+            .last()
+            .unwrap()
+            .commitment
+            .layers
+            .len() as u32
+            - 1;
+        let (zk_prover_config, zk_verifier_config) =
+            zk_public_only_configs(lifting_log_size, config.fri_config.log_blowup_factor);
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![(0..N_COLS)
+            .map(|_| samples.into_iter().take(1).collect_vec())
+            .collect_vec()];
+        let mut zk_rng = DeterministicTestCryptoRng::seed_from_u64(1);
+        let mut proof = commitment_scheme
+            .prove_values_zk(
+                TreeVec(sampled_points.clone()),
+                &zk_prover_config,
+                &mut zk_rng,
+                &mut channel,
+            )
+            .unwrap();
+        let budget = test_logup_statistical_security_budget();
+        proof
+            .proof
+            .public_metadata
+            .logup_statistical_security_budget_hash =
+            canonical_zk_logup_statistical_security_budget_hash(&[budget]);
+
+        let mut channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[0],
+            &sizes,
+            &mut channel,
+        );
+
+        let result = verifier.verify_values_zk(
+            TreeVec(sampled_points),
+            proof.proof,
+            &zk_verifier_config,
+            &mut channel,
+        );
+
+        assert!(matches!(
+            result,
+            Err(VerificationError::ZkLogupStatisticalAggregatePolicy(
+                ZkLogupStatisticalAggregatePolicyError::NonEmptySecurityBudgetHash
+            ))
+        ));
     }
 
     #[test]

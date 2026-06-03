@@ -20,10 +20,11 @@ use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::core::zk::{
-    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile, validate_zk_witness_metadata,
+    mix_zk_public_metadata, mix_zk_quotient_split_mask_profile,
+    reject_zk_logup_statistical_security_budget_activation, validate_zk_witness_metadata,
     zk_fri_batch_mask_fri_config, zk_fri_batch_mask_query_positions,
     ExtendedZkCommitmentSchemeProof, ZkColumnRange, ZkCommitmentSchemeProof,
-    ZkCommitmentSchemeProofAux,
+    ZkCommitmentSchemeProofAux, ZkPrivateColumnOpeningGeometry,
 };
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
@@ -355,6 +356,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     where
         R: RngCore + CryptoRng + ?Sized,
     {
+        reject_zk_logup_statistical_security_budget_activation(
+            &zk_config.metadata,
+            &zk_config.logup_statistical_security_budgets,
+        )
+        .map_err(ZkProvingConfigError::LogupStatisticalAggregatePolicy)?;
+
         let span = span!(
             Level::INFO,
             "Evaluate ZK columns out of domain",
@@ -500,16 +507,45 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             {
                 return Err(ZkProvingConfigError::WitnessRandomization);
             }
+            let mut private_opening_geometry = Vec::new();
+            for bound in &zk_config
+                .metadata
+                .witness_randomization
+                .private_column_degree_bounds
+            {
+                let tree = self
+                    .trees
+                    .0
+                    .get(bound.range.tree_index)
+                    .ok_or(ZkProvingConfigError::WitnessRandomization)?;
+                let poly = tree
+                    .polynomials
+                    .get(bound.range.column_start)
+                    .ok_or(ZkProvingConfigError::WitnessRandomization)?;
+                private_opening_geometry.push(ZkPrivateColumnOpeningGeometry {
+                    range: bound.range,
+                    tree_height: tree.commitment.layers.len() as u32 - 1,
+                    committed_column_log_size: poly.evals.domain.log_size(),
+                });
+            }
             let mut audit_config = zk_config.clone();
-            audit_config.derive_randomizer_metadata_from_stwo_samples(
+            audit_config.derive_randomizer_metadata_from_stwo_samples_with_opening_geometry(
                 CanonicCoset::new(audit_config.metadata.degree_profile.trace_domain_log_size).coset,
                 &sampled_points,
                 &query_positions,
                 lifting_log_size,
+                &private_opening_geometry,
+                self.config.fri_config.log_blowup_factor,
             )?;
             for context in &self.zk_witness_randomization_contexts {
                 context
-                    .validate_post_sampling_audit(&audit_config, &sampled_points, &query_positions)
+                    .validate_post_sampling_audit_with_opening_geometry(
+                        &audit_config,
+                        &sampled_points,
+                        &query_positions,
+                        &private_opening_geometry,
+                        self.config.fri_config.log_blowup_factor,
+                    )
                     .map_err(|_| ZkProvingConfigError::WitnessRandomization)?;
             }
         }

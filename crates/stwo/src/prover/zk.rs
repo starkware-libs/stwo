@@ -15,18 +15,20 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLiftedAux;
 use crate::core::zk::{
     build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope,
+    build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry,
     canonical_zk_quotient_split_mask_profile_hash, validate_zk_column_degree_bound_ranges,
     validate_zk_private_column_scope_for_witness_randomization, validate_zk_public_only_metadata,
     validate_zk_query_closure_for_witness_randomization, validate_zk_quotient_split_mask_profile,
     validate_zk_quotient_split_mask_query_budget,
     validate_zk_randomizer_rank_profile_for_witness_randomization, zk_trace_domain_half_coset,
     ZkCircleCosetEncoding, ZkColumnDegreeBound, ZkColumnRange, ZkFriBatchMaskProof,
-    ZkFriBatchMaskQueryValues, ZkLogupStatisticalSecurityBudget, ZkMetadataValidationError,
-    ZkPrivacyMap, ZkPrivateColumnScope, ZkPrivateColumnScopeValidationError, ZkProofVersion,
-    ZkPublicMetadata, ZkQueryClosure, ZkQueryClosureValidationError, ZkQuotientSplitMaskProfile,
-    ZkQuotientSplitMaskProfileValidationError, ZkQuotientSplitMaskQueryBudgetError,
-    ZkRandomizerRankProfile, ZkRandomizerRankValidationError, ZkSampleMetadataBuildError,
-    ZK_RANDOMIZER_MATRIX_MAX_DIMENSION,
+    ZkFriBatchMaskQueryValues, ZkLogupStatisticalAggregatePolicyError,
+    ZkLogupStatisticalSecurityBudget, ZkMetadataValidationError, ZkPrivacyMap,
+    ZkPrivateColumnOpeningGeometry, ZkPrivateColumnScope, ZkPrivateColumnScopeValidationError,
+    ZkProofVersion, ZkPublicMetadata, ZkQueryClosure, ZkQueryClosureValidationError,
+    ZkQuotientSplitMaskProfile, ZkQuotientSplitMaskProfileValidationError,
+    ZkQuotientSplitMaskQueryBudgetError, ZkRandomizerRankProfile, ZkRandomizerRankValidationError,
+    ZkSampleMetadataBuildError, ZK_RANDOMIZER_MATRIX_MAX_DIMENSION,
 };
 use crate::core::ColumnVec;
 use crate::prover::backend::{Col, Column, ColumnOps};
@@ -184,6 +186,7 @@ pub enum ZkProvingConfigError {
     MissingWitnessRandomizationContext,
     WitnessRandomizationRangeMismatch,
     WitnessRandomization,
+    LogupStatisticalAggregatePolicy(ZkLogupStatisticalAggregatePolicyError),
 }
 
 impl ZkProvingConfig {
@@ -311,6 +314,106 @@ impl ZkProvingConfig {
             sampled_points,
             fri_query_positions,
             fri_first_layer_log_size,
+        )
+        .map_err(ZkProvingConfigError::SampleMetadata)?;
+
+        validate_zk_query_closure_for_witness_randomization(
+            &self.privacy_map,
+            &self.metadata,
+            &build.closure,
+        )
+        .map_err(ZkProvingConfigError::QueryClosure)?;
+        validate_zk_randomizer_rank_profile_for_witness_randomization(
+            &self.privacy_map,
+            &self.metadata,
+            &build.closure,
+            &build.rank_profile,
+        )
+        .map_err(ZkProvingConfigError::RandomizerRank)?;
+
+        let mut randomized_domain_half_cosets = self
+            .metadata
+            .witness_randomization
+            .private_column_degree_bounds
+            .iter()
+            .map(|bound| {
+                ZkCircleCosetEncoding::from(
+                    crate::core::poly::circle::CanonicCoset::new(bound.log_degree_bound)
+                        .circle_domain()
+                        .half_coset,
+                )
+            })
+            .collect::<Vec<_>>();
+        randomized_domain_half_cosets.sort_unstable();
+        randomized_domain_half_cosets.dedup();
+
+        self.query_closure = Some(build.closure);
+        self.randomizer_rank_profile = Some(build.rank_profile);
+        self.derived_randomizer_metadata = Some(ZkDerivedRandomizerMetadata {
+            trace_domain_log_size: expected_trace_log_size,
+            fri_first_layer_log_size: expected_fri_log_size,
+            trace_domain_half_coset: ZkCircleCosetEncoding::from(zk_trace_domain_half_coset(
+                trace_domain,
+            )),
+            randomized_domain_half_coset: ZkCircleCosetEncoding::from(randomized_domain.half_coset),
+            randomized_domain_half_cosets,
+            query_closure: self.query_closure.clone().expect("query closure just set"),
+            randomizer_rank_profile: self
+                .randomizer_rank_profile
+                .clone()
+                .expect("rank profile just set"),
+        });
+
+        Ok(())
+    }
+
+    pub fn derive_randomizer_metadata_from_stwo_samples_with_opening_geometry(
+        &mut self,
+        trace_domain: Coset,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        fri_query_positions: &[usize],
+        lifting_log_size: u32,
+        opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+        log_blowup_factor: u32,
+    ) -> Result<(), ZkProvingConfigError> {
+        let randomized_log_degree = self.witness_randomized_log_degree()?;
+        let randomized_domain =
+            crate::core::poly::circle::CanonicCoset::new(randomized_log_degree).circle_domain();
+        let expected_trace_log_size = self.metadata.degree_profile.trace_domain_log_size;
+        let actual_trace_log_size = trace_domain.log_size();
+        if actual_trace_log_size != expected_trace_log_size {
+            return Err(ZkProvingConfigError::TraceDomainLogSizeMismatch {
+                expected: expected_trace_log_size,
+                actual: actual_trace_log_size,
+            });
+        }
+        let expected_fri_log_size = self.metadata.degree_profile.fri_first_layer_log_size;
+        if lifting_log_size != expected_fri_log_size {
+            return Err(ZkProvingConfigError::FriFirstLayerLogSizeMismatch {
+                expected: expected_fri_log_size,
+                actual: lifting_log_size,
+            });
+        }
+        if !self.has_private_column_randomized_log_degree(randomized_domain.log_size()) {
+            return Err(ZkProvingConfigError::RandomizedLogDegreeMismatch {
+                expected: self.witness_randomized_log_degree()?,
+                actual: randomized_domain.log_size(),
+            });
+        }
+
+        let private_column_scope = self
+            .private_column_scope
+            .as_ref()
+            .ok_or(ZkProvingConfigError::MissingPrivateColumnScope)?;
+        let build = build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+            &self.privacy_map,
+            private_column_scope,
+            &self.metadata.witness_randomization.private_column_degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            lifting_log_size,
+            opening_geometry,
+            log_blowup_factor,
         )
         .map_err(ZkProvingConfigError::SampleMetadata)?;
 
@@ -3037,6 +3140,40 @@ impl<B: PolyOps> PrecommitZkWitnessRandomizationContext<B> {
             fri_query_positions,
         )
     }
+
+    pub(crate) fn validate_post_sampling_audit_with_opening_geometry(
+        &self,
+        config: &ZkProvingConfig,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        fri_query_positions: &[usize],
+        opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+        log_blowup_factor: u32,
+    ) -> Result<(), ZkWitnessRandomizationError> {
+        let precommit_binding_hash = witness_randomization_precommit_context_hash(
+            config,
+            self.context.trace_domain,
+            &self
+                .context
+                .semantic_domains
+                .iter()
+                .map(CircleDomain::log_size)
+                .collect::<Vec<_>>(),
+            self.context.randomized_domain,
+        )?;
+        if precommit_binding_hash != self.precommit_binding_hash {
+            return Err(ZkWitnessRandomizationError::PrecommitBindingMismatch);
+        }
+
+        validate_post_sampling_witness_randomization_audit_for_domains_with_opening_geometry(
+            config,
+            self.context.trace_domain,
+            self.context.randomized_domain,
+            sampled_points,
+            fri_query_positions,
+            opening_geometry,
+            log_blowup_factor,
+        )
+    }
 }
 
 #[allow(dead_code)]
@@ -3087,6 +3224,105 @@ fn validate_post_sampling_witness_randomization_audit_for_domains(
             sampled_points,
             fri_query_positions,
             config.metadata.degree_profile.fri_first_layer_log_size,
+        )
+        .map_err(ZkWitnessRandomizationError::SampleMetadata)?;
+    if &sampled_metadata.closure != query_closure
+        || &sampled_metadata.rank_profile != randomizer_rank_profile
+    {
+        return Err(ZkWitnessRandomizationError::SampledMetadataMismatch);
+    }
+
+    let derived_randomizer_metadata = config
+        .derived_randomizer_metadata
+        .as_ref()
+        .ok_or(ZkWitnessRandomizationError::MissingDerivedRandomizerMetadata)?;
+    if derived_randomizer_metadata.query_closure() != query_closure
+        || derived_randomizer_metadata.randomizer_rank_profile() != randomizer_rank_profile
+    {
+        return Err(ZkWitnessRandomizationError::DerivedRandomizerMetadataMismatch);
+    }
+    let actual_trace_domain = ZkCircleCosetEncoding::from(trace_domain.half_coset);
+    let trace_domain_is_declared = private_column_scope.entries.iter().any(|entry| {
+        entry.trace_domain_log_size == trace_domain.log_size()
+            && crate::core::poly::circle::CanonicCoset::try_new(entry.trace_domain_log_size)
+                .map(|coset| ZkCircleCosetEncoding::from(coset.circle_domain().half_coset))
+                .map(|encoding| encoding == actual_trace_domain)
+                .unwrap_or(false)
+    });
+    if !trace_domain_is_declared {
+        return Err(ZkWitnessRandomizationError::TraceDomainEncodingMismatch {
+            expected: derived_randomizer_metadata.trace_domain_half_coset(),
+            actual: actual_trace_domain,
+        });
+    }
+    let actual_randomized_domain = ZkCircleCosetEncoding::from(randomized_domain.half_coset);
+    if !derived_randomizer_metadata
+        .randomized_domain_half_cosets()
+        .contains(&actual_randomized_domain)
+    {
+        return Err(
+            ZkWitnessRandomizationError::RandomizedDomainEncodingMismatch {
+                expected: derived_randomizer_metadata.randomized_domain_half_coset(),
+                actual: actual_randomized_domain,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_post_sampling_witness_randomization_audit_for_domains_with_opening_geometry(
+    config: &ZkProvingConfig,
+    trace_domain: CircleDomain,
+    randomized_domain: CircleDomain,
+    sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    fri_query_positions: &[usize],
+    opening_geometry: &[ZkPrivateColumnOpeningGeometry],
+    log_blowup_factor: u32,
+) -> Result<(), ZkWitnessRandomizationError> {
+    config
+        .validate_witness_and_quotient_pre_activation()
+        .map_err(ZkWitnessRandomizationError::Config)?;
+
+    let query_closure = config
+        .query_closure
+        .as_ref()
+        .ok_or(ZkWitnessRandomizationError::MissingQueryClosure)?;
+    let randomizer_rank_profile = config
+        .randomizer_rank_profile
+        .as_ref()
+        .ok_or(ZkWitnessRandomizationError::MissingRandomizerRankProfile)?;
+    validate_zk_query_closure_for_witness_randomization(
+        &config.privacy_map,
+        &config.metadata,
+        query_closure,
+    )
+    .map_err(ZkWitnessRandomizationError::QueryClosure)?;
+    validate_zk_randomizer_rank_profile_for_witness_randomization(
+        &config.privacy_map,
+        &config.metadata,
+        query_closure,
+        randomizer_rank_profile,
+    )
+    .map_err(ZkWitnessRandomizationError::RandomizerRankProfile)?;
+
+    let private_column_scope =
+        config
+            .private_column_scope
+            .as_ref()
+            .ok_or(ZkWitnessRandomizationError::Config(
+                ZkProvingConfigError::MissingPrivateColumnScope,
+            ))?;
+    let sampled_metadata =
+        build_zk_randomizer_matrices_from_stwo_sample_metadata_with_private_scope_and_opening_geometry(
+            &config.privacy_map,
+            private_column_scope,
+            &config.metadata.witness_randomization.private_column_degree_bounds,
+            sampled_points,
+            fri_query_positions,
+            config.metadata.degree_profile.fri_first_layer_log_size,
+            opening_geometry,
+            log_blowup_factor,
         )
         .map_err(ZkWitnessRandomizationError::SampleMetadata)?;
     if &sampled_metadata.closure != query_closure

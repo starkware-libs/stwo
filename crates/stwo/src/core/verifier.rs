@@ -13,15 +13,17 @@ use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 use crate::core::zk::{
     derive_zk_stark_degree_bound_profile, draw_zk_oods_point,
     draw_zk_oods_sample_point_plan_with_semantic_sample_domains, mix_zk_public_metadata,
-    mix_zk_quotient_split_mask_profile, validate_zk_committed_column_log_sizes,
+    mix_zk_quotient_split_mask_profile, reject_zk_logup_statistical_security_budget_activation,
+    validate_zk_committed_column_log_sizes,
     validate_zk_composition_column_log_sizes_against_bounds,
     validate_zk_public_metadata_against_verifier_config,
     validate_zk_quotient_split_mask_query_budget, validate_zk_sample_points_outside_exclusion_set,
     validate_zk_sampled_values_shape, zk_metadata_requires_private_stark_activation,
     zk_oods_exclusion_set, zk_trace_domain_log_size_from_column_bounds,
-    ZkCommittedColumnLogSizeValidationError, ZkOodsExclusionSet, ZkOodsSamplePointPlanningError,
-    ZkOodsSamplePointValidationError, ZkStarkDegreeBoundProfileError, ZkStarkProof,
-    ZkVerificationConfig, ZkWitnessRandomizationVerifierAudit,
+    ZkCommittedColumnLogSizeValidationError, ZkLogupStatisticalAggregatePolicyError,
+    ZkOodsExclusionSet, ZkOodsSamplePointPlanningError, ZkOodsSamplePointValidationError,
+    ZkStarkDegreeBoundProfileError, ZkStarkProof, ZkVerificationConfig,
+    ZkWitnessRandomizationVerifierAudit,
 };
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -270,6 +272,14 @@ fn verify_zk_ex_with_optional_witness_randomization_audit<MC: MerkleChannel>(
     witness_randomization_audit: Option<&ZkWitnessRandomizationVerifierAudit>,
     include_all_preprocessed_columns: bool,
 ) -> Result<(), VerificationError> {
+    reject_zk_logup_statistical_security_budget_activation(
+        &zk_config.metadata,
+        &zk_config.logup_statistical_security_budgets,
+    )
+    .map_err(VerificationError::ZkLogupStatisticalAggregatePolicy)?;
+    reject_zk_logup_statistical_security_budget_activation(&proof.0.public_metadata, &[])
+        .map_err(VerificationError::ZkLogupStatisticalAggregatePolicy)?;
+
     validate_zk_public_metadata_against_verifier_config(&zk_config.metadata, zk_config).map_err(
         |_| {
             VerificationError::InvalidStructure(String::from(
@@ -550,6 +560,8 @@ pub enum VerificationError {
     ZkDegreeProfile(ZkStarkDegreeBoundProfileError),
     #[error("Invalid ZK committed column log sizes: {0:?}.")]
     ZkCommittedColumnLogSizes(ZkCommittedColumnLogSizeValidationError),
+    #[error("Unsupported ZK LogUp statistical aggregate activation: {0:?}.")]
+    ZkLogupStatisticalAggregatePolicy(ZkLogupStatisticalAggregatePolicyError),
     #[error("Invalid ZK OODS sample point: {0:?}.")]
     ZkOodsSamplePoint(ZkOodsSamplePointValidationError),
     #[error("Invalid ZK OODS sample point plan: {0:?}.")]

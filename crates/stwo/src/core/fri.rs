@@ -6,13 +6,13 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, Vec};
+use std_shims::{vec, BTreeSet, Vec};
 use thiserror::Error;
 
 use super::channel::{Channel, MerkleChannel};
 use super::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
 use super::poly::circle::CircleDomain;
-use super::queries::{draw_queries, Queries};
+use super::queries::{can_sample_n_unique_queries, draw_queries, query_domain_size, Queries};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
@@ -115,6 +115,9 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         let column_commitment_domain =
             CanonicCoset::new(column_bound.log_degree_bound + config.log_blowup_factor)
                 .circle_domain();
+        if !can_sample_n_unique_queries(column_commitment_domain.log_size(), config.n_queries) {
+            return Err(FriVerificationError::InvalidQueryPositions);
+        }
 
         let first_layer = FriFirstLayerVerifier {
             column_commitment_domain,
@@ -227,6 +230,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         first_layer_query_evals: Vec<SecureField>,
     ) -> Result<(), FriVerificationError> {
         let first_layer_log_size = self.first_layer.column_commitment_domain.log_size();
+        validate_query_positions(query_positions, self.config.n_queries, first_layer_log_size)?;
         let queries = Queries::new(query_positions, first_layer_log_size);
         self.decommit_on_queries(&queries, first_layer_query_evals)
     }
@@ -321,6 +325,8 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
 pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,
+    #[error("FRI query positions are invalid")]
+    InvalidQueryPositions,
     #[error("evaluations are invalid in the first layer")]
     FirstLayerEvaluationsInvalid,
     #[error("queries do not resolve to their commitment in the first layer")]
@@ -336,6 +342,28 @@ pub enum FriVerificationError {
     LastLayerDegreeInvalid,
     #[error("evaluations in the last layer are invalid")]
     LastLayerEvaluationsInvalid,
+}
+
+fn validate_query_positions(
+    query_positions: &[usize],
+    n_queries: usize,
+    log_domain_size: u32,
+) -> Result<(), FriVerificationError> {
+    let Some(domain_size) = query_domain_size(log_domain_size) else {
+        return Err(FriVerificationError::InvalidQueryPositions);
+    };
+    if n_queries > domain_size || query_positions.len() != n_queries {
+        return Err(FriVerificationError::InvalidQueryPositions);
+    }
+
+    let mut seen_positions = BTreeSet::new();
+    for &position in query_positions {
+        if position >= domain_size || !seen_positions.insert(position) {
+            return Err(FriVerificationError::InvalidQueryPositions);
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -980,6 +1008,78 @@ mod tests {
     }
 
     #[test]
+    fn decommit_on_query_positions_accepts_valid_unique_queries() {
+        let query_positions = vec![1, 5];
+        let (verifier, decommitment_value, _) =
+            verifier_for_query_positions(query_positions.clone());
+
+        let verification_result =
+            verifier.decommit_on_query_positions(&query_positions, decommitment_value);
+
+        assert!(verification_result.is_ok(), "{verification_result:?}");
+    }
+
+    #[test]
+    fn decommit_on_query_positions_rejects_duplicate_positions() {
+        let (verifier, decommitment_value, _) = verifier_for_query_positions(vec![1, 5]);
+
+        let verification_result = verifier.decommit_on_query_positions(&[1, 1], decommitment_value);
+
+        assert!(matches!(
+            verification_result,
+            Err(FriVerificationError::InvalidQueryPositions)
+        ));
+    }
+
+    #[test]
+    fn decommit_on_query_positions_rejects_wrong_query_count() {
+        let (verifier, decommitment_value, _) = verifier_for_query_positions(vec![1, 5]);
+
+        let verification_result = verifier.decommit_on_query_positions(&[1], decommitment_value);
+
+        assert!(matches!(
+            verification_result,
+            Err(FriVerificationError::InvalidQueryPositions)
+        ));
+    }
+
+    #[test]
+    fn decommit_on_query_positions_rejects_out_of_domain_positions() {
+        let (verifier, decommitment_value, log_domain_size) =
+            verifier_for_query_positions(vec![1, 5]);
+        let domain_size = 1usize << log_domain_size;
+
+        let verification_result =
+            verifier.decommit_on_query_positions(&[1, domain_size], decommitment_value);
+
+        assert!(matches!(
+            verification_result,
+            Err(FriVerificationError::InvalidQueryPositions)
+        ));
+    }
+
+    #[test]
+    fn verifier_commit_rejects_impossible_query_count() {
+        const LOG_DEGREE: u32 = 3;
+        let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+        let queries = Queries::from_positions(vec![5], column.domain.log_size());
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), 1);
+        let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+        let proof = prover.decommit_on_queries(&queries).proof;
+        let mut invalid_config = config;
+        invalid_config.n_queries = (1usize << column.domain.log_size()) + 1;
+        let bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+
+        let verifier = FriVerifier::commit(&mut test_channel(), invalid_config, proof, bound);
+
+        assert!(matches!(
+            verifier,
+            Err(FriVerificationError::InvalidQueryPositions)
+        ));
+    }
+
+    #[test]
     fn proof_with_removed_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
@@ -1182,6 +1282,24 @@ mod tests {
         query_positions: &[usize],
     ) -> Vec<SecureField> {
         query_positions.iter().map(|p| polynomial.at(*p)).collect()
+    }
+
+    fn verifier_for_query_positions(
+        query_positions: Vec<usize>,
+    ) -> (FriVerifier, Vec<SecureField>, u32) {
+        const LOG_DEGREE: u32 = 4;
+        let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+        let log_domain_size = column.domain.log_size();
+        let queries = Queries::from_positions(query_positions, log_domain_size);
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len(), 1);
+        let decommitment_value = query_polynomial(&column, &queries);
+        let prover = FriProver::commit(&mut test_channel(), config, &column, &twiddles);
+        let proof = prover.decommit_on_queries(&queries).proof;
+        let bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+
+        (verifier, decommitment_value, log_domain_size)
     }
 
     #[test]

@@ -7,24 +7,57 @@ use super::channel::Channel;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// Draws `n_queries` values in the range `[0, 2^log_domain_size)` from the channel.
+pub(crate) fn query_domain_size(log_domain_size: u32) -> Option<usize> {
+    if log_domain_size > (UPPER_BOUND_QUERY_BYTES * u8::BITS as usize) as u32 {
+        return None;
+    }
+    1usize.checked_shl(log_domain_size)
+}
+
+pub(crate) fn can_sample_n_unique_queries(log_domain_size: u32, n_queries: usize) -> bool {
+    query_domain_size(log_domain_size).is_some_and(|domain_size| n_queries <= domain_size)
+}
+
+/// Draws `n_queries` unique values in the range `[0, 2^log_domain_size)` from the channel.
+///
+/// The channel is sampled deterministically until enough distinct positions have been drawn.
 pub fn draw_queries(
     channel: &mut impl Channel,
     log_domain_size: u32,
     n_queries: usize,
 ) -> Vec<usize> {
-    let mut raw_positions = Vec::new();
-    let query_mask = (1 << log_domain_size) - 1;
-    loop {
+    assert!(
+        can_sample_n_unique_queries(log_domain_size, n_queries),
+        "too many unique FRI query positions requested for query domain"
+    );
+    assert!(
+        log_domain_size <= u32::BITS,
+        "query domain size exceeds channel word size"
+    );
+
+    let query_mask = if log_domain_size == u32::BITS {
+        u32::MAX
+    } else {
+        (1_u32 << log_domain_size) - 1
+    };
+    let mut raw_positions = Vec::with_capacity(n_queries);
+    let mut seen_positions = BTreeSet::new();
+
+    while raw_positions.len() < n_queries {
         let random_words = channel.draw_u32s();
         for word in random_words {
-            let quotient_query = word & query_mask;
-            raw_positions.push(quotient_query.try_into().unwrap());
+            let quotient_query = usize::try_from(word & query_mask).unwrap();
+            if !seen_positions.insert(quotient_query) {
+                continue;
+            }
+            raw_positions.push(quotient_query);
             if raw_positions.len() == n_queries {
                 return raw_positions;
             }
         }
     }
+
+    raw_positions
 }
 
 /// An ordered set of query positions.
@@ -81,10 +114,54 @@ impl Deref for Queries {
 mod tests {
     use std_shims::Vec;
 
-    use crate::core::channel::Blake2sChannel;
+    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::{draw_queries, Queries};
     use crate::core::utils::bit_reverse;
+
+    #[derive(Clone, Debug, Default)]
+    struct FixedU32Channel {
+        draws: Vec<Vec<u32>>,
+        next_draw: usize,
+    }
+
+    impl FixedU32Channel {
+        fn new(draws: Vec<Vec<u32>>) -> Self {
+            Self {
+                draws,
+                next_draw: 0,
+            }
+        }
+    }
+
+    impl Channel for FixedU32Channel {
+        const BYTES_PER_HASH: usize = 32;
+
+        fn verify_pow_nonce(&self, _n_bits: u32, _nonce: u64) -> bool {
+            true
+        }
+
+        fn mix_u32s(&mut self, _data: &[u32]) {}
+
+        fn mix_felts(&mut self, _felts: &[SecureField]) {}
+
+        fn mix_u64(&mut self, _value: u64) {}
+
+        fn draw_secure_felt(&mut self) -> SecureField {
+            unimplemented!("test channel only draws u32 words")
+        }
+
+        fn draw_secure_felts(&mut self, _n_felts: usize) -> Vec<SecureField> {
+            unimplemented!("test channel only draws u32 words")
+        }
+
+        fn draw_u32s(&mut self) -> Vec<u32> {
+            let words = self.draws[self.next_draw].clone();
+            self.next_draw += 1;
+            words
+        }
+    }
 
     #[test]
     fn test_generate_queries() {
@@ -98,6 +175,24 @@ mod tests {
         assert!(queries.len() == n_queries);
         assert!(queries.iter().is_sorted());
         assert!(*queries.positions.last().unwrap() < 1 << log_query_size);
+    }
+
+    #[test]
+    fn draw_queries_resamples_until_n_unique_positions() {
+        let channel = &mut FixedU32Channel::new(vec![vec![0, 1, 1, 2, 0, 2, 3], vec![3, 4, 5]]);
+
+        let raw_positions = draw_queries(channel, 3, 5);
+
+        assert_eq!(raw_positions, vec![0, 1, 2, 3, 4]);
+        assert_eq!(channel.next_draw, 2);
+    }
+
+    #[test]
+    #[should_panic = "too many unique FRI query positions requested for query domain"]
+    fn draw_queries_rejects_impossible_unique_query_count() {
+        let channel = &mut FixedU32Channel::new(vec![vec![0, 1, 2, 3]]);
+
+        let _ = draw_queries(channel, 2, 5);
     }
 
     #[test]
