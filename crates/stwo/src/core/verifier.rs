@@ -9,6 +9,7 @@ use crate::core::fri::FriVerificationError;
 use crate::core::pcs::utils::try_get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
+use crate::core::proof_of_work::OODS_POW_BITS;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -83,6 +84,13 @@ pub fn verify_ex<MC: MerkleChannel>(
         &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
         channel,
     );
+
+    // Verify the proof of work ground before the OODS point. Must mirror the prover: verify the
+    // nonce, then mix it into the channel before drawing the OODS point.
+    if !channel.verify_pow_nonce(OODS_POW_BITS, proof.oods_proof_of_work) {
+        return Err(VerificationError::ProofOfWork);
+    }
+    channel.mix_u64(proof.oods_proof_of_work);
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);

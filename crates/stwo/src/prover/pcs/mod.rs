@@ -298,6 +298,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 sampled_values,
                 decommitments: TreeVec(decommitments),
                 queried_values: TreeVec(queried_values),
+                // Set by the top-level prover (see `prover::prove_ex`), which grinds before
+                // drawing the OODS point.
+                oods_proof_of_work: 0,
                 proof_of_work,
                 fri_proof: fri_proof.proof,
                 config: self.config,

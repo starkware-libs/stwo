@@ -70,6 +70,7 @@ impl<H: MerkleHasherLifted> StarkProof<H> {
             sampled_values,
             decommitments,
             queried_values,
+            oods_proof_of_work: _,
             proof_of_work: _,
             fri_proof,
             config: _,
@@ -196,6 +197,7 @@ impl<H: MerkleHasherLifted> SizeEstimate for CommitmentSchemeProof<H> {
             sampled_values,
             decommitments,
             queried_values,
+            oods_proof_of_work,
             proof_of_work,
             fri_proof,
             config,
@@ -204,6 +206,7 @@ impl<H: MerkleHasherLifted> SizeEstimate for CommitmentSchemeProof<H> {
             + sampled_values.size_estimate()
             + decommitments.size_estimate()
             + queried_values.size_estimate()
+            + mem::size_of_val(oods_proof_of_work)
             + mem::size_of_val(proof_of_work)
             + fri_proof.size_estimate()
             + mem::size_of_val(config)

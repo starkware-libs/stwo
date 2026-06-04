@@ -6,6 +6,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::pcs::utils::{try_get_lifting_log_size, InvalidLiftingLogSizeError};
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
+use crate::core::proof_of_work::OODS_POW_BITS;
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
 
@@ -79,6 +80,13 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     tree_builder.commit(channel);
     span.exit();
 
+    // Proof of work before drawing the OODS point. Raises the cost of re-rolling the OODS
+    // (DEEP) challenge in search of a favorable point.
+    let oods_span = span!(Level::INFO, "Grind", class = "OODS POW").entered();
+    let oods_proof_of_work = B::grind(channel, OODS_POW_BITS);
+    oods_span.exit();
+    channel.mix_u64(oods_proof_of_work);
+
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
@@ -124,7 +132,8 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let mut commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    commitment_scheme_proof.proof.oods_proof_of_work = oods_proof_of_work;
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 
