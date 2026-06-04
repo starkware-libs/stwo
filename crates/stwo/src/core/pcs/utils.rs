@@ -209,7 +209,7 @@ pub fn prepare_preprocessed_query_positions(
     }
     query_positions
         .iter()
-        .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
+        .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1)).sorted()
         .collect()
 }
 

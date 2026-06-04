@@ -30,6 +30,7 @@ pub struct CommitmentSchemeProof<H: MerkleHasherLifted> {
     pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
     pub decommitments: TreeVec<MerkleDecommitmentLifted<H>>,
     pub queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
+    /// Proof-of-work nonce ground before the FRI query positions are drawn.
     pub proof_of_work: u64,
     pub fri_proof: FriProof<H>,
 }

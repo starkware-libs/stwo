@@ -9,6 +9,7 @@ use crate::core::fri::FriVerificationError;
 use crate::core::pcs::utils::try_get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
+use crate::core::proof_of_work::OODS_POW_BITS;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
@@ -84,6 +85,13 @@ pub fn verify_ex<MC: MerkleChannel>(
         channel,
     );
 
+    // Verify the proof of work ground before the OODS point. Must mirror the prover: verify the
+    // nonce, then mix it into the channel before drawing the OODS point.
+    if !channel.verify_pow_nonce(OODS_POW_BITS, proof.oods_proof_of_work) {
+        return Err(VerificationError::ProofOfWork);
+    }
+    channel.mix_u64(proof.oods_proof_of_work);
+
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     // Get mask sample points relative to oods point.
@@ -118,7 +126,7 @@ pub fn verify_ex<MC: MerkleChannel>(
     {
         return Err(VerificationError::OodsNotMatching);
     }
-    commitment_scheme.verify_values(sample_points, proof.0, channel)
+    commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
 #[derive(Clone, Debug, Error)]

@@ -14,7 +14,13 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StarkProof<H: MerkleHasherLifted>(pub CommitmentSchemeProof<H>);
+pub struct StarkProof<H: MerkleHasherLifted> {
+    pub commitment_scheme_proof: CommitmentSchemeProof<H>,
+    /// Proof-of-work nonce ground before the OODS point is drawn. See [`OODS_POW_BITS`].
+    ///
+    /// [`OODS_POW_BITS`]: crate::core::proof_of_work::OODS_POW_BITS
+    pub oods_proof_of_work: u64,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExtendedStarkProof<H: MerkleHasherLifted> {
@@ -63,7 +69,10 @@ impl<H: MerkleHasherLifted> StarkProof<H> {
 
     /// Returns size estimates (in bytes) for different parts of the proof.
     pub fn size_breakdown_estimate(&self) -> StarkProofSizeBreakdown {
-        let Self(commitment_scheme_proof) = self;
+        let Self {
+            commitment_scheme_proof,
+            oods_proof_of_work: _,
+        } = self;
 
         let CommitmentSchemeProof {
             commitments,
@@ -112,7 +121,7 @@ impl<H: MerkleHasherLifted> Deref for StarkProof<H> {
     type Target = CommitmentSchemeProof<H>;
 
     fn deref(&self) -> &CommitmentSchemeProof<H> {
-        &self.0
+        &self.commitment_scheme_proof
     }
 }
 
@@ -212,8 +221,11 @@ impl<H: MerkleHasherLifted> SizeEstimate for CommitmentSchemeProof<H> {
 
 impl<H: MerkleHasherLifted> SizeEstimate for StarkProof<H> {
     fn size_estimate(&self) -> usize {
-        let Self(commitment_scheme_proof) = self;
-        commitment_scheme_proof.size_estimate()
+        let Self {
+            commitment_scheme_proof,
+            oods_proof_of_work,
+        } = self;
+        commitment_scheme_proof.size_estimate() + mem::size_of_val(oods_proof_of_work)
     }
 }
 
