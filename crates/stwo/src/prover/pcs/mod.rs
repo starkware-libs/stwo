@@ -1,6 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
-use rand::{CryptoRng, RngCore};
+use rand::rngs::StdRng;
+use rand::{CryptoRng, RngCore, SeedableRng};
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::{info, span, Level};
@@ -13,7 +14,7 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::utils::prepare_preprocessed_query_positions;
-use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
+use crate::core::pcs::{PcsConfig, PcsHidingConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::queries::Queries;
 use crate::core::utils::MaybeOwned;
@@ -50,6 +51,7 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     pub store_polynomials_coefficients: bool,
     /// Pre-allocated base field column pool for polynomial evaluation during commit.
     pub base_column_pool: MaybeOwned<'a, BaseColumnPool<B>>,
+    hiding_rng: Option<StdRng>,
     zk_witness_randomization_contexts: Vec<PrecommitZkWitnessRandomizationContext<B>>,
     zk_witness_randomized_ranges: Vec<ZkColumnRange>,
 }
@@ -63,6 +65,27 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             twiddles,
             store_polynomials_coefficients: false,
             base_column_pool: MaybeOwned::Owned(BaseColumnPool::new()),
+            hiding_rng: None,
+            zk_witness_randomization_contexts: Vec::new(),
+            zk_witness_randomized_ranges: Vec::new(),
+        }
+    }
+
+    pub fn new_hiding<R>(config: PcsConfig, twiddles: &'a TwiddleTree<B>, rng: &mut R) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        assert!(
+            config.hiding.is_some(),
+            "new_hiding requires PcsConfig::hiding"
+        );
+        CommitmentSchemeProver {
+            trees: TreeVec::default(),
+            config,
+            twiddles,
+            store_polynomials_coefficients: false,
+            base_column_pool: MaybeOwned::Owned(BaseColumnPool::new()),
+            hiding_rng: Some(seed_hiding_rng(rng)),
             zk_witness_randomization_contexts: Vec::new(),
             zk_witness_randomized_ranges: Vec::new(),
         }
@@ -79,6 +102,32 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             twiddles,
             store_polynomials_coefficients: false,
             base_column_pool: MaybeOwned::Borrowed(base_column_pool),
+            hiding_rng: None,
+            zk_witness_randomization_contexts: Vec::new(),
+            zk_witness_randomized_ranges: Vec::new(),
+        }
+    }
+
+    pub fn with_memory_pool_hiding<R>(
+        config: PcsConfig,
+        twiddles: &'a TwiddleTree<B>,
+        base_column_pool: &'a BaseColumnPool<B>,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        assert!(
+            config.hiding.is_some(),
+            "with_memory_pool_hiding requires PcsConfig::hiding"
+        );
+        CommitmentSchemeProver {
+            trees: TreeVec::default(),
+            config,
+            twiddles,
+            store_polynomials_coefficients: false,
+            base_column_pool: MaybeOwned::Borrowed(base_column_pool),
+            hiding_rng: Some(seed_hiding_rng(rng)),
             zk_witness_randomization_contexts: Vec::new(),
             zk_witness_randomized_ranges: Vec::new(),
         }
@@ -94,14 +143,31 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     /// the channel, and appends the resulting tree to the scheme.
     fn commit(&mut self, polynomials: ColumnVec<CircleCoefficients<B>>, channel: &mut MC::C) {
         let _span = span!(Level::INFO, "Commitment").entered();
-        let tree = CommitmentTreeProver::new(
-            polynomials,
-            self.config.fri_config.log_blowup_factor,
-            self.twiddles,
-            self.store_polynomials_coefficients,
-            self.config.lifting_log_size,
-            &self.base_column_pool,
-        );
+        let tree = if let Some(hiding) = self.config.hiding {
+            let hiding_rng = self
+                .hiding_rng
+                .as_mut()
+                .expect("hiding PcsConfig requires CommitmentSchemeProver::new_hiding");
+            CommitmentTreeProver::new_hiding(
+                polynomials,
+                self.config.fri_config.log_blowup_factor,
+                self.twiddles,
+                self.store_polynomials_coefficients,
+                self.config.lifting_log_size,
+                &self.base_column_pool,
+                hiding,
+                hiding_rng,
+            )
+        } else {
+            CommitmentTreeProver::new(
+                polynomials,
+                self.config.fri_config.log_blowup_factor,
+                self.twiddles,
+                self.store_polynomials_coefficients,
+                self.config.lifting_log_size,
+                &self.base_column_pool,
+            )
+        };
         MC::mix_root(channel, tree.commitment.root());
         self.trees.push(MaybeOwned::Owned(tree));
     }
@@ -113,6 +179,18 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         tree: MaybeOwned<'a, CommitmentTreeProver<B, MC>>,
         channel: &mut MC::C,
     ) {
+        if let Some(hiding) = self.config.hiding {
+            assert_eq!(
+                tree.commitment.salt_felts_per_leaf(),
+                hiding.salt_felts_per_leaf,
+                "hiding PCS config requires hiding commitment trees"
+            );
+        } else {
+            assert!(
+                !tree.commitment.is_hiding(),
+                "transparent PCS config cannot accept hiding commitment trees"
+            );
+        }
         MC::mix_root(channel, tree.commitment.root());
         self.trees.push(tree);
     }
@@ -255,8 +333,22 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         );
 
         // Run FRI commitment phase on the oods quotients.
-        let fri_prover =
-            FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
+        let fri_prover = if let Some(hiding) = self.config.hiding {
+            let hiding_rng = self
+                .hiding_rng
+                .as_mut()
+                .expect("hiding PcsConfig requires CommitmentSchemeProver::new_hiding");
+            FriProver::<B, MC>::commit_hiding(
+                channel,
+                self.config.fri_config,
+                &quotients,
+                self.twiddles,
+                hiding.salt_felts_per_leaf,
+                hiding_rng,
+            )
+        } else {
+            FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles)
+        };
 
         // Proof of work.
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
@@ -472,8 +564,22 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         );
         let h_batch = add_fri_batch_mask(quotients, fri_batch_mask_oracle.evaluation());
 
-        let fri_prover =
-            FriProver::<B, MC>::commit(channel, self.config.fri_config, &h_batch, self.twiddles);
+        let fri_prover = if let Some(hiding) = self.config.hiding {
+            let hiding_rng = self
+                .hiding_rng
+                .as_mut()
+                .expect("hiding PcsConfig requires CommitmentSchemeProver::new_hiding");
+            FriProver::<B, MC>::commit_hiding(
+                channel,
+                self.config.fri_config,
+                &h_batch,
+                self.twiddles,
+                hiding.salt_felts_per_leaf,
+                hiding_rng,
+            )
+        } else {
+            FriProver::<B, MC>::commit(channel, self.config.fri_config, &h_batch, self.twiddles)
+        };
 
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
         let proof_of_work = B::grind(channel, self.config.pow_bits);
@@ -803,6 +909,53 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         }
     }
 
+    pub fn new_hiding<R>(
+        polynomials: ColumnVec<CircleCoefficients<B>>,
+        log_blowup_factor: u32,
+        twiddles: &TwiddleTree<B>,
+        store_polynomials_coefficients: bool,
+        lifting_log_size: Option<u32>,
+        base_column_pool: &BaseColumnPool<B>,
+        hiding: PcsHidingConfig,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let span = span!(Level::INFO, "Extension").entered();
+        let polynomials = B::evaluate_polynomials(
+            polynomials,
+            log_blowup_factor,
+            twiddles,
+            store_polynomials_coefficients,
+            base_column_pool,
+        );
+        span.exit();
+
+        let _span = span!(Level::INFO, "Merkle").entered();
+        let max_log_domain_size = polynomials
+            .iter()
+            .map(|poly| poly.evals.domain.log_size())
+            .max()
+            .unwrap_or_default();
+        let lifting_log_size = lifting_log_size.unwrap_or(max_log_domain_size);
+        let tree = MerkleProverLifted::commit_hiding(
+            polynomials
+                .iter()
+                .map(|poly: &Poly<B>| &poly.evals.values)
+                .collect(),
+            lifting_log_size,
+            0,
+            hiding.salt_felts_per_leaf,
+            rng,
+        );
+
+        CommitmentTreeProver {
+            polynomials,
+            commitment: tree,
+        }
+    }
+
     /// Decommits the merkle tree on the given query positions.
     /// Returns the values at the queried positions and the decommitment.
     /// The queries are given as a mapping from the log size of the layer size to the queried
@@ -823,6 +976,15 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     }
 }
 
+fn seed_hiding_rng<R>(rng: &mut R) -> StdRng
+where
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let mut seed = <StdRng as SeedableRng>::Seed::default();
+    rng.fill_bytes(seed.as_mut());
+    StdRng::from_seed(seed)
+}
+
 fn print_column_size_histogram<B: BackendForChannel<MC>, MC: MerkleChannel>(
     columns_per_tree: &TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 ) {
@@ -836,5 +998,52 @@ fn print_column_size_histogram<B: BackendForChannel<MC>, MC: MerkleChannel>(
     }
     for (log_size, count) in log_size_histogram {
         info!("Log size {log_size}: {count}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::m31::M31;
+    use crate::core::fri::FriConfig;
+    use crate::core::pcs::{PcsConfig, PcsHidingConfig};
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+    use crate::prover::backend::CpuBackend;
+    use crate::prover::pcs::CommitmentSchemeProver;
+    use crate::prover::poly::circle::{CircleCoefficients, PolyOps};
+
+    fn hidden_root(
+        seed: u64,
+    ) -> <<Blake2sMerkleChannel as crate::core::channel::MerkleChannel>::H as MerkleHasherLifted>::Hash
+    {
+        let config = PcsConfig {
+            pow_bits: 0,
+            fri_config: FriConfig::new(0, 1, 3, 1),
+            lifting_log_size: Some(3),
+            hiding: Some(PcsHidingConfig::new(4)),
+        };
+        let twiddles = CpuBackend::precompute_twiddles(CanonicCoset::new(3).half_coset());
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut channel = Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new_hiding(
+                config, &twiddles, &mut rng,
+            );
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(vec![CircleCoefficients::new(
+            (0..4).map(M31::from).collect(),
+        )]);
+        tree_builder.commit(&mut channel);
+        commitment_scheme.roots()[0]
+    }
+
+    #[test]
+    fn hiding_pcs_commitment_roots_depend_on_entropy() {
+        assert_ne!(hidden_root(1), hidden_root(2));
     }
 }

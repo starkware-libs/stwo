@@ -110,6 +110,16 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         proof: FriProof<MC::H>,
         column_bound: CirclePolyDegreeBound,
     ) -> Result<Self, FriVerificationError> {
+        Self::commit_with_leaf_salts(channel, config, proof, column_bound, 0)
+    }
+
+    pub fn commit_with_leaf_salts(
+        channel: &mut MC::C,
+        config: FriConfig,
+        proof: FriProof<MC::H>,
+        column_bound: CirclePolyDegreeBound,
+        salt_felts_per_leaf: u32,
+    ) -> Result<Self, FriVerificationError> {
         MC::mix_root(channel, proof.first_layer.commitment);
 
         let column_commitment_domain =
@@ -123,6 +133,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             fold_step: config.fold_step,
             pack_leaves: column_commitment_domain.log_size() >= LOG_PACKED_LEAF_SIZE
                 && config.fold_step > 1,
+            salt_felts_per_leaf,
         };
 
         let mut inner_layers = Vec::new();
@@ -166,6 +177,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
                 proof,
                 fold_step,
                 pack_leaves: layer_domain.log_size() >= LOG_PACKED_LEAF_SIZE && fold_step > 1,
+                salt_felts_per_leaf,
             });
             layer_bound = layer_bound
                 .fold(fold_step)
@@ -438,6 +450,7 @@ struct FriFirstLayerVerifier<H: MerkleHasherLifted> {
     proof: FriLayerProof<H>,
     fold_step: u32,
     pack_leaves: bool,
+    salt_felts_per_leaf: u32,
 }
 
 impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
@@ -492,13 +505,14 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
             return Err(FriVerificationError::FirstLayerEvaluationsInvalid);
         }
 
-        let merkle_verifier = MerkleVerifierLifted::new(
+        let merkle_verifier = MerkleVerifierLifted::new_with_leaf_salts(
             self.proof.commitment,
             vec![
                 self.column_commitment_domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
             None,
+            self.salt_felts_per_leaf,
         );
 
         merkle_verifier
@@ -520,6 +534,7 @@ struct FriInnerLayerVerifier<H: MerkleHasherLifted> {
     proof: FriLayerProof<H>,
     fold_step: u32,
     pack_leaves: bool,
+    salt_felts_per_leaf: u32,
 }
 
 impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
@@ -577,13 +592,14 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
             leaf_log_size,
         );
 
-        let merkle_verifier = MerkleVerifierLifted::new(
+        let merkle_verifier = MerkleVerifierLifted::new_with_leaf_salts(
             self.proof.commitment,
             vec![
                 self.domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
             None,
+            self.salt_felts_per_leaf,
         );
 
         merkle_verifier

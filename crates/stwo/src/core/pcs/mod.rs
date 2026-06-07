@@ -27,6 +27,21 @@ pub struct TreeSubspan {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcsHidingConfig {
+    /// Number of random M31 elements appended to each Merkle leaf before hashing.
+    pub salt_felts_per_leaf: u32,
+}
+
+impl PcsHidingConfig {
+    pub const fn new(salt_felts_per_leaf: u32) -> Self {
+        assert!(salt_felts_per_leaf > 0);
+        Self {
+            salt_felts_per_leaf,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 /// Configuration parameters for the committment scheme prover.
 pub struct PcsConfig {
     /// The number of proof of work bits before the FRI queries.
@@ -39,10 +54,19 @@ pub struct PcsConfig {
     /// (an implicit assumption here is that the largest domains are all of equal size across
     /// trees, except possibly for the preprocessed tree).
     pub lifting_log_size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hiding: Option<PcsHidingConfig>,
 }
 impl PcsConfig {
     pub const fn security_bits(&self) -> u32 {
         self.pow_bits + self.fri_config.security_bits()
+    }
+
+    pub const fn merkle_salt_felts_per_leaf(&self) -> u32 {
+        match self.hiding {
+            Some(hiding) => hiding.salt_felts_per_leaf,
+            None => 0,
+        }
     }
 
     pub fn mix_into(&self, channel: &mut impl Channel) {
@@ -50,6 +74,7 @@ impl PcsConfig {
             pow_bits,
             fri_config,
             lifting_log_size,
+            hiding,
         } = self;
         let FriConfig {
             log_blowup_factor,
@@ -57,6 +82,10 @@ impl PcsConfig {
             log_last_layer_degree_bound,
             fold_step,
         } = fri_config;
+        let (hiding_version, salt_felts_per_leaf) = match hiding {
+            Some(hiding) => (1, hiding.salt_felts_per_leaf),
+            None => (0, 0),
+        };
 
         channel.mix_felts(&[
             SecureField::from_u32_unchecked(
@@ -65,7 +94,12 @@ impl PcsConfig {
                 *n_queries as u32,
                 *log_last_layer_degree_bound,
             ),
-            SecureField::from_u32_unchecked(*fold_step, lifting_log_size.unwrap_or(0), 0, 0),
+            SecureField::from_u32_unchecked(
+                *fold_step,
+                lifting_log_size.unwrap_or(0),
+                hiding_version,
+                salt_felts_per_leaf,
+            ),
         ]);
     }
 }
@@ -76,6 +110,7 @@ impl Default for PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(0, 1, 3, 1),
             lifting_log_size: None,
+            hiding: None,
         }
     }
 }
@@ -88,6 +123,7 @@ mod tests {
             pow_bits: 42,
             fri_config: super::FriConfig::new(10, 10, 70, 1),
             lifting_log_size: None,
+            hiding: None,
         };
         assert!(config.security_bits() == 10 * 70 + 42);
     }

@@ -95,8 +95,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .iter()
             .map(|&log_size| log_size + self.config.fri_config.log_blowup_factor)
             .collect();
-        let verifier =
-            MerkleVerifierLifted::new(commitment, extended_log_sizes, self.config.lifting_log_size);
+        let verifier = MerkleVerifierLifted::new_with_leaf_salts(
+            commitment,
+            extended_log_sizes,
+            self.config.lifting_log_size,
+            self.config.merkle_salt_felts_per_leaf(),
+        );
         self.trees.push(verifier);
     }
 
@@ -113,8 +117,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
 
         // FRI commitment phase on OODS quotients.
-        let mut fri_verifier =
-            FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
+        let mut fri_verifier = FriVerifier::<MC>::commit_with_leaf_salts(
+            channel,
+            self.config.fri_config,
+            proof.fri_proof,
+            bound,
+            self.config.merkle_salt_felts_per_leaf(),
+        )?;
 
         // Verify proof of work.
         if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
@@ -337,8 +346,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         )?;
         let random_coeff = channel.draw_secure_felt();
 
-        let mut fri_verifier =
-            FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
+        let mut fri_verifier = FriVerifier::<MC>::commit_with_leaf_salts(
+            channel,
+            self.config.fri_config,
+            proof.fri_proof,
+            bound,
+            self.config.merkle_salt_felts_per_leaf(),
+        )?;
 
         if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
             return Err(VerificationError::ProofOfWork);

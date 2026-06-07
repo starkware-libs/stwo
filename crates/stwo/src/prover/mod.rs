@@ -626,7 +626,7 @@ mod tests {
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
-    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, PcsHidingConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::zk::{
@@ -1033,6 +1033,77 @@ mod tests {
                 if message == "Invalid ZK witness-randomization verifier audit"
         ));
 
+        crate::core::verifier::verify_zk_ex_with_witness_randomization_audit::<
+            Blake2sMerkleChannel,
+        >(
+            &[&component],
+            &mut verifier_channel,
+            &mut verifier,
+            proof.proof,
+            &zk_verifier_config,
+            &zk_verifier_audit,
+            false,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn private_witness_zk_stark_top_level_uses_native_hiding_pcs() {
+        let mut config = private_stark_test_pcs_config();
+        config.hiding = Some(PcsHidingConfig::new(4));
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(TEST_FRI_FIRST_LAYER_LOG_SIZE).half_coset(),
+        );
+        let mut prover_channel = Blake2sChannel::default();
+        let mut hiding_rng = StdRng::seed_from_u64(101);
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new_hiding(
+                config,
+                &twiddles,
+                &mut hiding_rng,
+            );
+        commitment_scheme.set_store_polynomials_coefficients();
+
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) =
+            private_stark_test_configs();
+        commit_private_stark_test_inputs(
+            &mut commitment_scheme,
+            &mut prover_channel,
+            &zk_prover_config,
+            102,
+        );
+
+        let component = NoConstraintPrivateComponent;
+        let mut proof_rng = StdRng::seed_from_u64(103);
+        let proof = prove_zk_ex::<CpuBackend, Blake2sMerkleChannel, _>(
+            &[&component],
+            &mut prover_channel,
+            commitment_scheme,
+            &zk_prover_config,
+            &mut proof_rng,
+            false,
+        )
+        .unwrap();
+
+        let (mut transparent_verifier_channel, mut transparent_verifier) =
+            verifier_for_private_stark_test_proof(PcsConfig::default(), &proof.proof);
+        assert!(
+            crate::core::verifier::verify_zk_ex_with_witness_randomization_audit::<
+                Blake2sMerkleChannel,
+            >(
+                &[&component],
+                &mut transparent_verifier_channel,
+                &mut transparent_verifier,
+                proof.proof.clone(),
+                &zk_verifier_config,
+                &zk_verifier_audit,
+                false,
+            )
+            .is_err()
+        );
+
+        let (mut verifier_channel, mut verifier) =
+            verifier_for_private_stark_test_proof(config, &proof.proof);
         crate::core::verifier::verify_zk_ex_with_witness_randomization_audit::<
             Blake2sMerkleChannel,
         >(

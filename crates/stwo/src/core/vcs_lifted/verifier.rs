@@ -20,12 +20,16 @@ pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed.
     pub hash_witness: Vec<H::Hash>,
+    /// Per-opened-leaf salts. This is empty for transparent Merkle commitments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leaf_salts: Vec<Vec<BaseField>>,
 }
 
 impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
     pub const fn empty() -> Self {
         Self {
             hash_witness: Vec::new(),
+            leaf_salts: Vec::new(),
         }
     }
 }
@@ -55,10 +59,21 @@ pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
     /// The height of the Merkle tree. Note that it can be different than the largest committed
     /// column if the verifier has set a larger lifting size.
     pub height: u32,
+    /// Number of random M31 elements appended to each opened leaf before hashing.
+    pub salt_felts_per_leaf: u32,
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, lifting_log_size: Option<u32>) -> Self {
+        Self::new_with_leaf_salts(root, column_log_sizes, lifting_log_size, 0)
+    }
+
+    pub fn new_with_leaf_salts(
+        root: H::Hash,
+        column_log_sizes: Vec<u32>,
+        lifting_log_size: Option<u32>,
+        salt_felts_per_leaf: u32,
+    ) -> Self {
         let max_column_log_size = column_log_sizes.iter().copied().max().unwrap_or_default();
         let height = lifting_log_size.unwrap_or(max_column_log_size);
         assert!(
@@ -69,6 +84,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
             root,
             column_log_sizes,
             height,
+            salt_felts_per_leaf,
         }
     }
 
@@ -107,9 +123,15 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
         if self.column_log_sizes.is_empty() {
-            if queried_values.is_empty() && decommitment.hash_witness.is_empty() {
+            if queried_values.is_empty()
+                && decommitment.hash_witness.is_empty()
+                && decommitment.leaf_salts.is_empty()
+            {
                 return Ok(());
             }
+            return Err(MerkleVerificationError::WitnessTooLong);
+        }
+        if self.salt_felts_per_leaf == 0 && !decommitment.leaf_salts.is_empty() {
             return Err(MerkleVerificationError::WitnessTooLong);
         }
         if self.height == 0 {
@@ -143,11 +165,24 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
 
         // Build the leaves.
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = vec![];
+        let mut leaf_salts = decommitment.leaf_salts.into_iter();
         for (pos, &idx) in &first_index_by_query {
             let row: Vec<_> = sorted_queried_values.iter().map(|col| col[idx]).collect();
             let mut hasher = H::default();
             hasher.update_leaf(&row);
+            if self.salt_felts_per_leaf > 0 {
+                let salt = leaf_salts
+                    .next()
+                    .ok_or(MerkleVerificationError::WitnessTooShort)?;
+                if salt.len() != self.salt_felts_per_leaf as usize {
+                    return Err(MerkleVerificationError::InvalidSaltLength);
+                }
+                hasher.update_leaf(&salt);
+            }
             prev_layer_hashes.push((*pos, hasher.finalize()));
+        }
+        if leaf_salts.next().is_some() {
+            return Err(MerkleVerificationError::WitnessTooLong);
         }
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
@@ -199,6 +234,8 @@ pub enum MerkleVerificationError {
     WitnessTooLong,
     #[error("Root mismatch.")]
     RootMismatch,
+    #[error("Invalid leaf salt length.")]
+    InvalidSaltLength,
 }
 
 #[cfg(all(test, feature = "prover"))]

@@ -1,6 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use num_traits::Zero;
+use rand::{CryptoRng, RngCore};
 use tracing::instrument;
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -128,6 +129,41 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         }
     }
 
+    #[instrument(skip_all)]
+    pub fn commit_hiding<R>(
+        channel: &mut MC::C,
+        config: FriConfig,
+        column: &'a SecureEvaluation<B, BitReversedOrder>,
+        twiddles: &TwiddleTree<B>,
+        salt_felts_per_leaf: u32,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        assert!(column.domain.is_canonic(), "not canonic");
+        assert!(salt_felts_per_leaf > 0);
+
+        let first_layer =
+            Self::commit_first_layer_hiding(channel, &config, column, salt_felts_per_leaf, rng);
+        let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers_hiding(
+            channel,
+            config,
+            column,
+            twiddles,
+            salt_felts_per_leaf,
+            rng,
+        );
+        let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
+
+        Self {
+            config,
+            first_layer,
+            inner_layers,
+            last_layer_poly,
+        }
+    }
+
     /// Commits to the first FRI layer.
     fn commit_first_layer(
         channel: &mut MC::C,
@@ -137,6 +173,22 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         // The circle-to-line fold is always equal to the config.fold_step.
         // TODO(Leo): consider support for smaller steps.
         let layer = FriFirstLayerProver::new(column, config.fold_step);
+        MC::mix_root(channel, layer.merkle_tree.root());
+        layer
+    }
+
+    fn commit_first_layer_hiding<R>(
+        channel: &mut MC::C,
+        config: &FriConfig,
+        column: &'a SecureEvaluation<B, BitReversedOrder>,
+        salt_felts_per_leaf: u32,
+        rng: &mut R,
+    ) -> FriFirstLayerProver<'a, B, MC::H>
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let layer =
+            FriFirstLayerProver::new_hiding(column, config.fold_step, salt_felts_per_leaf, rng);
         MC::mix_root(channel, layer.merkle_tree.root());
         layer
     }
@@ -188,6 +240,70 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         // Do one last fold (of size 0 < k <= config.fold_step) to reach the correct size.
         let last_fold_step = line_log_size - last_layer_log_domain_size;
         let layer = FriInnerLayerProver::new(layer_evaluation, last_fold_step);
+        MC::mix_root(channel, layer.merkle_tree.root());
+        let folding_alpha = channel.draw_secure_felt();
+        let alpha_sq_powers = squared_alpha_powers(folding_alpha, last_fold_step);
+        layer_evaluation = B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles);
+        layers.push(layer);
+
+        (layers, layer_evaluation)
+    }
+
+    fn commit_inner_layers_hiding<R>(
+        channel: &mut MC::C,
+        config: FriConfig,
+        column: &SecureEvaluation<B, BitReversedOrder>,
+        twiddles: &TwiddleTree<B>,
+        salt_felts_per_leaf: u32,
+        rng: &mut R,
+    ) -> (Vec<FriInnerLayerProver<B, MC::H>>, LineEvaluation<B>)
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let mut layers = Vec::new();
+        let folding_alpha = channel.draw_secure_felt();
+
+        let mut layer_evaluation = B::fold_circle_into_line(column, folding_alpha, twiddles);
+        let mut line_log_size = layer_evaluation.domain().log_size();
+
+        if config.fold_step > 1 {
+            let extra_line_folds = config.fold_step - 1;
+            let alpha_sq_powers =
+                squared_alpha_powers(folding_alpha * folding_alpha, extra_line_folds);
+            layer_evaluation = B::fold_line(&layer_evaluation, &alpha_sq_powers, twiddles);
+            line_log_size -= extra_line_folds;
+        }
+
+        let last_layer_log_domain_size = config.last_layer_domain_size().ilog2();
+        assert!(
+            line_log_size >= last_layer_log_domain_size,
+            "The circle-to-line fold results in a smaller line domain than the last layer."
+        );
+        if line_log_size == last_layer_log_domain_size {
+            return (layers, layer_evaluation);
+        }
+        while line_log_size > last_layer_log_domain_size + config.fold_step {
+            let layer = FriInnerLayerProver::new_hiding(
+                layer_evaluation,
+                config.fold_step,
+                salt_felts_per_leaf,
+                rng,
+            );
+            MC::mix_root(channel, layer.merkle_tree.root());
+            let folding_alpha = channel.draw_secure_felt();
+            let alpha_sq_powers = squared_alpha_powers(folding_alpha, config.fold_step);
+            layer_evaluation = B::fold_line(&layer.evaluation, &alpha_sq_powers, twiddles);
+            layers.push(layer);
+            line_log_size -= config.fold_step;
+        }
+
+        let last_fold_step = line_log_size - last_layer_log_domain_size;
+        let layer = FriInnerLayerProver::new_hiding(
+            layer_evaluation,
+            last_fold_step,
+            salt_felts_per_leaf,
+            rng,
+        );
         MC::mix_root(channel, layer.merkle_tree.root());
         let folding_alpha = channel.draw_secure_felt();
         let alpha_sq_powers = squared_alpha_powers(folding_alpha, last_fold_step);
@@ -309,6 +425,33 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         }
     }
 
+    fn new_hiding<R>(
+        first_layer_column: &'a SecureEvaluation<B, BitReversedOrder>,
+        fold_step: u32,
+        salt_felts_per_leaf: u32,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let pack_leaves =
+            first_layer_column.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
+        let log_rows_per_leaf = if pack_leaves { LOG_PACKED_LEAF_SIZE } else { 0 };
+        let merkle_tree = MerkleProverLifted::commit_hiding(
+            first_layer_column.values.columns.iter().collect_vec(),
+            first_layer_column.values.len().ilog2() - log_rows_per_leaf,
+            log_rows_per_leaf,
+            salt_felts_per_leaf,
+            rng,
+        );
+
+        FriFirstLayerProver {
+            column: first_layer_column,
+            merkle_tree,
+            pack_leaves,
+        }
+    }
+
     fn decommit(self, queries: &Queries, fold_step: u32) -> ExtendedFriLayerProof<H> {
         assert_eq!(queries.log_domain_size, self.column.domain.log_size());
 
@@ -372,6 +515,33 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
             evaluation.values.columns.iter().collect_vec(),
             evaluation.values.len().ilog2() - log_rows_per_leaf,
             log_rows_per_leaf,
+        );
+
+        FriInnerLayerProver {
+            evaluation,
+            merkle_tree,
+            fold_step,
+            pack_leaves,
+        }
+    }
+
+    fn new_hiding<R>(
+        evaluation: LineEvaluation<B>,
+        fold_step: u32,
+        salt_felts_per_leaf: u32,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + CryptoRng + ?Sized,
+    {
+        let pack_leaves = evaluation.values.len().ilog2() >= LOG_PACKED_LEAF_SIZE && fold_step > 1;
+        let log_rows_per_leaf = if pack_leaves { LOG_PACKED_LEAF_SIZE } else { 0 };
+        let merkle_tree = MerkleProverLifted::commit_hiding(
+            evaluation.values.columns.iter().collect_vec(),
+            evaluation.values.len().ilog2() - log_rows_per_leaf,
+            log_rows_per_leaf,
+            salt_felts_per_leaf,
+            rng,
         );
 
         FriInnerLayerProver {

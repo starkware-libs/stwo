@@ -180,7 +180,7 @@ mod tests {
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
     use crate::core::pcs::quotients::PointSample;
-    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, PcsHidingConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::verifier::VerificationError;
@@ -537,6 +537,68 @@ mod tests {
         verifier.verify_values(TreeVec(sampled_points), proof.proof, &mut channel)
     }
 
+    fn prove_and_verify_hiding_pcs<
+        B: BackendForChannel<Blake2sMerkleChannel>,
+        const STORE_COEFFS: bool,
+    >() -> Result<(), VerificationError> {
+        const N_COLS: usize = 10;
+        const LIFTING_LOG_SIZE: u32 = 8;
+
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig {
+            hiding: Some(PcsHidingConfig::new(4)),
+            ..PcsConfig::default()
+        };
+        let twiddles = B::precompute_twiddles(
+            CanonicCoset::new(LIFTING_LOG_SIZE + config.fri_config.log_blowup_factor).half_coset(),
+        );
+        let mut hiding_rng = DeterministicTestCryptoRng::seed_from_u64(17);
+        let mut commitment_scheme = CommitmentSchemeProver::<B, Blake2sMerkleChannel>::new_hiding(
+            config,
+            &twiddles,
+            &mut hiding_rng,
+        );
+        if STORE_COEFFS {
+            commitment_scheme.set_store_polynomials_coefficients();
+        }
+        let polys = prepare_polys::<B, N_COLS, LIFTING_LOG_SIZE>();
+        let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(polys);
+        tree_builder.commit(&mut channel);
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![(0..N_COLS)
+            .zip(mask_structure.iter())
+            .map(|(_, i)| samples.into_iter().take(*i).collect_vec())
+            .collect_vec()];
+
+        let proof = commitment_scheme.prove_values(TreeVec(sampled_points.clone()), &mut channel);
+
+        let mut transparent_channel = Blake2sChannel::default();
+        let mut transparent_verifier =
+            CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(PcsConfig::default());
+        transparent_verifier.commit(proof.proof.commitments[0], &sizes, &mut transparent_channel);
+        assert!(transparent_verifier
+            .verify_values(
+                TreeVec(sampled_points.clone()),
+                proof.proof.clone(),
+                &mut transparent_channel
+            )
+            .is_err());
+
+        let mut channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(proof.proof.commitments[0], &sizes, &mut channel);
+        verifier.verify_values(TreeVec(sampled_points), proof.proof, &mut channel)
+    }
+
     fn prove_and_verify_zk_pcs<
         B: BackendForChannel<Blake2sMerkleChannel>,
         const STORE_COEFFS: bool,
@@ -701,9 +763,137 @@ mod tests {
         )
     }
 
+    fn prove_and_verify_zk_private_witness_hiding_pcs<
+        B: BackendForChannel<Blake2sMerkleChannel>,
+        const STORE_COEFFS: bool,
+    >() -> Result<(), VerificationError> {
+        const N_COLS: usize = 10;
+        const TRACE_LOG_SIZE: u32 = 8;
+        const RANDOMIZED_LOG_DEGREE: u32 = TRACE_LOG_SIZE + 1;
+        const PRIVATE_TREE_INDEX: usize = 1;
+
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig {
+            hiding: Some(PcsHidingConfig::new(4)),
+            ..PcsConfig::default()
+        };
+        let fri_first_layer_log_size = RANDOMIZED_LOG_DEGREE + config.fri_config.log_blowup_factor;
+        let twiddles =
+            B::precompute_twiddles(CanonicCoset::new(fri_first_layer_log_size).half_coset());
+        let mut hiding_rng = DeterministicTestCryptoRng::seed_from_u64(13);
+        let mut commitment_scheme = CommitmentSchemeProver::<B, Blake2sMerkleChannel>::new_hiding(
+            config,
+            &twiddles,
+            &mut hiding_rng,
+        );
+        if STORE_COEFFS {
+            commitment_scheme.set_store_polynomials_coefficients();
+        }
+        let preprocessed_polys = prepare_polys::<B, 1, TRACE_LOG_SIZE>();
+        let preprocessed_sizes = preprocessed_polys
+            .iter()
+            .map(|poly| poly.log_size())
+            .collect_vec();
+        let witness_polys = prepare_polys::<B, N_COLS, TRACE_LOG_SIZE>();
+        let mut witness_sizes = witness_polys
+            .iter()
+            .map(|poly| poly.log_size())
+            .collect_vec();
+        witness_sizes[0] = RANDOMIZED_LOG_DEGREE;
+        let (zk_prover_config, zk_verifier_config, zk_verifier_audit) = zk_private_witness_configs(
+            PRIVATE_TREE_INDEX,
+            TRACE_LOG_SIZE,
+            RANDOMIZED_LOG_DEGREE,
+            fri_first_layer_log_size,
+            config.fri_config.log_blowup_factor,
+        );
+
+        let mut witness_rng = DeterministicTestCryptoRng::seed_from_u64(3);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(preprocessed_polys);
+        tree_builder.commit(&mut channel);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(witness_polys);
+        tree_builder
+            .commit_zk_witness_randomized(&zk_prover_config, &mut witness_rng, &mut channel)
+            .map_err(|err| VerificationError::InvalidStructure(format!("{err:?}")))?;
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![
+            vec![samples.into_iter().take(1).collect_vec()],
+            (0..N_COLS)
+                .zip(mask_structure.iter())
+                .map(|(_, i)| samples.into_iter().take(*i).collect_vec())
+                .collect_vec(),
+        ];
+
+        let mut zk_rng = DeterministicTestCryptoRng::seed_from_u64(5);
+        let proof = commitment_scheme
+            .prove_values_zk(
+                TreeVec(sampled_points.clone()),
+                &zk_prover_config,
+                &mut zk_rng,
+                &mut channel,
+            )
+            .map_err(|err| VerificationError::InvalidStructure(format!("{err:?}")))?;
+
+        let mut transparent_channel = Blake2sChannel::default();
+        let mut transparent_verifier =
+            CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(PcsConfig::default());
+        transparent_verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[0],
+            &preprocessed_sizes,
+            &mut transparent_channel,
+        );
+        transparent_verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[1],
+            &witness_sizes,
+            &mut transparent_channel,
+        );
+        assert!(transparent_verifier
+            .verify_values_zk_with_witness_randomization_audit(
+                TreeVec(sampled_points.clone()),
+                proof.proof.clone(),
+                &zk_verifier_config,
+                &zk_verifier_audit,
+                &mut transparent_channel,
+            )
+            .is_err());
+
+        let mut channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[0],
+            &preprocessed_sizes,
+            &mut channel,
+        );
+        verifier.commit(
+            proof.proof.randomized_pcs_proof.commitments[1],
+            &witness_sizes,
+            &mut channel,
+        );
+        verifier.verify_values_zk_with_witness_randomization_audit(
+            TreeVec(sampled_points),
+            proof.proof,
+            &zk_verifier_config,
+            &zk_verifier_audit,
+            &mut channel,
+        )
+    }
+
     #[test]
     fn test_pcs_prove_and_verify_cpu() {
         assert!(prove_and_verify_pcs::<CpuBackend, true>().is_ok());
+    }
+
+    #[test]
+    fn test_hiding_pcs_prove_and_verify_cpu() {
+        assert!(prove_and_verify_hiding_pcs::<CpuBackend, true>().is_ok());
     }
     #[test]
     fn test_pcs_prove_and_verify_simd() {
@@ -727,6 +917,11 @@ mod tests {
     #[test]
     fn test_zk_private_witness_pcs_prove_and_verify_cpu() {
         assert!(prove_and_verify_zk_private_witness_pcs::<CpuBackend, true>().is_ok());
+    }
+
+    #[test]
+    fn test_zk_private_witness_hiding_pcs_prove_and_verify_cpu() {
+        assert!(prove_and_verify_zk_private_witness_hiding_pcs::<CpuBackend, true>().is_ok());
     }
 
     /// Tests that SIMD quotient computation produces low-degree quotients even when the trace
