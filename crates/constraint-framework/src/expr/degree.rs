@@ -71,7 +71,6 @@ impl ExtExpr {
         match self {
             ExtExpr::SecureCol(coefs) => coefs
                 .iter()
-                .cloned()
                 .map(|coef| coef.degree_bound(named_exprs))
                 .max()
                 .unwrap(),

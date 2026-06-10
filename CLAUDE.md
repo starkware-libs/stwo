@@ -16,7 +16,7 @@ All agent behavior is governed by this hierarchy. No exception, no override.
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Language | Rust nightly-2025-07-14 | Stable features except SIMD. See `rust-toolchain.toml` |
+| Language | Rust nightly-2026-01-15 | Stable features except SIMD. See `rust-toolchain.toml` |
 | Field | Mersenne31 (M31) | CM31, QM31 extension tower. p = 2^31 - 1 |
 | Proof system | Circle STARKs | FRI-based, circle group C(F_p) |
 | Test framework | Rust built-in + criterion | No proptest (coverage gap) |

@@ -134,7 +134,9 @@ fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<Simd
 
     let data = layer
         .data
-        .array_chunks()
+        .as_chunks()
+        .0
+        .iter()
         .map(|&[a, b]| {
             let (evens, odds) = a.deinterleave(b);
             evens * odds
