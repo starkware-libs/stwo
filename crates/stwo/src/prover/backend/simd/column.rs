@@ -134,11 +134,12 @@ impl Column<BaseField> for BaseColumn {
 
 impl FromIterator<BaseField> for BaseColumn {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
-        let mut chunks = iter.into_iter().array_chunks();
+        let mut chunks = iter.into_iter().array_chunks::<N_LANES>();
         let mut data = (&mut chunks).map(PackedBaseField::from_array).collect_vec();
         let mut length = data.len() * N_LANES;
 
-        if let Some(remainder) = chunks.into_remainder() {
+        {
+            let remainder = chunks.into_remainder();
             let rem = remainder.len();
             if rem > 0 {
                 length += rem;
@@ -215,11 +216,12 @@ impl Column<CM31> for CM31Column {
 
 impl FromIterator<CM31> for CM31Column {
     fn from_iter<I: IntoIterator<Item = CM31>>(iter: I) -> Self {
-        let mut chunks = iter.into_iter().array_chunks();
+        let mut chunks = iter.into_iter().array_chunks::<N_LANES>();
         let mut data = (&mut chunks).map(PackedCM31::from_array).collect_vec();
         let mut length = data.len() * N_LANES;
 
-        if let Some(remainder) = chunks.into_remainder() {
+        {
+            let remainder = chunks.into_remainder();
             let rem = remainder.len();
             if rem > 0 {
                 length += rem;
@@ -349,13 +351,14 @@ impl Column<SecureField> for SecureColumn {
 
 impl FromIterator<SecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
-        let mut chunks = iter.into_iter().array_chunks();
+        let mut chunks = iter.into_iter().array_chunks::<N_LANES>();
         let mut data = (&mut chunks)
             .map(PackedSecureField::from_array)
             .collect_vec();
         let mut length = data.len() * N_LANES;
 
-        if let Some(remainder) = chunks.into_remainder() {
+        {
+            let remainder = chunks.into_remainder();
             let rem = remainder.len();
             if rem > 0 {
                 length += rem;

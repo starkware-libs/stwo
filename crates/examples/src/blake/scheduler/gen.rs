@@ -126,7 +126,7 @@ pub fn gen_interaction_trace(
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
-    for [l0, l1] in lookup_data.round_lookups.array_chunks::<2>() {
+    for [l0, l1] in lookup_data.round_lookups.as_chunks::<2>().0.iter() {
         let mut col_gen = logup_gen.new_col();
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {

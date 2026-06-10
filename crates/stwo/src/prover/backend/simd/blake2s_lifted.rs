@@ -279,6 +279,7 @@ impl PackLeavesOps for SimdBackend {
         let output_packed_len_floor = output_len / N_LANES;
 
         // TODO(Leo): parallelize.
+        #[allow(clippy::needless_range_loop)]
         for row in 0..output_packed_len_floor {
             let packed_start_idx = row * PACKED_LEAF_SIZE;
             let packed_values = core::array::from_fn(|j| {
@@ -303,6 +304,7 @@ impl PackLeavesOps for SimdBackend {
             let mut tail_columns: [[BaseField; N_LANES];
                 SECURE_EXTENSION_DEGREE * PACKED_LEAF_SIZE] =
                 core::array::from_fn(|_| [BaseField::zero(); N_LANES]);
+            #[allow(clippy::needless_range_loop)]
             for row in 0..tail_rows {
                 // The index in the input vector corresponding to `row`.
                 let source_row_start = (output_packed_len_floor * N_LANES + row) * PACKED_LEAF_SIZE;

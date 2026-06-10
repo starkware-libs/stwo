@@ -1,7 +1,7 @@
 name: CI
 
 env:
-  NIGHTLY_VERSION: "nightly-2025-07-14"
+  NIGHTLY_VERSION: "nightly-2026-01-15"
   STABLE_VERSION: "1.88.0"
 
 on:
@@ -249,7 +249,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-07-14
+          toolchain: nightly-2026-01-15
       - uses: Swatinem/rust-cache@v2
       - name: Install Machete
         run: cargo install --locked cargo-machete
