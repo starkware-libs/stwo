@@ -161,6 +161,8 @@ mod tests {
         use rayon::iter::{IndexedParallelIterator, ParallelIterator};
         use rayon::slice::ParallelSlice;
 
+        crate::ensure_rayon_pool();
+
         const N_COLUMNS: usize = 3;
         const LOG_SIZE: u32 = 8;
         const CHUNK_SIZE: usize = 4;
