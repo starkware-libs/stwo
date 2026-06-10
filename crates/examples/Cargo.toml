@@ -23,10 +23,17 @@ serde.workspace = true
 stwo = { path = "../stwo", version = "2.2.0", features = ["prover"] }
 stwo-constraint-framework = { path = "../constraint-framework", version = "2.2.0", features = [
     "prover",
-    "parallel",
 ] }
 rand.workspace = true
 educe.workspace = true
+
+# rayon cannot build a thread pool on threadless wasm targets (e.g. wasm32-wasip1),
+# so the `parallel` feature (which pulls in rayon) is only enabled off-wasm. On wasm
+# the crates fall back to their sequential code paths.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+stwo-constraint-framework = { path = "../constraint-framework", version = "2.2.0", features = [
+    "parallel",
+] }
 
 [dev-dependencies]
 criterion = { default-features = false, features = [

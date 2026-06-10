@@ -21,7 +21,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse, Field, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
-use crate::core::utils::bit_reverse_index;
+use crate::core::utils::{bit_reverse_index, SliceExt};
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
@@ -197,7 +197,7 @@ impl PolyOps for SimdBackend {
                                  offset: usize| {
             let mut sum = PackedSecureField::zeroed();
             let mut twiddle_high = Self::twiddle_at(&mappings, offset * N_LANES);
-            for (i, coeff_chunk) in coeff_chunk.as_chunks::<N_LANES>().0.iter().enumerate() {
+            for (i, coeff_chunk) in coeff_chunk.checked_as_chunks::<N_LANES>().iter().enumerate() {
                 // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
                 // Multiply it by every mid twiddle factor to get the factors for the current chunk.
                 let high_twiddle_factors =

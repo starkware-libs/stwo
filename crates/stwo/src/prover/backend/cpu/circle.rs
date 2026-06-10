@@ -10,7 +10,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
-use crate::core::utils::{bit_reverse, bit_reverse_index};
+use crate::core::utils::{bit_reverse, bit_reverse_index, SliceExt};
 use crate::prover::backend::{Col, Column};
 use crate::prover::fri::FriOps;
 use crate::prover::poly::circle::{
@@ -261,10 +261,9 @@ impl PolyOps for CpuBackend {
 
         let mut itwiddles = vec![BaseField::zero(); twiddles.len()];
         twiddles
-            .as_chunks::<CHUNK_SIZE>()
-            .0
+            .checked_as_chunks::<CHUNK_SIZE>()
             .iter()
-            .zip(itwiddles.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+            .zip(itwiddles.checked_as_chunks_mut::<CHUNK_SIZE>().iter_mut())
             .for_each(|(src, dst)| {
                 batch_inverse_in_place(src, dst);
             });
