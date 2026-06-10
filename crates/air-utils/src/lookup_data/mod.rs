@@ -105,6 +105,7 @@ mod tests {
 
     #[test]
     fn test_derived_lookup_data_par_iter() {
+        crate::ensure_rayon_pool();
         const N_COLUMNS: usize = 5;
         const LOG_N_ROWS: u32 = 8;
         let mut trace = ComponentTrace::<N_COLUMNS>::zeroed(LOG_N_ROWS);
