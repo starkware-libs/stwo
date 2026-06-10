@@ -6,7 +6,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(
     feature = "prover",
-    feature(array_chunks, iter_array_chunks, portable_simd, slice_ptr_get)
+    feature(iter_array_chunks, portable_simd, slice_ptr_get)
 )]
 pub mod core;
 

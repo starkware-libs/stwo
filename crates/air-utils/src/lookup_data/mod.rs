@@ -48,7 +48,9 @@ mod tests {
             Vec<_>,
             (Vec<_>, Vec<_>),
         ) = arr
-            .array_chunks::<N_LANES>()
+            .as_chunks::<N_LANES>()
+            .0
+            .iter()
             .map(|x| {
                 let x = PackedM31::from_array(*x);
                 let x1 = x + PackedM31::broadcast(M31(1));
@@ -113,7 +115,9 @@ mod tests {
             Vec<_>,
             (Vec<_>, Vec<_>),
         ) = arr
-            .array_chunks::<N_LANES>()
+            .as_chunks::<N_LANES>()
+            .0
+            .iter()
             .map(|x| {
                 let x = PackedM31::from_array(*x);
                 let x1 = x + PackedM31::broadcast(M31(1));
