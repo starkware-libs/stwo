@@ -4,6 +4,7 @@ use num_traits::Zero;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::utils::SliceExt;
 use crate::core::Fraction;
 use crate::prover::backend::cpu::lookups::gkr::gen_eq_evals as cpu_gen_eq_evals;
 use crate::prover::backend::simd::column::SecureColumn;
@@ -134,8 +135,7 @@ fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<Simd
 
     let data = layer
         .data
-        .as_chunks()
-        .0
+        .checked_as_chunks()
         .iter()
         .map(|&[a, b]| {
             let (evens, odds) = a.deinterleave(b);

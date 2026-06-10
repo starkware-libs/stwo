@@ -6,6 +6,7 @@ use num_traits::One;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::SliceExt;
 use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -252,7 +253,7 @@ pub fn generate_interaction_trace(
     let _span = span!(Level::INFO, "Generate round interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
-    for [(w0, l0), (w1, l1)] in lookup_data.xor_lookups.as_chunks::<2>().0.iter() {
+    for [(w0, l0), (w1, l1)] in lookup_data.xor_lookups.checked_as_chunks::<2>().iter() {
         let mut col_gen = logup_gen.new_col();
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {

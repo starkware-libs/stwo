@@ -70,6 +70,36 @@ impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
     }
 }
 
+/// Extension trait providing `checked_as_chunks` / `checked_as_chunks_mut` on slices.
+/// Wraps `as_chunks`, asserting that no remainder is left over.
+pub trait SliceExt {
+    type Item;
+
+    /// Splits the slice into chunks of exactly `N` elements and returns them as a slice of arrays.
+    /// Panics if the slice length is not a multiple of `N`.
+    fn checked_as_chunks<const N: usize>(&self) -> &[[Self::Item; N]];
+
+    /// Splits the slice into mutable chunks of exactly `N` elements.
+    /// Panics if the slice length is not a multiple of `N`.
+    fn checked_as_chunks_mut<const N: usize>(&mut self) -> &mut [[Self::Item; N]];
+}
+
+impl<T> SliceExt for [T] {
+    type Item = T;
+
+    fn checked_as_chunks<const N: usize>(&self) -> &[[T; N]] {
+        let (chunks, remainder) = self.as_chunks::<N>();
+        assert!(remainder.is_empty());
+        chunks
+    }
+
+    fn checked_as_chunks_mut<const N: usize>(&mut self) -> &mut [[T; N]] {
+        let (chunks, remainder) = self.as_chunks_mut::<N>();
+        assert!(remainder.is_empty());
+        chunks
+    }
+}
+
 pub fn all_unique<T: Eq + core::hash::Hash>(iter: impl IntoIterator<Item = T>) -> bool {
     let mut used = hashbrown::HashSet::new();
     iter.into_iter().all(|elt| used.insert(elt))

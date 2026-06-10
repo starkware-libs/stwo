@@ -4,6 +4,7 @@ mod tests {
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
     use rayon::slice::ParallelSlice;
     use stwo::core::fields::m31::M31;
+    use stwo::core::utils::SliceExt;
     use stwo::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
     use stwo_air_utils_derive::{IterMut, ParIterMut, Uninitialized};
 
@@ -48,8 +49,7 @@ mod tests {
             Vec<_>,
             (Vec<_>, Vec<_>),
         ) = arr
-            .as_chunks::<N_LANES>()
-            .0
+            .checked_as_chunks::<N_LANES>()
             .iter()
             .map(|x| {
                 let x = PackedM31::from_array(*x);
@@ -105,6 +105,7 @@ mod tests {
 
     #[test]
     fn test_derived_lookup_data_par_iter() {
+        crate::ensure_rayon_pool();
         const N_COLUMNS: usize = 5;
         const LOG_N_ROWS: u32 = 8;
         let mut trace = ComponentTrace::<N_COLUMNS>::zeroed(LOG_N_ROWS);
@@ -115,8 +116,7 @@ mod tests {
             Vec<_>,
             (Vec<_>, Vec<_>),
         ) = arr
-            .as_chunks::<N_LANES>()
-            .0
+            .checked_as_chunks::<N_LANES>()
             .iter()
             .map(|x| {
                 let x = PackedM31::from_array(*x);
