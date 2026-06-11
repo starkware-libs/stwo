@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use num_traits::Zero;
 use stwo::core::Fraction;
@@ -32,7 +33,7 @@ impl FormalLogupAtRow {
             is_finalized: true,
             is_first: BaseExpr::zero(),
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
+                * BaseExpr::Inv(Rc::new(BaseExpr::Param(column_size_name))),
         }
     }
 }
@@ -223,10 +224,10 @@ impl EvalAtRow for ExprEvaluator {
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
         ExtExpr::SecureCol([
-            Box::new(values[0].clone()),
-            Box::new(values[1].clone()),
-            Box::new(values[2].clone()),
-            Box::new(values[3].clone()),
+            Rc::new(values[0].clone()),
+            Rc::new(values[1].clone()),
+            Rc::new(values[2].clone()),
+            Rc::new(values[3].clone()),
         ])
     }
 
@@ -288,10 +289,12 @@ impl EvalAtRow for ExprEvaluator {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use num_traits::One;
     use stwo::core::fields::FieldExpOps;
 
-    use crate::expr::{ExprEvaluator, ExtExpr};
+    use crate::expr::{BaseExpr, ExprEvaluator, ExtExpr};
     use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
     #[test]
@@ -343,6 +346,36 @@ mod tests {
                 .map(|c| c.assign(&assignment))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn base_expr_shares_subexpressions() {
+        // (x)               leaf
+        // (x + x)           shared once
+        // (x + x) * (x + x) shared twice
+        let leaf = Rc::new(BaseExpr::Param("x".into()));
+        let shared = Rc::new(BaseExpr::Add(leaf.clone(), leaf.clone()));
+        let expr = Rc::new(BaseExpr::Mul(shared.clone(), shared.clone()));
+
+        // leaf: in scope 1 + in Add left 1 + in Add right 1 = 3
+        assert_eq!(Rc::strong_count(&leaf), 3);
+
+        // shared: variable 1 + in Mul left 1 + in Mul right 1 = 3
+        assert_eq!(Rc::strong_count(&shared), 3);
+
+        // expr itself should have exactly 1 owner here
+        assert_eq!(Rc::strong_count(&expr), 1);
+    }
+
+    #[test]
+    fn hash_stress_rounds_1000_passes() {
+        let rounds = 1000;
+        let stress = HashStressEval { rounds };
+        let eval = stress.evaluate(ExprEvaluator::new());
+
+        let _ = eval.random_assignment();
+
+        assert_eq!(eval.constraints.len(), rounds + 1);
     }
 
     #[test]
@@ -442,6 +475,52 @@ mod tests {
                 &[x0, x1, x2],
             ));
             eval.finalize_logup();
+            eval
+        }
+    }
+
+    pub struct HashStressEval {
+        pub rounds: usize,
+    }
+    impl FrameworkEval for HashStressEval {
+        fn log_size(&self) -> u32 {
+            0
+        }
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            0
+        }
+
+        fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+            let mut acc = eval.next_trace_mask();
+            let initial_acc = acc.clone();
+
+            for _round in 0..self.rounds {
+                let w = eval.next_trace_mask();
+
+                // (acc + w)
+                let acc_plus_w = eval.add_intermediate(acc.clone() + w.clone());
+
+                // new_acc = (acc + w)^2
+                let new_acc = eval.add_intermediate(acc_plus_w.clone() * acc_plus_w);
+
+                let next_acc = eval.next_trace_mask();
+                eval.add_constraint(new_acc - next_acc.clone());
+
+                acc = next_acc;
+            }
+
+            eval.add_to_relation(RelationEntry::new(
+                &TestRelation::dummy(),
+                E::EF::one(),
+                &[initial_acc],
+            ));
+            eval.add_to_relation(RelationEntry::new(
+                &TestRelation::dummy(),
+                -E::EF::one(),
+                &[acc],
+            ));
+
+            eval.finalize_logup_in_pairs();
             eval
         }
     }

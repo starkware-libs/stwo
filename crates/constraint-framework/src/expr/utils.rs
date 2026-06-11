@@ -2,10 +2,10 @@
 macro_rules! secure_col {
     ($a:expr, $b:expr, $c:expr, $d:expr) => {
         crate::expr::ExtExpr::SecureCol([
-            Box::new($a.into()),
-            Box::new($b.into()),
-            Box::new($c.into()),
-            Box::new($d.into()),
+            std::rc::Rc::new($a.into()),
+            std::rc::Rc::new($b.into()),
+            std::rc::Rc::new($c.into()),
+            std::rc::Rc::new($d.into()),
         ])
     };
 }
