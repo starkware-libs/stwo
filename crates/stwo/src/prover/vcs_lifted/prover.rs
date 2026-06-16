@@ -81,14 +81,15 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     ///
     /// # Arguments
     ///
-    /// * `queries_position` - Vector containing the positions of the queries, in increasing order.
+    /// * `query_positions` - Vector containing the positions of the queries. Note that the
+    ///   positions are not necessarily sorted and may contain duplicates.
     /// * `columns` - A vector of references to columns.
     ///
     /// # Returns
     ///
     /// A tuple containing:
-    /// * A vector of queried values. For each query position, the queried values are column values
-    ///   corresponding to the query position, sorted increasingly by column length.
+    /// * A vector `v` of queried values, where `v[col_idx][pos_idx]` contains the evaluation of the
+    ///   `col_idx`-th column at the `query_position[pos_idx]` position.
     /// * A `MerkleDecommitment` containing the hash witness.
     pub fn decommit(
         &self,
@@ -115,8 +116,8 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             queried_values.push(res);
         }
 
-        let mut prev_layer_queries = query_positions.to_vec();
-        prev_layer_queries.dedup();
+        let mut prev_layer_queries: Vec<usize> =
+            query_positions.iter().copied().sorted().dedup().collect();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
         // layer available for the computation.
