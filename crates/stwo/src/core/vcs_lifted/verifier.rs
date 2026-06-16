@@ -1,3 +1,4 @@
+use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -79,9 +80,9 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     ///
     /// # Arguments
     ///
-    /// * `query_positions` - Indices of the query positions (in range `[0, 2^max_log_size)`), in
-    ///   increasing order, where max_log_size is the log size of the largest column. Note that both
-    ///   the ordering and the value bounds are not checked in this function.
+    /// * `query_positions` - Indices of the query positions (assumed to be in range `[0,
+    ///   2^max_log_size)` where max_log_size is the log size of the largest column). Note that the
+    ///   positions are not necessarily sorted and may contain duplicates.
     /// * `queried_values` - A vector of queried values according to the order in
     ///   [`MerkleProver::decommit()`].
     /// * `decommitment` - The decommitment object containing the hash witness.
@@ -109,48 +110,52 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         if self.height == 0 {
             return Ok(());
         };
+        // Check that the structure of the input is consistent with the configurations.
+        assert_eq!(queried_values.len(), self.column_log_sizes.len());
+        for values in queried_values.iter() {
+            assert_eq!(values.len(), query_positions.len());
+        }
 
-        // Check that if some query positions are duplicated, then the corresponding queried values
-        // are the same.
-        for (i, j) in (0..query_positions.len()).tuple_windows() {
-            if query_positions[i] == query_positions[j] {
-                for col in &queried_values {
-                    assert_eq!(col[i], col[j]);
+        // Sort the queried values in ascending order by column log size.
+        let queried_values_sorted_by_log_size = queried_values
+            .into_iter()
+            .zip_eq(self.column_log_sizes.iter())
+            .sorted_by_key(|(_, col_log_size)| *col_log_size)
+            .map(|(vals, _)| vals)
+            .collect_vec();
+
+        // Dedup the query positions and the associated queried values.
+        let mut positions_and_values: HashMap<usize, Vec<BaseField>> = Default::default();
+        for (idx, pos) in query_positions.iter().enumerate() {
+            let values = queried_values_sorted_by_log_size
+                .iter()
+                .map(|col_vals| col_vals[idx])
+                .collect_vec();
+            match positions_and_values.entry(*pos) {
+                // If we encounter `pos` for the first time, we insert the queried values.
+                Entry::Vacant(entry) => {
+                    entry.insert(values);
+                }
+                // Otherwise, we check that the queried values are equal to what's already in the
+                // map.
+                Entry::Occupied(entry) => {
+                    let old_values = entry.get();
+                    assert_eq!(old_values, &values);
                 }
             }
         }
 
-        // Sort the queries in ascending order by column log size and deduplicate them.
-        let mut sorted_queries_iter = queried_values
-            .iter()
-            .zip_eq(self.column_log_sizes.iter())
-            .sorted_by_key(|(_, col_size)| *col_size)
-            .map(|(vals, _)| {
-                vals.iter()
-                    .enumerate()
-                    .dedup_by(|(idx1, _), (idx2, _)| {
-                        query_positions[*idx1] == query_positions[*idx2]
-                    })
-                    .map(|(_, val)| val)
+        // Build the vector of pairs `(query_position, leaf_hash)`, sorted in ascending order by
+        // `query_position`. Note that the query positions are already deduplicated by the hash map.
+        let mut prev_layer_hashes: Vec<(usize, H::Hash)> = positions_and_values
+            .into_iter()
+            .sorted_by_key(|(pos, _)| *pos)
+            .map(|(pos, values)| {
+                let mut hasher = H::default();
+                hasher.update_leaf(&values);
+                (pos, hasher.finalize())
             })
-            .collect_vec();
-
-        // Build the leaves.
-        let mut prev_layer_hashes: Vec<(usize, H::Hash)> = vec![];
-        for pos in query_positions.iter().dedup() {
-            let row: Vec<_> = sorted_queries_iter
-                .iter_mut()
-                .map(|col_iter| *col_iter.next().unwrap())
-                .collect();
-            let mut hasher = H::default();
-            hasher.update_leaf(&row);
-            prev_layer_hashes.push((*pos, hasher.finalize()));
-        }
-
-        // Check that all queried values have been consumed.
-        assert!(sorted_queries_iter
-            .iter_mut()
-            .all(|cols_iter| cols_iter.next().is_none()));
+            .collect();
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
         // Verify inner layers
@@ -288,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_duplicate_query_positions() {
+    fn test_merkle_unsorted_and_duplicate_query_positions() {
         let mut rng = SmallRng::seed_from_u64(42);
         let log_sizes = vec![3, 4, 3];
         let cols: Vec<Vec<BaseField>> = log_sizes
@@ -307,8 +312,8 @@ mod tests {
             0,
         );
 
-        // Use queries with a duplicate position.
-        let queries = vec![3, 3, 7];
+        // Queries given out of order with a duplicate.
+        let queries = vec![13, 3, 7, 3, 1];
         let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
         let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
         verifier
