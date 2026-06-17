@@ -5,7 +5,6 @@ use num_traits::Zero;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::utils::SliceExt;
 use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
@@ -127,7 +126,8 @@ pub fn gen_interaction_trace(
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
-    for [l0, l1] in lookup_data.round_lookups.checked_as_chunks::<2>().iter() {
+    let (pairs, reminder) = lookup_data.round_lookups.as_chunks::<2>();
+    for [l0, l1] in pairs.iter() {
         let mut col_gen = logup_gen.new_col();
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
@@ -153,7 +153,7 @@ pub fn gen_interaction_trace(
         );
         if N_ROUNDS % 2 == 1 {
             let p_round: PackedSecureField = round_lookup_elements.combine(
-                &lookup_data.round_lookups[N_ROUNDS - 1]
+                &reminder[0]
                     .each_ref()
                     .map(|l| l.data[vec_row]),
             );
