@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778667964992,
+  "lastUpdate": 1781694648000,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -169651,6 +169651,348 @@ window.BENCHMARK_DATA = {
             "name": "cpu polynomial commitment 2^20",
             "value": 571193939,
             "range": "± 15278190",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "111221618+gilbens-starkware@users.noreply.github.com",
+            "name": "Gil Ben-Shachar",
+            "username": "gilbens-starkware"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "02e5ae3ea2e659f80830595afa88c81dd278ab5e",
+          "message": "Make the repo compile with Rust 1.94 nightly (#1423)\n\n* Make the repo compile with Rust 1.94 nightly.\n\nBump toolchain from nightly-2025-07-14 to nightly-2026-01-15 (rustc\n1.94.0-nightly) and fix the resulting breakage:\n\n- The unstable slice-method feature `array_chunks` was removed (the\n  iterator adapter `iter_array_chunks` remains). Replace slice\n  `array_chunks`/`array_chunks_mut` calls with stable\n  `as_chunks`/`as_chunks_mut` (taking `.0.iter()` preserves the old\n  drop-remainder semantics).\n- `Iterator::array_chunks().into_remainder()` now returns the iterator\n  directly instead of `Option<_>`; update call sites accordingly.\n- Add explicit const params to `iter_array_chunks` adapter calls.\n- Fix new clippy lints: allow two genuine index loops in\n  blake2s_lifted.rs; drop a needless clone in expr/degree.rs.\n- Update Cargo.lock files to version 2.2.0 (manifests were bumped in the\n  2.2.0 release without updating the lockfiles).\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* Fix rayon-on-wasm regression exposed by the 1.94 toolchain.\n\nThe new std makes rayon's global thread-pool build abort on threadless\nwasm targets (wasm32-wasip1), where the old std let it succeed. This\nbroke `run-wasm32-wasip1-tests`, which runs the whole workspace.\n\n- examples: only enable the `parallel` feature on stwo-constraint-framework\n  off-wasm, so workspace feature unification no longer pulls rayon into the\n  stwo/constraint-framework wasm test binaries (they use their sequential\n  paths on wasm, as intended).\n- air-utils depends on rayon non-optionally and has parallel tests; on wasm\n  initialize a single-threaded rayon global pool that runs work on the\n  current thread (no worker spawn) so those tests still run rather than\n  being skipped. No-op off wasm.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n\n* Use as_chunks to destructure round lookup pairs and remainder.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Fix rustfmt formatting.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-06-17T13:54:46+03:00",
+          "tree_id": "342c6e151374e9008bdb8d76c4fdb4f7ac2ef23d",
+          "url": "https://github.com/starkware-libs/stwo/commit/02e5ae3ea2e659f80830595afa88c81dd278ab5e"
+        },
+        "date": 1781694645626,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "simd barycentric_eval_at_secure_field_point 2^20",
+            "value": 93246,
+            "range": "± 2329",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu barycentric_eval_at_secure_field_point 2^20",
+            "value": 1229372,
+            "range": "± 19341",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd barycentric_eval_at_secure_point_weights_calculation 2^20",
+            "value": 54038447,
+            "range": "± 816236",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu barycentric_eval_at_secure_point_weights_calculation 2^20",
+            "value": 11506247833,
+            "range": "± 44647706",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd bit_rev 26bit",
+            "value": 29868163,
+            "range": "± 528906",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 115320971,
+            "range": "± 3153677",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd eval_at_secure_field_point 2^20",
+            "value": 89356,
+            "range": "± 4068",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point 2^20",
+            "value": 13789625,
+            "range": "± 114028",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd eval_at_secure_field_point_by_folding 2^20",
+            "value": 1320417,
+            "range": "± 57102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point_by_folding 2^20",
+            "value": 248370343,
+            "range": "± 3144654",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/16",
+            "value": 84992,
+            "range": "± 2059",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/17",
+            "value": 80591,
+            "range": "± 14402",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/18",
+            "value": 137016,
+            "range": "± 22216",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/19",
+            "value": 202205,
+            "range": "± 40206",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/20",
+            "value": 318874,
+            "range": "± 23926",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/21",
+            "value": 642284,
+            "range": "± 43841",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/22",
+            "value": 1316413,
+            "range": "± 90067",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/23",
+            "value": 4826311,
+            "range": "± 213155",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/24",
+            "value": 11936572,
+            "range": "± 256861",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/25",
+            "value": 27744390,
+            "range": "± 408033",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/26",
+            "value": 58790263,
+            "range": "± 1284456",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/27",
+            "value": 111690558,
+            "range": "± 2199814",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/28",
+            "value": 214874746,
+            "range": "± 23331394",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft_vecwise_loop 2^14",
+            "value": 8946,
+            "range": "± 116",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft3_loop 2^14",
+            "value": 2789,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd transpose_vecs 2^20",
+            "value": 80822,
+            "range": "± 19337",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rfft/simd rfft 24bit",
+            "value": 17158225,
+            "range": "± 459784",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 16399542,
+            "range": "± 201102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 11165130,
+            "range": "± 125886",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 104684483,
+            "range": "± 849138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 13754866,
+            "range": "± 133432",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 396192450,
+            "range": "± 3581640",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 14887032,
+            "range": "± 136705",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_simd",
+            "value": 5587163,
+            "range": "± 144273",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_simd",
+            "value": 2347960,
+            "range": "± 18915",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_simd",
+            "value": 2342144,
+            "range": "± 18737",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 476744,
+            "range": "± 10825",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "accumulate_numerators 2^21 x 100 cols",
+            "value": 35988515,
+            "range": "± 1533850",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compute_quotients_and_combine 2^21 x 10 pts",
+            "value": 22945972,
+            "range": "± 1016642",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup 2^16",
+            "value": 1184646,
+            "range": "± 48100",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup batch 4x 2^16",
+            "value": 5154005,
+            "range": "± 275662",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd generic logup lookup 2^16",
+            "value": 2364883,
+            "range": "± 76641",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd multiplicities logup lookup 2^16",
+            "value": 2030214,
+            "range": "± 49834",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd singles logup lookup 2^16",
+            "value": 1794016,
+            "range": "± 47527",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup 2^16",
+            "value": 4164083,
+            "range": "± 92671",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup batch 4x 2^16",
+            "value": 16759652,
+            "range": "± 375298",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu generic logup lookup 2^16",
+            "value": 9946938,
+            "range": "± 195995",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu multiplicities logup lookup 2^16",
+            "value": 8346523,
+            "range": "± 133149",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu singles logup lookup 2^16",
+            "value": 7467975,
+            "range": "± 125922",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/simd merkle",
+            "value": 2723611,
+            "range": "± 109745",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/cpu merkle",
+            "value": 144659333,
+            "range": "± 1553669",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd polynomial commitment 2^20",
+            "value": 92113868,
+            "range": "± 5434002",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu polynomial commitment 2^20",
+            "value": 547890177,
+            "range": "± 14532651",
             "unit": "ns/iter"
           }
         ]
