@@ -152,11 +152,8 @@ pub fn gen_interaction_trace(
                 .map(|l| l.data[vec_row]),
         );
         if N_ROUNDS % 2 == 1 {
-            let p_round: PackedSecureField = round_lookup_elements.combine(
-                &reminder[0]
-                    .each_ref()
-                    .map(|l| l.data[vec_row]),
-            );
+            let p_round: PackedSecureField =
+                round_lookup_elements.combine(&reminder[0].each_ref().map(|l| l.data[vec_row]));
             // TODO(alont): Remove.
             col_gen.write_frac(vec_row, p_blake, p_round * p_blake);
         } else {
