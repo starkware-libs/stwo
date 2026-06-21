@@ -12,6 +12,8 @@ pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 
 pub type Blake2sChannel = Blake2sChannelGeneric<false>;
+
+// TODO(ilya): Remove once the circuit is migrated to use MerkleChannelForCircuit.
 /// Same as [Blake2sChannel], expect that the hash output is taken modulo M31::P.
 pub type Blake2sM31Channel = Blake2sChannelGeneric<true>;
 
