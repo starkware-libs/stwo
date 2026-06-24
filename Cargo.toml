@@ -11,9 +11,10 @@ exclude = ["ensure-verifier-no_std"]
 resolver = "2"
 
 [workspace.package]
-version = "2.2.0"
+version = "2.3.0"
 edition = "2021"
 license = "Apache-2.0"
+repository = "https://github.com/starkware-libs/stwo"
 
 [workspace.dependencies]
 itertools = { version = "0.12", default-features = false, features = [
