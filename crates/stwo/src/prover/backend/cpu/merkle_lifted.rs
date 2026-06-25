@@ -64,10 +64,16 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
             // For Keccak256 the rate is larger (136 bytes ≈ 34 M31s), so this chunking is
             // suboptimal but still correct.
             for chunk in &group.into_iter().chunks(16) {
-                let vec = chunk.into_iter().collect_vec();
-                prev_layer.iter_mut().enumerate().for_each(|(i, hasher)| {
-                    hasher.update_leaf(&vec.iter().map(|v| v[i]).collect_vec());
-                })
+                let cols = chunk.into_iter().collect_vec();
+                let chunk_len = cols.len();
+                // Stack buffer reused across all rows to avoid O(N) per-row heap allocations.
+                let mut col_vals = [BaseField::default(); 16];
+                for (i, hasher) in prev_layer.iter_mut().enumerate() {
+                    for (dst, col) in col_vals[..chunk_len].iter_mut().zip(cols.iter()) {
+                        *dst = col[i];
+                    }
+                    hasher.update_leaf(&col_vals[..chunk_len]);
+                }
             }
             prev_layer_log_size = log_size;
         }
