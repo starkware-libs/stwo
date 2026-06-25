@@ -59,15 +59,16 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
                 .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
                 .collect();
 
-            // We chunk by 16 — the amount of M31 elements that triggers a hash permutation
-            // in Blake2s (block = 64 bytes = 16 × 4) and matches Poseidon252's absorption rate.
-            // For Keccak256 the rate is larger (136 bytes ≈ 34 M31s), so this chunking is
-            // suboptimal but still correct.
-            for chunk in &group.into_iter().chunks(16) {
+            // We chunk by COLS_PER_CHUNK — the amount of M31 elements that triggers a hash
+            // permutation in Blake2s (block = 64 bytes = 16 × 4) and matches Poseidon252's
+            // absorption rate. For Keccak256 the rate is larger (136 bytes ≈ 34 M31s), so this
+            // chunking is suboptimal but still correct.
+            const COLS_PER_CHUNK: usize = 16;
+            for chunk in &group.into_iter().chunks(COLS_PER_CHUNK) {
                 let cols = chunk.into_iter().collect_vec();
                 let chunk_len = cols.len();
                 // Stack buffer reused across all rows to avoid O(N) per-row heap allocations.
-                let mut col_vals = [BaseField::default(); 16];
+                let mut col_vals = [BaseField::default(); COLS_PER_CHUNK];
                 for (i, hasher) in prev_layer.iter_mut().enumerate() {
                     for (dst, col) in col_vals[..chunk_len].iter_mut().zip(cols.iter()) {
                         *dst = col[i];
