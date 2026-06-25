@@ -3,14 +3,15 @@ name = "stwo-air-utils"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Utility functions for AIR (Algebraic Intermediate Representation) in STWO"
 
 [dependencies]
 bytemuck.workspace = true
 itertools.workspace = true
 rayon = { version = "1.10.0", optional = false }
-stwo = { path = "../stwo", version = "2.2.0", features = ["prover"] }
-stwo-air-utils-derive = { path = "../air-utils-derive", version = "2.2.0" }
+stwo = { path = "../stwo", version = "2.3.0", features = ["prover"] }
+stwo-air-utils-derive = { path = "../air-utils-derive", version = "2.3.0" }
 
 [lib]
 bench = false
