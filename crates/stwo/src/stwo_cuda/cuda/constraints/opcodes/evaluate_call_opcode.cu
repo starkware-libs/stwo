@@ -1,0 +1,407 @@
+#include <cstdio>
+#include <vector>
+#include "fields.cuh"
+#include "logup.cuh"
+#include "utils.cuh"
+#include "batch_inverse.cuh"
+#include "prefix_sum.cuh"
+#include "timer.cuh"
+#include "eval_at_row.cuh"
+#include "evaluate_call_opcode.cuh"
+#include "evaluate_read_positive_num_bits.cuh"
+#include "evaluate_common.cuh"
+
+#define CALL_OPCODE_THREAD_COUNT_MAX 256
+
+template<typename EvaluatorT>
+__launch_bounds__(256, 2)
+__global__ void evaluate_call_opcode_pre_kernel(
+    qm31 *numerators,
+    m31 **trace1_evaluations,
+    qm31 *random_coeff_powers,
+    unsigned int domain_log_size,
+    unsigned int eval_domain_log_size,
+    unsigned int number_of_columns,
+    CallOpcode_Eval *call_opcode_eval,
+    qm31 cumsum_shift,
+    Fraction *intermediate_fractions,
+    unsigned logup_counts,
+    unsigned *constraint_index_array
+) {
+    const unsigned eval_domain_size = 1u << eval_domain_log_size;
+    const unsigned row = threadIdx.x + blockDim.x * blockIdx.x;
+    if (row >= eval_domain_size) return;
+
+    EvaluatorT cuda_evaluator(
+        trace1_evaluations,
+        random_coeff_powers,
+        0,
+        row,
+        {0},
+        0,
+        {0},
+        domain_log_size,
+        eval_domain_log_size,
+        intermediate_fractions,
+        logup_counts
+    );
+
+    // Load all 25 trace columns
+    m31 input_pc_col0 = cuda_evaluator.next_trace_mask();
+    m31 input_ap_col1 = cuda_evaluator.next_trace_mask();
+    m31 input_fp_col2 = cuda_evaluator.next_trace_mask();
+    m31 offset2_col3 = cuda_evaluator.next_trace_mask();
+    m31 op1_base_fp_col4 = cuda_evaluator.next_trace_mask();
+    m31 stored_fp_id_col5 = cuda_evaluator.next_trace_mask();
+    m31 stored_fp_limb_0_col6 = cuda_evaluator.next_trace_mask();
+    m31 stored_fp_limb_1_col7 = cuda_evaluator.next_trace_mask();
+    m31 stored_fp_limb_2_col8 = cuda_evaluator.next_trace_mask();
+    m31 stored_fp_limb_3_col9 = cuda_evaluator.next_trace_mask();
+    m31 partial_limb_msb_col10 = cuda_evaluator.next_trace_mask();
+    m31 stored_ret_pc_id_col11 = cuda_evaluator.next_trace_mask();
+    m31 stored_ret_pc_limb_0_col12 = cuda_evaluator.next_trace_mask();
+    m31 stored_ret_pc_limb_1_col13 = cuda_evaluator.next_trace_mask();
+    m31 stored_ret_pc_limb_2_col14 = cuda_evaluator.next_trace_mask();
+    m31 stored_ret_pc_limb_3_col15 = cuda_evaluator.next_trace_mask();
+    m31 partial_limb_msb_col16 = cuda_evaluator.next_trace_mask();
+    m31 mem1_base_col17 = cuda_evaluator.next_trace_mask();
+    m31 next_pc_id_col18 = cuda_evaluator.next_trace_mask();
+    m31 next_pc_limb_0_col19 = cuda_evaluator.next_trace_mask();
+    m31 next_pc_limb_1_col20 = cuda_evaluator.next_trace_mask();
+    m31 next_pc_limb_2_col21 = cuda_evaluator.next_trace_mask();
+    m31 next_pc_limb_3_col22 = cuda_evaluator.next_trace_mask();
+    m31 partial_limb_msb_col23 = cuda_evaluator.next_trace_mask();
+    m31 enabler = cuda_evaluator.next_trace_mask();
+
+    // Define constants
+    const m31 M31_0 = m31(0);
+    const m31 M31_1 = m31(1);
+    const m31 M31_2 = m31(2);
+    const m31 M31_64 = m31(64);
+    const m31 M31_66 = m31(66);
+    const m31 M31_128 = m31(128);
+    const m31 M31_512 = m31(512);
+    const m31 M31_262144 = m31(262144);
+    const m31 M31_134217728 = m31(134217728);
+    const m31 M31_32768 = m31(32768);
+    const m31 M31_32769 = m31(32769);
+
+    // Inline DecodeInstructionF1Edd logic:
+    // 1. Add constraint: op1_base_fp is a bit
+    cuda_evaluator.add_constraint(
+        mul(op1_base_fp_col4, sub(M31_1, op1_base_fp_col4))
+    );
+
+    // 2. Add verify_instruction relation
+    {
+        m31 value5 = add(
+            mul(op1_base_fp_col4, M31_64),
+            mul(sub(M31_1, op1_base_fp_col4), M31_128)
+        );
+        m31 values[7] = {
+            input_pc_col0,
+            M31_32768,
+            M31_32769,
+            offset2_col3,
+            value5,
+            M31_66
+        };
+        // Prepend VERIFY_INSTRUCTION_RELATION_ID and use add_to_relation<8>
+        m31 values_with_id[8] = {
+            VERIFY_INSTRUCTION_RELATION_ID,
+            values[0], values[1], values[2], values[3], values[4], values[5], values[6]
+        };
+        cuda_evaluator.add_to_relation<8>(
+            call_opcode_eval->common_lookup_elements,
+            qm31{m31(1), m31(0)},
+            values_with_id
+        );
+    }
+
+    // 3. Compute DecodeInstructionF1Edd outputs
+    m31 decode_offset2 = sub(offset2_col3, M31_32768);
+    m31 decode_op1_base_ap = sub(M31_1, op1_base_fp_col4);
+
+    // Read stored_fp (ReadPositiveNumBits29)
+    // [ap] = fp
+    m31 read_fp_output[29] = {0};
+    evaluate_read_positive_num_bits_29(
+        input_ap_col1,
+        stored_fp_id_col5,
+        stored_fp_limb_0_col6,
+        stored_fp_limb_1_col7,
+        stored_fp_limb_2_col8,
+        stored_fp_limb_3_col9,
+        partial_limb_msb_col10,
+        read_fp_output,
+        call_opcode_eval->common_lookup_elements,
+        &cuda_evaluator
+    );
+
+    // Read stored_ret_pc (ReadPositiveNumBits29)
+    // [ap+1] = return_pc
+    m31 read_ret_pc_output[29] = {0};
+    evaluate_read_positive_num_bits_29(
+        add(input_ap_col1, M31_1),  // Address: ap + 1 (not ap)
+        stored_ret_pc_id_col11,
+        stored_ret_pc_limb_0_col12,
+        stored_ret_pc_limb_1_col13,
+        stored_ret_pc_limb_2_col14,
+        stored_ret_pc_limb_3_col15,
+        partial_limb_msb_col16,
+        read_ret_pc_output,
+        call_opcode_eval->common_lookup_elements,
+        &cuda_evaluator
+    );
+
+    // Compute mem1_base
+    m31 mem1_base = add(
+        mul(op1_base_fp_col4, input_fp_col2),
+        mul(decode_op1_base_ap, input_ap_col1)
+    );
+
+    // Read next_pc (ReadPositiveNumBits29)
+    m31 read_next_pc_output[29] = {0};
+    evaluate_read_positive_num_bits_29(
+        add(mem1_base, decode_offset2),
+        next_pc_id_col18,
+        next_pc_limb_0_col19,
+        next_pc_limb_1_col20,
+        next_pc_limb_2_col21,
+        next_pc_limb_3_col22,
+        partial_limb_msb_col23,
+        read_next_pc_output,
+        call_opcode_eval->common_lookup_elements,
+        &cuda_evaluator
+    );
+
+    // Reconstruct stored_fp from limbs
+    m31 stored_fp_reconstructed = add(
+        add(
+            stored_fp_limb_0_col6,
+            mul(stored_fp_limb_1_col7, M31_512)
+        ),
+        add(
+            mul(stored_fp_limb_2_col8, M31_262144),
+            mul(stored_fp_limb_3_col9, M31_134217728)
+        )
+    );
+
+    // Constraint: stored_fp_reconstructed == input_fp
+    cuda_evaluator.add_constraint(
+        sub(stored_fp_reconstructed, input_fp_col2)
+    );
+
+    // Reconstruct stored_ret_pc from limbs
+    m31 stored_ret_pc_reconstructed = add(
+        add(
+            stored_ret_pc_limb_0_col12,
+            mul(stored_ret_pc_limb_1_col13, M31_512)
+        ),
+        add(
+            mul(stored_ret_pc_limb_2_col14, M31_262144),
+            mul(stored_ret_pc_limb_3_col15, M31_134217728)
+        )
+    );
+
+    // Constraint: stored_ret_pc_reconstructed == input_pc + 1
+    // [ap+1] = return_pc should be input_pc + 1 (not +2)
+    cuda_evaluator.add_constraint(
+        sub(stored_ret_pc_reconstructed, add(input_pc_col0, M31_1))
+    );
+
+    // Constraint: mem1_base computation
+    cuda_evaluator.add_constraint(
+        sub(
+            mem1_base_col17,
+            mem1_base
+        )
+    );
+
+    // Reconstruct next_pc from limbs
+    m31 next_pc_reconstructed = add(
+        add(
+            next_pc_limb_0_col19,
+            mul(next_pc_limb_1_col20, M31_512)
+        ),
+        add(
+            mul(next_pc_limb_2_col21, M31_262144),
+            mul(next_pc_limb_3_col22, M31_134217728)
+        )
+    );
+
+    // Compute new_ap and new_fp for opcodes relation
+    m31 new_ap = add(input_ap_col1, M31_2);
+    m31 new_fp = new_ap;
+
+    // enabler is boolean (v1.1.0: moved after subroutines)
+    cuda_evaluator.add_constraint(sub(mul(enabler, enabler), enabler));
+
+    // Add first opcodes relation entry (positive)
+    {
+        m31 values[4] = {
+            OPCODES_RELATION_ID,
+            input_pc_col0,
+            input_ap_col1,
+            input_fp_col2
+        };
+        cuda_evaluator.add_to_relation<4>(
+            call_opcode_eval->common_lookup_elements,
+            qm31{enabler, 0, 0, 0},  // positive multiplicity
+            values
+        );
+    }
+
+    // Add second opcodes relation entry (negative)
+    {
+        m31 values[4] = {
+            OPCODES_RELATION_ID,
+            next_pc_reconstructed,
+            new_ap,
+            new_fp
+        };
+        cuda_evaluator.add_to_relation<4>(
+            call_opcode_eval->common_lookup_elements,
+            qm31{{neg(enabler), 0}, {0, 0}},  // negative multiplicity
+            values
+        );
+    }
+
+    constraint_index_array[row] = cuda_evaluator.constraint_index;
+    numerators[row] = cuda_evaluator.row_res;
+    // numerators[row] = cuda_evaluator.numerator;
+}
+
+// Host wrapper function
+extern "C"
+void evaluate_call_opcode(
+    m31 *quotients_0, m31 *quotients_1, m31 *quotients_2, m31 *quotients_3,
+    m31 **trace0_evaluations,
+    unsigned trace0_evaluations_len,
+    m31 **trace1_evaluations,
+    unsigned trace1_evaluations_len,
+    m31 **trace2_evaluations,
+    unsigned trace2_evaluations_len,
+    qm31 *random_coeff_powers,
+    m31 *denominator_inverses,
+    unsigned int domain_log_size,
+    unsigned int eval_domain_log_size,
+    unsigned int number_of_columns,
+    unsigned int logup_counts,
+    void *eval,
+    qm31 cumsum_shift,
+    bool should_accumulate,
+    bool use_assert_evaluator,
+    cudaStream_t stream
+) {
+    unsigned int eval_domain_size = 1 << eval_domain_log_size;
+
+    m31 **device_trace0_evaluations = clone_to_device<m31*>(trace0_evaluations, trace0_evaluations_len);
+    m31 **device_trace1_evaluations = clone_to_device<m31*>(trace1_evaluations, trace1_evaluations_len);
+    m31 **device_trace2_evaluations = clone_to_device<m31*>(trace2_evaluations, trace2_evaluations_len);
+
+    qm31 *numerators = (qm31 *) cuda_alloc_zeroes_uint32_t(sizeof(qm31) * eval_domain_size);
+
+    CallOpcode_Eval *device_call_eval = cuda_malloc<CallOpcode_Eval>(1);
+    cuda_mem_copy_host_to_device<CallOpcode_Eval>((CallOpcode_Eval*)eval, device_call_eval, 1);
+
+    Fraction *d_intermediate_fractions = cuda_malloc<Fraction>(eval_domain_size * logup_counts);
+    unsigned *constraint_index_array = cuda_alloc_zeroes_uint32_t(eval_domain_size);
+    timer global_timer;
+    global_timer.start("evaluate_call_opcode");
+
+    int block_dim = eval_domain_size < 256 ? eval_domain_size : 256;
+    int num_blocks = (eval_domain_size + block_dim - 1) / block_dim;
+
+    if (use_assert_evaluator) {
+        evaluate_call_opcode_pre_kernel<CudaAssertEvaluator><<<num_blocks, block_dim, 0, stream>>>(
+            numerators,
+            device_trace1_evaluations,
+            random_coeff_powers,
+            domain_log_size,
+            eval_domain_log_size,
+            number_of_columns,
+            device_call_eval,
+            cumsum_shift,
+            d_intermediate_fractions,
+            logup_counts,
+            constraint_index_array
+        );
+    } else {
+        evaluate_call_opcode_pre_kernel<CudaEvaluator><<<num_blocks, block_dim, 0, stream>>>(
+            numerators,
+            device_trace1_evaluations,
+            random_coeff_powers,
+            domain_log_size,
+            eval_domain_log_size,
+            number_of_columns,
+            device_call_eval,
+            cumsum_shift,
+            d_intermediate_fractions,
+            logup_counts,
+            constraint_index_array
+        );
+    }
+    ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+    ASSERT_CUDA_SUCCESS(cudaGetLastError());
+
+    std::vector<unsigned> batching(logup_counts);
+    for (int i = 0; i < logup_counts; ++i) {
+        batching[i] = i / 2;
+    }
+    unsigned last_batch = batching[logup_counts - 1];
+
+    if (use_assert_evaluator) {
+        generic_constraint_post_kernel<CudaAssertEvaluator><<<num_blocks, block_dim, 0, stream>>>(
+            numerators,
+            d_intermediate_fractions,
+            constraint_index_array,
+            device_trace2_evaluations,
+            random_coeff_powers,
+            domain_log_size,
+            eval_domain_log_size,
+            logup_counts,
+            last_batch,
+            cumsum_shift
+        );
+    } else {
+        generic_constraint_post_kernel<CudaEvaluator><<<num_blocks, block_dim, 0, stream>>>(
+            numerators,
+            d_intermediate_fractions,
+            constraint_index_array,
+            device_trace2_evaluations,
+            random_coeff_powers,
+            domain_log_size,
+            eval_domain_log_size,
+            logup_counts,
+            last_batch,
+            cumsum_shift
+        );
+    }
+    ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+    ASSERT_CUDA_SUCCESS(cudaGetLastError());
+
+    generic_constraint_quotients_finalize_kernel<<<num_blocks, block_dim, 0, stream>>>(
+        quotients_0,
+        quotients_1,
+        quotients_2,
+        quotients_3,
+        numerators,
+        denominator_inverses,
+        domain_log_size,
+        eval_domain_log_size,
+        g_should_accumulate_host  // Read from global variable set by dispatcher
+    );
+
+    ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+    ASSERT_CUDA_SUCCESS(cudaGetLastError());
+    global_timer.end("evaluate_call_opcode");
+
+    cuda_free_memory(device_trace0_evaluations);
+    cuda_free_memory(device_trace1_evaluations);
+    cuda_free_memory(device_trace2_evaluations);
+    cuda_free_memory(numerators);
+    cuda_free_memory(device_call_eval);
+    cuda_free_memory(d_intermediate_fractions);
+    cuda_free_memory(constraint_index_array);
+}

@@ -13,6 +13,10 @@ use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::{AccumulationOps, QuotientOps};
 
 pub mod cpu;
+#[cfg(feature = "cuda")]
+pub mod cuda;
+#[cfg(feature = "cuda")]
+pub use cuda::CudaBackend;
 pub mod simd;
 
 pub trait Backend:

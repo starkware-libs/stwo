@@ -27,11 +27,14 @@ use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
 const CHUNK_SIZE: usize = 1;
 
 /// Common inputs for constraint quotient evaluation, shared between the SIMD and CPU backends.
-struct ConstraintQuotientInputs<'a, B: Backend> {
-    eval_domain: CircleDomain,
-    trace_domain: CanonicCoset,
-    trace: TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>>,
-    denom_inv: Vec<BaseField>,
+/// `pub` so a downstream crate hosting a device-resident GPU constraint kernel (registered via
+/// [`super::cuda_constraint_kernel::set_gpu_constraint_kernel`]) can read the device-resident
+/// eval-domain trace columns the generic prover already built.
+pub struct ConstraintQuotientInputs<'a, B: Backend> {
+    pub eval_domain: CircleDomain,
+    pub trace_domain: CanonicCoset,
+    pub trace: TreeVec<Vec<Cow<'a, CircleEvaluation<B, BaseField, BitReversedOrder>>>>,
+    pub denom_inv: Vec<BaseField>,
 }
 
 /// Prepares trace evaluations: borrows directly (subdomain) or extends to eval domain.
@@ -73,7 +76,7 @@ fn get_trace_columns<'a, B: Backend>(
 /// Constructs the inputs needed for constraint quotient evaluation from a component and trace.
 /// Computes the eval/trace domains, prepares trace columns (borrowing or extending as needed),
 /// and precomputes denominator inverses.
-fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
+pub fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
     component: &FrameworkComponent<E>,
     trace: &'a Trace<'a, B>,
     mode: EvaluationMode,
@@ -261,7 +264,7 @@ fn subdomain_eval_domain(max_constraint_log_degree_bound: u32, log_expansion: u3
     committed_domain.split(log_expansion).0
 }
 
-fn accumulate_pointwise_cpu<E: FrameworkEval>(
+pub(crate) fn accumulate_pointwise_cpu<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
     trace_cols: TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
     eval_log_size: u32,
