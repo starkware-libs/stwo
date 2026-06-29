@@ -1,8 +1,9 @@
 [package]
 name = "stwo-constraint-framework"
-version = "2.2.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Constraint framework for building AIR constraints with STWO"
 
 [features]
