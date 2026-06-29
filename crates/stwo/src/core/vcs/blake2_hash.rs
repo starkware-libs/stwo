@@ -50,6 +50,16 @@ impl From<Blake2sHash> for [u8; 32] {
     }
 }
 
+impl From<[u32; 8]> for Blake2sHash {
+    fn from(val: [u32; 8]) -> Self {
+        let mut bytes = [0u8; 32];
+        for (chunk, word) in bytes.chunks_exact_mut(4).zip(val) {
+            chunk.copy_from_slice(&word.to_le_bytes());
+        }
+        Self(bytes)
+    }
+}
+
 impl fmt::Display for Blake2sHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
