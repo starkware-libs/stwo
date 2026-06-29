@@ -33,7 +33,10 @@ struct LookupElementsBasic {
         qm31 result = qm31{cm31{0, 0}, cm31{0, 0}};
 
         for (int i = 0; i < num_values; i++) {
-            qm31 term = mul(alpha_powers[i], qm31{cm31{values[i], 0}, cm31{0, 0}});
+            // values[i] is base-field m31 (the qm31 lift has zero parts), so a full
+            // QM31xQM31 Karatsuba is wasteful. The scalar mul(m31, qm31) overload
+            // (fields.cu) computes the bit-identical product in 4 M31 muls.
+            qm31 term = mul(values[i], alpha_powers[i]);
             result = add(result, term);
         }
 

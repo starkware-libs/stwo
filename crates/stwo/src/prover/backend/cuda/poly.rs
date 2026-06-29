@@ -13,6 +13,24 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 
 use std::ffi::c_void;
+
+/// Default number of columns processed per `ntt_n2b_columns` launch in the batched
+/// `evaluate_polynomials` extend+NTT. Chosen to cap the transient device-memory peak during the
+/// tree-commit extend (so large shards fit in 40GB) while keeping batched launch efficiency.
+/// Overridable via the `GATE_AIR_NTT_SUBBATCH` env var.
+const DEFAULT_NTT_SUBBATCH: usize = 48;
+
+/// Sub-batch width for the batched extend+NTT in `evaluate_polynomials`. Reads
+/// `GATE_AIR_NTT_SUBBATCH` (a positive integer); falls back to `DEFAULT_NTT_SUBBATCH` when unset,
+/// empty, unparseable, or zero. Purely an allocation-granularity knob — it does not affect outputs.
+fn ntt_subbatch_size() -> usize {
+    std::env::var("GATE_AIR_NTT_SUBBATCH")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_NTT_SUBBATCH)
+}
+
 pub trait CudaVariable<T> {
     /// # Safety
     /// do not dereference if the memory is located on the device
@@ -506,29 +524,50 @@ impl PolyOps for CudaBackend {
                     results.push((orig_idx, Poly::new(store_polynomials_coefficients.then_some(poly), eval)));
                 }
             } else {
-                // Batch extend + batched NTT: single kernel call for all polys in this group.
+                // Batch extend + batched NTT. To cap the TRANSIENT device-memory peak during the
+                // extend (each fresh eval buffer is one extended column, e.g. ~128MB at 2^25), the
+                // group's columns are processed in sub-batches of `ntt_subbatch_size()` rather than
+                // one full-width batch: extend+NTT a chunk, keep its evals resident, then move to
+                // the next chunk. The cuda mempool caches each chunk's transient NTT scratch for
+                // reuse by the next chunk, so the instantaneous peak is bounded by one chunk's
+                // worth of fresh allocations instead of all `num_poly` at once. The final resident
+                // set (all columns' evals, read by the subsequent lifted-Merkle commit) is
+                // unchanged, and the NTT output is byte-identical: each column's NTT is independent,
+                // so `ntt_n2b_columns` over a sub-slice yields exactly the same per-column result as
+                // over the full batch (batching is purely launch grouping).
                 let num_poly = group_end - group_start;
-                let mut values_list: Vec<BaseFieldVec> = indexed[group_start..group_end]
-                    .iter()
-                    .map(|(_, _, _, poly)| poly.extend(log_size).coeffs)
-                    .collect();
-
-                let mut ptrs: Vec<*mut u32> = values_list
-                    .iter()
-                    .map(|v| v.device_ptr as *mut u32)
-                    .collect();
-
                 let eval_domain_size = indexed[group_start].2.half_coset.size() as u32;
+                let chunk = ntt_subbatch_size().min(num_poly).max(1);
 
-                unsafe {
-                    interface::bindings::ntt_n2b_columns(
-                        ptrs.as_mut_ptr() as *mut *mut u32,
-                        log_size,
-                        num_poly as u32,
-                        twiddles.twiddles.device_ptr,
-                        twiddles.twiddles.len() as u32,
-                        eval_domain_size,
-                    );
+                let mut values_list: Vec<BaseFieldVec> = Vec::with_capacity(num_poly);
+                let mut chunk_off = 0;
+                while chunk_off < num_poly {
+                    let chunk_end = (chunk_off + chunk).min(num_poly);
+
+                    let mut chunk_values: Vec<BaseFieldVec> = indexed
+                        [group_start + chunk_off..group_start + chunk_end]
+                        .iter()
+                        .map(|(_, _, _, poly)| poly.extend(log_size).coeffs)
+                        .collect();
+
+                    let mut ptrs: Vec<*mut u32> = chunk_values
+                        .iter()
+                        .map(|v| v.device_ptr as *mut u32)
+                        .collect();
+
+                    unsafe {
+                        interface::bindings::ntt_n2b_columns(
+                            ptrs.as_mut_ptr() as *mut *mut u32,
+                            log_size,
+                            (chunk_end - chunk_off) as u32,
+                            twiddles.twiddles.device_ptr,
+                            twiddles.twiddles.len() as u32,
+                            eval_domain_size,
+                        );
+                    }
+
+                    values_list.append(&mut chunk_values);
+                    chunk_off = chunk_end;
                 }
 
                 // Drain the group to take ownership of polys.

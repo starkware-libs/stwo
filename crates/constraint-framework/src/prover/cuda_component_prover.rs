@@ -47,8 +47,12 @@
 
 use std::borrow::Cow;
 
+use num_traits::Zero;
 use stwo::core::air::Component;
 use stwo::core::fields::m31::BaseField;
+use stwo::core::pcs::TreeVec;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::ColumnVec;
 use stwo::prover::backend::cuda::CudaBackend;
 use stwo::prover::backend::{Column, CpuBackend};
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
@@ -62,7 +66,7 @@ use super::component_prover::{
 use super::cuda_constraint_kernel::{
     gpu_constraints_opt_in, registered_gpu_constraint_kernel, GpuConstraintDispatch,
 };
-use crate::{FrameworkComponent, FrameworkEval};
+use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
 
 /// Whether the operator has forced the audited CPU-delegate constraint path via
 /// `CUDA_CONSTRAINT_CPU_FALLBACK=1`. Read fresh on each call (cheap; once per component per prove).
@@ -90,6 +94,75 @@ fn poly_to_cpu(poly: &Poly<CudaBackend>) -> Poly<CpuBackend> {
         .as_ref()
         .map(|c| CircleCoefficients::<CpuBackend>::new(c.coeffs.to_cpu()));
     Poly::new(coeffs, evals)
+}
+
+/// A tiny valid host placeholder `Poly<CpuBackend>` used for the columns this component does NOT
+/// read. It is never indexed by the eval (see [`build_scoped_host_polys`]), so its contents are
+/// irrelevant; it merely fills the [`TreeVec`] slots so global column indexing is preserved.
+fn dummy_host_poly() -> Poly<CpuBackend> {
+    // log_size must be > 0 (CanonicCoset rejects 0); size-2 is the minimal valid placeholder
+    // domain. The poly is never dereferenced by the eval, so its size is irrelevant.
+    let domain = CanonicCoset::new(1).circle_domain();
+    let evals = CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
+        domain,
+        vec![BaseField::zero(); domain.size()],
+    );
+    Poly::new(None, evals)
+}
+
+/// Builds a host copy of `device_polys` that preserves the EXACT global [`TreeVec`] shape (same
+/// number of trees, same number of columns per tree, in the same positions) but only performs a
+/// device->host copy ([`poly_to_cpu`]) for the columns THIS component actually consumes.
+///
+/// The audited host eval ([`get_constraint_quotient_inputs`]) reads exactly:
+///   * every column in each [`stwo::core::pcs::TreeSubspan`] of `trace_locations` (the
+///     `col_start..col_end` range within `tree_index`), via `trace.polys.sub_tree(trace_locations)`,
+///   * plus, in tree [`PREPROCESSED_TRACE_IDX`], the columns at `preprocessed_column_indices`
+///     (which fully replace the preprocessed sub-tree slot).
+/// Every other column is a dead copy in the old full-trace path. Here those slots get a shared
+/// [`dummy_host_poly`] which the eval never dereferences. Because the materialized columns sit at
+/// their original global `(tree, column)` positions, `sub_tree(trace_locations)` and
+/// `[PREPROCESSED_TRACE_IDX][idx]` resolve to bit-identical data versus the full-trace copy.
+///
+/// Returns owned per-column storage; the caller builds the borrowed `Trace` from it.
+fn build_scoped_host_polys<E: FrameworkEval>(
+    component: &FrameworkComponent<E>,
+    device_polys: &TreeVec<ColumnVec<&Poly<CudaBackend>>>,
+) -> TreeVec<ColumnVec<Poly<CpuBackend>>> {
+    // Mark which (tree, column) positions are read by the eval.
+    let mut needed: Vec<Vec<bool>> = device_polys
+        .iter()
+        .map(|tree| vec![false; tree.len()])
+        .collect();
+
+    for location in component.trace_locations() {
+        for col in location.col_start..location.col_end {
+            needed[location.tree_index][col] = true;
+        }
+    }
+    for &idx in component.preprocessed_column_indices() {
+        needed[PREPROCESSED_TRACE_IDX][idx] = true;
+    }
+
+    // Materialize only the needed columns; everything else is a never-read placeholder.
+    TreeVec::new(
+        device_polys
+            .iter()
+            .enumerate()
+            .map(|(tree_index, tree)| {
+                tree.iter()
+                    .enumerate()
+                    .map(|(col, poly)| {
+                        if needed[tree_index][col] {
+                            poly_to_cpu(poly)
+                        } else {
+                            dummy_host_poly()
+                        }
+                    })
+                    .collect()
+            })
+            .collect(),
+    )
 }
 
 impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponent<E> {
@@ -140,9 +213,15 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             }
         }
 
-        // Move all committed trace polynomials to host. `cpu_polys` owns the data; `cpu_trace`
-        // borrows from it, matching the `&'a Poly<B>` lifetime expected by `Trace`.
-        let cpu_polys = trace.polys.as_cols_ref().map_cols(|p| poly_to_cpu(p));
+        // Move ONLY this component's committed trace polynomials to host. The audited host eval
+        // (`get_constraint_quotient_inputs`) reads exactly the columns in `trace_locations` plus
+        // the `preprocessed_column_indices`; every other column was a dead D2H copy in the old
+        // full-trace path. `build_scoped_host_polys` preserves the global TreeVec shape (so the
+        // eval's `sub_tree(trace_locations)` / `[PREPROCESSED_TRACE_IDX][idx]` indexing is
+        // bit-identical), but only copies the needed columns off the device. `cpu_polys` owns the
+        // data; `cpu_trace` borrows from it, matching the `&'a Poly<B>` lifetime expected by
+        // `Trace`.
+        let cpu_polys = build_scoped_host_polys(self, &trace.polys);
         let cpu_trace = Trace {
             polys: cpu_polys.as_cols_ref(),
         };
