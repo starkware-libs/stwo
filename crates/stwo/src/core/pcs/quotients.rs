@@ -288,6 +288,11 @@ pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
 }
 
+/// For every column, pairs each out-of-domain (OOD) sample with its Fiat–Shamir
+/// random-coefficient power, and adds a periodicity sample.
+///
+/// This function currently assumes flat AIRs and adds periodicity checks only for columns with two
+/// samples.
 pub fn build_samples_with_randomness_and_periodicity(
     samples: &TreeVec<Vec<Vec<PointSample>>>,
     column_log_sizes: Vec<impl Iterator<Item = u32>>,
