@@ -111,7 +111,7 @@ mod tests {
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::fri::FriConfig;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, LiftingLogSize, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
@@ -252,7 +252,7 @@ mod tests {
             let config = PcsConfig {
                 pow_bits: 10,
                 fri_config: FriConfig::new(0, 2, 3, 1),
-                lifting_log_size: None,
+                lifting_log_size: LiftingLogSize::Auto,
             };
             // Precompute twiddles for the larger committed domain.
             let twiddles = SimdBackend::precompute_twiddles(

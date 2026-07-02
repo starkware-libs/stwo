@@ -92,7 +92,7 @@ mod tests {
     use stwo::core::channel::Blake2sM31Channel;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, LiftingLogSize, PcsConfig};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     use stwo::core::verifier::verify;
@@ -179,165 +179,107 @@ mod tests {
         }
     }
 
-    #[test_log::test]
-    fn test_wide_fib_with_unused_pp_prove_with_blake() {
-        for log_n_instances in 4..=8 {
-            let config = PcsConfig::default();
-            // Precompute twiddles.
-            let twiddles = SimdBackend::precompute_twiddles(
-                CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
-                    .circle_domain()
-                    .half_coset,
-            );
+    /// Proves and verifies the wide-Fibonacci AIR with an extra, longer *unused* preprocessed
+    /// column (larger than the trace, so the preprocessed tree is lifted higher than the others),
+    /// under the given lifting-size policy.
+    fn prove_and_verify_unused_pp(
+        log_n_instances: u32,
+        log_size_unused_pp: u32,
+        lifting_log_size: LiftingLogSize,
+    ) {
+        let config = PcsConfig {
+            lifting_log_size,
+            ..PcsConfig::default()
+        };
+        // Precompute twiddles large enough for the biggest (preprocessed) domain and the
+        // composition polynomial.
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(log_size_unused_pp + 1 + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        );
 
-            // Setup protocol.
-            let prover_channel = &mut Blake2sM31Channel::default();
-            let mut commitment_scheme = CommitmentSchemeProver::<
-                SimdBackend,
-                Blake2sM31MerkleChannel,
-            >::new(config, &twiddles);
+        // Setup protocol.
+        let prover_channel = &mut Blake2sM31Channel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<SimdBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
 
-            // Preprocessed trace
-            let mut tree_builder = commitment_scheme.tree_builder();
-            let mut preprocessed_trace = vec![generate_preprocessed_trace(log_n_instances)];
-            // Build a long unused preprocessed column.
-            let log_size_unused_pp = log_n_instances + 1;
-            let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
-            preprocessed_trace.push(CircleEvaluation::new(
-                domain,
-                BaseColumn::zeros(1 << log_size_unused_pp),
-            ));
-            tree_builder.extend_evals(preprocessed_trace);
-            tree_builder.commit(prover_channel);
+        // Preprocessed trace: the used `seq` column plus a longer unused column.
+        let mut tree_builder = commitment_scheme.tree_builder();
+        let mut preprocessed_trace = vec![generate_preprocessed_trace(log_n_instances)];
+        let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
+        preprocessed_trace.push(CircleEvaluation::new(
+            domain,
+            BaseColumn::zeros(1 << log_size_unused_pp),
+        ));
+        tree_builder.extend_evals(preprocessed_trace);
+        tree_builder.commit(prover_channel);
 
-            // Trace.
-            let trace =
-                generate_trace::<FIB_SEQUENCE_LENGTH, _>(&generate_test_inputs(log_n_instances));
-            let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals(trace);
-            tree_builder.commit(prover_channel);
+        // Trace.
+        let trace =
+            generate_trace::<FIB_SEQUENCE_LENGTH, _>(&generate_test_inputs(log_n_instances));
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(prover_channel);
 
-            // Prove constraints.
-            let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
-                PreProcessedColumnId {
-                    id: String::from("seq"),
-                },
-                PreProcessedColumnId {
-                    id: String::from("large_unused"),
-                },
-            ]);
-            let component = WideFibWithPpComponent::new(
-                &mut allocator,
-                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
-                SecureField::zero(),
-            );
+        // Prove constraints.
+        let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
+            PreProcessedColumnId {
+                id: String::from("seq"),
+            },
+            PreProcessedColumnId {
+                id: String::from("large_unused"),
+            },
+        ]);
+        let component = WideFibWithPpComponent::new(
+            &mut allocator,
+            WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
+                log_n_rows: log_n_instances,
+            },
+            SecureField::zero(),
+        );
 
-            let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
-                &[&component],
-                prover_channel,
-                commitment_scheme,
-            )
-            .unwrap();
+        let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+        )
+        .unwrap();
 
-            // Verify.
-            let verifier_channel = &mut Blake2sM31Channel::default();
-            let commitment_scheme =
-                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+        // Verify.
+        let verifier_channel = &mut Blake2sM31Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
 
-            // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-            let sizes = component.trace_log_degree_bounds();
-            commitment_scheme.commit(
-                proof.commitments[0],
-                &[log_n_instances, log_size_unused_pp],
-                verifier_channel,
-            );
-            commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
-            verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
-        }
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+        commitment_scheme.commit(
+            proof.commitments[0],
+            &[log_n_instances, log_size_unused_pp],
+            verifier_channel,
+        );
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+        verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 
     #[test_log::test]
-    /// This test is equal to the previous one except it tests the hardcoding of lifting size.
-    fn test_wide_fib_with_unused_pp_and_hardcoded_lifting() {
+    fn test_wide_fib_with_unused_pp() {
+        let log_blowup_factor = PcsConfig::default().fri_config.log_blowup_factor;
         for log_n_instances in 4..=8 {
-            let mut config = PcsConfig::default();
+            // An unused preprocessed column longer than the trace.
             let log_size_unused_pp = log_n_instances + 3;
-            // Set lifting log size to the largest preprocessed column (after LDE).
-            config.lifting_log_size =
-                Some(log_size_unused_pp + config.fri_config.log_blowup_factor);
-            // Precompute twiddles.
-            let twiddles = SimdBackend::precompute_twiddles(
-                CanonicCoset::new(log_size_unused_pp + 1 + config.fri_config.log_blowup_factor)
-                    .circle_domain()
-                    .half_coset,
-            );
-
-            // Setup protocol.
-            let prover_channel = &mut Blake2sM31Channel::default();
-            let mut commitment_scheme = CommitmentSchemeProver::<
-                SimdBackend,
-                Blake2sM31MerkleChannel,
-            >::new(config, &twiddles);
-
-            // Preprocessed trace
-            let mut tree_builder = commitment_scheme.tree_builder();
-            let mut preprocessed_trace = vec![generate_preprocessed_trace(log_n_instances)];
-            // Build a long unused preprocessed column.
-            let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
-            preprocessed_trace.push(CircleEvaluation::new(
-                domain,
-                BaseColumn::zeros(1 << log_size_unused_pp),
-            ));
-            tree_builder.extend_evals(preprocessed_trace);
-            tree_builder.commit(prover_channel);
-
-            // Trace.
-            let trace =
-                generate_trace::<FIB_SEQUENCE_LENGTH, _>(&generate_test_inputs(log_n_instances));
-            let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals(trace);
-            tree_builder.commit(prover_channel);
-
-            // Prove constraints.
-            let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
-                PreProcessedColumnId {
-                    id: String::from("seq"),
-                },
-                PreProcessedColumnId {
-                    id: String::from("large_unused"),
-                },
-            ]);
-            let component = WideFibWithPpComponent::new(
-                &mut allocator,
-                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
-                SecureField::zero(),
-            );
-
-            let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
-                &[&component],
-                prover_channel,
-                commitment_scheme,
-            )
-            .unwrap();
-
-            // Verify.
-            let verifier_channel = &mut Blake2sM31Channel::default();
-            let commitment_scheme =
-                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
-
-            // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-            let mut sizes = component.trace_log_degree_bounds();
-            commitment_scheme.commit(
-                proof.commitments[0],
-                &[log_n_instances, log_size_unused_pp],
-                verifier_channel,
-            );
-            commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
-            verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+            // Run the same prove/verify under each lifting-size policy:
+            // - `Auto`: each tree lifts to its own largest domain.
+            // - `Fixed`: every tree lifts to the (hardcoded) largest preprocessed domain.
+            // - `AtLeast`: a floor strictly between the trace and the unused column \u2014 the
+            //   trace tree is raised to the floor while the unused column grows its tree past it.
+            for lifting_log_size in [
+                LiftingLogSize::Auto,
+                LiftingLogSize::Fixed(log_size_unused_pp + log_blowup_factor),
+                LiftingLogSize::AtLeast(log_n_instances + 1 + log_blowup_factor),
+            ] {
+                prove_and_verify_unused_pp(log_n_instances, log_size_unused_pp, lifting_log_size);
+            }
         }
     }
 }

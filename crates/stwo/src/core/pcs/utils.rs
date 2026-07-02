@@ -224,7 +224,7 @@ pub fn try_get_lifting_log_size(
     config: &PcsConfig,
     log_trace_size: u32,
 ) -> Result<u32, InvalidLiftingLogSizeError> {
-    let lifting_log_size = config.lifting_log_size.unwrap_or(log_trace_size);
+    let lifting_log_size = config.lifting_log_size.resolve(log_trace_size);
     if lifting_log_size < log_trace_size {
         return Err(InvalidLiftingLogSizeError {
             lifting_log_size,

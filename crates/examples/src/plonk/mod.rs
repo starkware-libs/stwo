@@ -292,7 +292,7 @@ mod tests {
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::fri::FriConfig;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, LiftingLogSize, PcsConfig};
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
 
@@ -308,7 +308,7 @@ mod tests {
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 4, 64, 1),
-            lifting_log_size: None,
+            lifting_log_size: LiftingLogSize::Auto,
         };
 
         // Prove.

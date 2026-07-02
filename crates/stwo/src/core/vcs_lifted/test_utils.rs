@@ -3,6 +3,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 use crate::core::fields::m31::BaseField;
+use crate::core::pcs::LiftingLogSize;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleVerifierLifted};
@@ -52,7 +53,7 @@ where
 
     let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect_vec());
 
-    let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
+    let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, LiftingLogSize::Auto);
     (queries, decommitment.decommitment, values, verifier)
 }
 

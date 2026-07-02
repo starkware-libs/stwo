@@ -16,6 +16,7 @@ use super::queries::{draw_queries, Queries};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
+use crate::core::pcs::LiftingLogSize;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::utils::bit_reverse_index;
@@ -482,7 +483,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 self.column_commitment_domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
-            None,
+            LiftingLogSize::Auto,
         );
 
         merkle_verifier
@@ -567,7 +568,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
                 self.domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
-            None,
+            LiftingLogSize::Auto,
         );
 
         merkle_verifier

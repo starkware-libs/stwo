@@ -402,7 +402,7 @@ mod tests {
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::fields::m31::M31;
     use stwo::core::fri::FriConfig;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, LiftingLogSize, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
@@ -420,6 +420,7 @@ mod tests {
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64, 1),
+            lifting_log_size: LiftingLogSize::Auto,
         };
 
         // Prove.
@@ -502,7 +503,7 @@ mod tests {
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64, 1),
-            lifting_log_size: None,
+            lifting_log_size: LiftingLogSize::Auto,
         };
 
         // Prove.
@@ -551,7 +552,7 @@ mod tests {
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64, 1),
-            lifting_log_size: None,
+            lifting_log_size: LiftingLogSize::Auto,
         };
 
         // Prove.
