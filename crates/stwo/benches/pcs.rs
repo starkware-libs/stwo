@@ -4,6 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo::core::fields::m31::BaseField;
+use stwo::core::pcs::LiftingLogSize;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::backend::simd::SimdBackend;
@@ -32,7 +33,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         LOG_BLOWUP_FACTOR,
         twiddles,
         false,
-        None,
+        LiftingLogSize::Auto,
         &BaseColumnPool::new(),
     );
 }

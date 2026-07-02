@@ -6,6 +6,7 @@ use std_shims::{vec, Vec};
 use thiserror::Error;
 
 use crate::core::fields::m31::BaseField;
+use crate::core::pcs::LiftingLogSize;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::ColumnVec;
 
@@ -59,9 +60,13 @@ pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
-    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, lifting_log_size: Option<u32>) -> Self {
+    pub fn new(
+        root: H::Hash,
+        column_log_sizes: Vec<u32>,
+        lifting_log_size: LiftingLogSize,
+    ) -> Self {
         let max_column_log_size = column_log_sizes.iter().copied().max().unwrap_or_default();
-        let height = lifting_log_size.unwrap_or(max_column_log_size);
+        let height = lifting_log_size.resolve(max_column_log_size);
         assert!(
             max_column_log_size <= height,
             "The lifting log size is smaller than the largest column."
@@ -215,6 +220,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use crate::core::fields::m31::BaseField;
+    use crate::core::pcs::LiftingLogSize;
     use crate::core::vcs::blake2_hash::Blake2sHash;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::vcs_lifted::test_utils::prepare_merkle;
@@ -315,7 +321,7 @@ mod tests {
         // Queries given out of order with a duplicate.
         let queries = vec![13, 3, 7, 3, 1];
         let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
-        let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
+        let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, LiftingLogSize::Auto);
         verifier
             .verify(&queries, values, decommitment.decommitment)
             .unwrap();

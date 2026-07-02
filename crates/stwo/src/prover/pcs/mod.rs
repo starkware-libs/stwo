@@ -12,7 +12,7 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::utils::prepare_preprocessed_query_positions;
-use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
+use crate::core::pcs::{LiftingLogSize, PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -362,7 +362,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
-        lifting_log_size: Option<u32>,
+        lifting_log_size: LiftingLogSize,
         base_column_pool: &BaseColumnPool<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
@@ -381,7 +381,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             .map(|poly| poly.evals.domain.log_size())
             .max()
             .unwrap_or_default();
-        let lifting_log_size = lifting_log_size.unwrap_or(max_log_domain_size);
+        let lifting_log_size = lifting_log_size.resolve(max_log_domain_size);
         let tree = MerkleProverLifted::commit(
             polynomials
                 .iter()

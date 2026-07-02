@@ -92,7 +92,7 @@ mod tests {
     use stwo::core::channel::Blake2sM31Channel;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
-    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+    use stwo::core::pcs::{CommitmentSchemeVerifier, LiftingLogSize, PcsConfig};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     use stwo::core::verifier::verify;
@@ -266,7 +266,95 @@ mod tests {
             let log_size_unused_pp = log_n_instances + 3;
             // Set lifting log size to the largest preprocessed column (after LDE).
             config.lifting_log_size =
-                Some(log_size_unused_pp + config.fri_config.log_blowup_factor);
+                LiftingLogSize::Fixed(log_size_unused_pp + config.fri_config.log_blowup_factor);
+            // Precompute twiddles.
+            let twiddles = SimdBackend::precompute_twiddles(
+                CanonicCoset::new(log_size_unused_pp + 1 + config.fri_config.log_blowup_factor)
+                    .circle_domain()
+                    .half_coset,
+            );
+
+            // Setup protocol.
+            let prover_channel = &mut Blake2sM31Channel::default();
+            let mut commitment_scheme = CommitmentSchemeProver::<
+                SimdBackend,
+                Blake2sM31MerkleChannel,
+            >::new(config, &twiddles);
+
+            // Preprocessed trace
+            let mut tree_builder = commitment_scheme.tree_builder();
+            let mut preprocessed_trace = vec![generate_preprocessed_trace(log_n_instances)];
+            // Build a long unused preprocessed column.
+            let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
+            preprocessed_trace.push(CircleEvaluation::new(
+                domain,
+                BaseColumn::zeros(1 << log_size_unused_pp),
+            ));
+            tree_builder.extend_evals(preprocessed_trace);
+            tree_builder.commit(prover_channel);
+
+            // Trace.
+            let trace =
+                generate_trace::<FIB_SEQUENCE_LENGTH, _>(&generate_test_inputs(log_n_instances));
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(trace);
+            tree_builder.commit(prover_channel);
+
+            // Prove constraints.
+            let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
+                PreProcessedColumnId {
+                    id: String::from("seq"),
+                },
+                PreProcessedColumnId {
+                    id: String::from("large_unused"),
+                },
+            ]);
+            let component = WideFibWithPpComponent::new(
+                &mut allocator,
+                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
+                    log_n_rows: log_n_instances,
+                },
+                SecureField::zero(),
+            );
+
+            let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
+                &[&component],
+                prover_channel,
+                commitment_scheme,
+            )
+            .unwrap();
+
+            // Verify.
+            let verifier_channel = &mut Blake2sM31Channel::default();
+            let commitment_scheme =
+                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+
+            // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+            let mut sizes = component.trace_log_degree_bounds();
+            commitment_scheme.commit(
+                proof.commitments[0],
+                &[log_n_instances, log_size_unused_pp],
+                verifier_channel,
+            );
+            commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+            verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        }
+    }
+
+    #[test_log::test]
+    /// Tests dynamic (`AtLeast`) lifting: the floor sits above the trace size (so `AtLeast` raises
+    /// the small trace tree to it), while the larger unused preprocessed column still drives its
+    /// own tree's lifting above the floor — i.e. the lifting size is determined dynamically per
+    /// tree rather than hardcoded.
+    fn test_wide_fib_with_unused_pp_and_dynamic_lifting() {
+        for log_n_instances in 4..=8 {
+            let mut config = PcsConfig::default();
+            let log_size_unused_pp = log_n_instances + 3;
+            // Floor strictly between the trace size and the large preprocessed column (after LDE):
+            // `AtLeast` raises the trace tree up to this floor, and lets the preprocessed tree grow
+            // past it to fit its largest column.
+            config.lifting_log_size =
+                LiftingLogSize::AtLeast(log_n_instances + 1 + config.fri_config.log_blowup_factor);
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
                 CanonicCoset::new(log_size_unused_pp + 1 + config.fri_config.log_blowup_factor)
