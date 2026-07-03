@@ -15,15 +15,14 @@ mod cuda_component_prover;
 mod cuda_constraint_kernel;
 
 pub use assert::{assert_constraints_on_polys, assert_constraints_on_trace, AssertEvaluator};
-pub use cpu_domain::CpuDomainEvaluator;
-pub use logup::{FractionWriter, LogupColGenerator, LogupTraceGenerator};
-pub use simd_domain::SimdDomainEvaluator;
-
 // Public surface for a downstream GPU constraint kernel: the registration hook + the
 // device-resident constraint-quotient inputs the generic prover builds for it.
 #[cfg(feature = "cuda")]
 pub use component_prover::{get_constraint_quotient_inputs, ConstraintQuotientInputs};
+pub use cpu_domain::CpuDomainEvaluator;
 #[cfg(feature = "cuda")]
 pub use cuda_constraint_kernel::{
     gpu_constraints_opt_in, set_gpu_constraint_kernel, GpuConstraintDispatch, GpuConstraintKernel,
 };
+pub use logup::{FractionWriter, LogupColGenerator, LogupTraceGenerator};
+pub use simd_domain::SimdDomainEvaluator;

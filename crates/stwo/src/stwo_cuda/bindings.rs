@@ -1,9 +1,9 @@
 use std::ffi::c_void;
+
+use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::{
-    circle::CirclePoint,
-    fields::{m31::BaseField, qm31::SecureField},
-};
 // use crate::stwo_cuda::mem_pool; // DEPRECATED: No longer needed
 
 #[repr(C)]
@@ -128,7 +128,96 @@ extern "C" {
 
     pub fn cuda_free_memory(device_ptr: *const c_void);
 
+    // STOPGAP (streamed fused-commit only): after cuda_free_memory, drain the default stream so the
+    // deferred cudaFreeAsync completes and trim the pool (guarded on init) so the freed 128 MiB
+    // segment returns to the pool free-list before the next per-column cudaMallocFromPoolAsync. See
+    // utils.cu and fused_commit::dehydrate_column.
+    pub fn cuda_stream_reclaim_freed(keep_bytes: usize);
+
+    // PART A: drain the default stream (bounds live memory before the next alloc — no OOM
+    // regression) WITHOUT cudaMemPoolTrimTo, so the pool caches+reuses the freed segment instead of
+    // releasing it to the OS and re-mapping it every column (the per-column OS churn is the bulk of
+    // the tree1 streaming serialization tax). See utils.cu.
+    pub fn cuda_stream_reclaim_freed_notrim();
+
+    // OPTION-0 one-shot pool defrag: sync + cudaMemPoolTrimTo(0), releasing ALL cached
+    // already-freed segments to the OS. Called ONCE at the tree1->interaction boundary (NOT per
+    // column) so the fresh contiguous 3 GiB d_inter fits at 2^25. Live buffers untouched. See
+    // utils.cu.
+    pub fn cuda_pool_trim();
+
+    // STEP 2 (GATE_AIR_STREAM_COMMIT) async substrate: pinned host buffers + async H2D/D2H on a
+    // caller stream (opaque `cudaStream_t` == `*mut c_void`; null = default stream). See utils.cu
+    // and the deferred async note in fused_commit.rs — these are the primitives for overlapping the
+    // streamed-commit staging transfers with GPU compute; the stash is not yet wired onto them.
+    pub fn cuda_alloc_pinned_host_uint32_t(size: u32) -> *mut u32;
+
+    pub fn cuda_free_pinned_host(host_ptr: *const c_void);
+
+    pub fn copy_uint32_t_vec_from_device_to_host_async(
+        device_ptr: *const u32,
+        host_ptr: *mut u32,
+        size: u32,
+        stream: *mut c_void,
+    );
+
+    pub fn copy_uint32_t_vec_from_host_to_device_async(
+        host_ptr: *const u32,
+        size: u32,
+        stream: *mut c_void,
+    ) -> *const u32;
+
+    // PART B1/B2 (GATE_AIR_ASYNC_STASH) substrate: a dedicated non-blocking copy stream + events +
+    // no-redundant-memset async H2D/D2H. `cudaStream_t`/`cudaEvent_t` are opaque handles (`*mut
+    // c_void`). These let the streamed-commit dehydrate/rehydrate overlap compute (double-buffered
+    // through a small pinned staging pool) and let the parallel OODS/quotient readers skip the two
+    // dead full-column device memsets + stream-0 serialization. See utils.cu + fused_commit.rs.
+    pub fn cuda_create_copy_stream() -> *mut c_void;
+
+    pub fn cuda_destroy_stream(stream: *mut c_void);
+
+    pub fn cuda_stream_synchronize(stream: *mut c_void);
+
+    pub fn cuda_create_event() -> *mut c_void;
+
+    pub fn cuda_destroy_event(event: *mut c_void);
+
+    pub fn cuda_event_record(event: *mut c_void, stream: *mut c_void);
+
+    pub fn cuda_event_synchronize(event: *mut c_void);
+
+    pub fn cuda_stream_wait_event(stream: *mut c_void, event: *mut c_void);
+
+    // PART B3 (GATE_AIR_ASYNC_STASH_BATCHED): free a pool device buffer STREAM-ORDERED on `stream`
+    // (cudaFreeAsync), with NO host block. Enqueued after the D2H on the copy stream so the free
+    // executes only once the copy has captured the bytes; device residency is bounded by a
+    // device-side event ring (stream 0 waits on the ring-old free event) instead of a per-column
+    // host sync. See utils.cu.
+    pub fn cuda_free_memory_on_stream(device_ptr: *const c_void, stream: *mut c_void);
+
+    // Async D2H device->pinned-host on `stream`, no memset. Caller records an event afterward so
+    // the pinned-slot reuse / device free can wait on completion.
+    pub fn copy_uint32_t_d2h_pinned_async(
+        device_ptr: *const u32,
+        pinned_host_ptr: *mut u32,
+        size: u32,
+        stream: *mut c_void,
+    );
+
+    // Async H2D pinned-host->fresh device buffer on `stream`, WITHOUT the redundant memset (the
+    // copy overwrites the whole buffer). Caller syncs the stream / waits the event before the
+    // kernel reads.
+    pub fn copy_uint32_t_h2d_nomemset_async(
+        host_ptr: *const u32,
+        size: u32,
+        stream: *mut c_void,
+    ) -> *const u32;
+
     pub fn cuda_get_memory_info(free_mem: *mut usize, total_mem: *mut usize);
+
+    // MEM PROBE (diagnostic, read-only): prints driver free/total + pool reserved/used at a labeled
+    // boundary. Does not allocate/free/trim. `tag` is a NUL-terminated C string. See utils.cu.
+    pub fn cuda_mem_probe(tag: *const core::ffi::c_char);
 
     pub fn bit_reverse_base_field(array: *const u32, size: usize);
 
@@ -215,8 +304,14 @@ extern "C" {
 
     pub fn lift_and_accumulate(
         col_size: u32,
-        col_0: *const u32, col_1: *const u32, col_2: *const u32, col_3: *const u32,
-        curr_0: *const u32, curr_1: *const u32, curr_2: *const u32, curr_3: *const u32,
+        col_0: *const u32,
+        col_1: *const u32,
+        col_2: *const u32,
+        col_3: *const u32,
+        curr_0: *const u32,
+        curr_1: *const u32,
+        curr_2: *const u32,
+        curr_3: *const u32,
         log_ratio: u32,
     );
 
@@ -334,7 +429,8 @@ extern "C" {
     /// M31 modular add offset in-place: data[i] = (data[i] + offset) mod P for all i < n.
     pub fn m31_vector_add_offset(data: *const u32, n: u32, offset: u32);
 
-    /// Pad GPU array by cycling: data[idx] = data[idx % cycle_len] for idx in [actual_size, padded_size).
+    /// Pad GPU array by cycling: data[idx] = data[idx % cycle_len] for idx in [actual_size,
+    /// padded_size).
     pub fn pad_with_cycle(data: *const u32, actual_size: u32, padded_size: u32, cycle_len: u32);
 
     /// Fill GPU array with zeros: data[idx] = 0 for idx in [start, end).
@@ -344,12 +440,7 @@ extern "C" {
     pub fn vector_add_u32(dst: *const u32, src: *const u32, n: u32);
 
     /// GPU scatter-add: mults[indices[i] - offset] += 1 for each i.
-    pub fn scatter_add(
-        mults: *const u32,
-        device_indices: *const u32,
-        n_indices: u32,
-        offset: u32,
-    );
+    pub fn scatter_add(mults: *const u32, device_indices: *const u32, n_indices: u32, offset: u32);
 
     pub fn accumulate_numerators_batch(
         size: u32,
@@ -422,7 +513,6 @@ extern "C" {
         output_evals: *const u32,
     );
 
-
     pub fn generate_wide_fibonacci_trace(
         input_a: *const u32,
         input_b: *const u32,
@@ -458,9 +548,9 @@ extern "C" {
         memory_lookups_len: u32,
         range_check_20_lookups: *const *const u32,
         range_check_20_lookups_len: u32,
-        inputs: *const c_void,  // AssertEqFpImmInput*
+        inputs: *const c_void, // AssertEqFpImmInput*
         inputs_len: u32,
-        data_accesses: *const c_void,  // DataAccess*
+        data_accesses: *const c_void, // DataAccess*
         data_accesses_len: u32,
         log_size: u32,
         non_padded_length: u32,
@@ -582,11 +672,7 @@ extern "C" {
         num_columns: u32,
     );
 
-    pub fn poseidon252_finalize_all(
-        states: *mut c_void,
-        output: *mut [u8; 32],
-        size: u32,
-    );
+    pub fn poseidon252_finalize_all(states: *mut c_void, output: *mut [u8; 32], size: u32);
 
     // GPU-only aliases matching Blake2s interface
     pub fn poseidon252_commit_on_first_layer(
@@ -639,7 +725,9 @@ mod tests {
 
         // Compute Rust reference
         let rust_results: Vec<usize> = (0..N)
-            .map(|i| offset_bit_reversed_circle_domain_index(i, DOMAIN_LOG_SIZE, EVAL_LOG_SIZE, OFFSET))
+            .map(|i| {
+                offset_bit_reversed_circle_domain_index(i, DOMAIN_LOG_SIZE, EVAL_LOG_SIZE, OFFSET)
+            })
             .collect();
 
         // Compute CUDA results
@@ -686,7 +774,9 @@ mod tests {
 
         // Test first N_SAMPLE indices
         let rust_first: Vec<usize> = (0..N_SAMPLE)
-            .map(|i| offset_bit_reversed_circle_domain_index(i, DOMAIN_LOG_SIZE, EVAL_LOG_SIZE, OFFSET))
+            .map(|i| {
+                offset_bit_reversed_circle_domain_index(i, DOMAIN_LOG_SIZE, EVAL_LOG_SIZE, OFFSET)
+            })
             .collect();
 
         let mut cuda_first = vec![0u32; N_SAMPLE];
@@ -719,7 +809,10 @@ mod tests {
             mismatch_first
         );
 
-        println!("test_cuda_offset_bit_reversed_indices_log24_blowup: First {} indices match!", N_SAMPLE);
+        println!(
+            "test_cuda_offset_bit_reversed_indices_log24_blowup: First {} indices match!",
+            N_SAMPLE
+        );
     }
 
     #[test]
@@ -731,7 +824,14 @@ mod tests {
 
         for offset in [-2, -1, 1, 2] {
             let rust_results: Vec<usize> = (0..N)
-                .map(|i| offset_bit_reversed_circle_domain_index(i, DOMAIN_LOG_SIZE, EVAL_LOG_SIZE, offset))
+                .map(|i| {
+                    offset_bit_reversed_circle_domain_index(
+                        i,
+                        DOMAIN_LOG_SIZE,
+                        EVAL_LOG_SIZE,
+                        offset,
+                    )
+                })
                 .collect();
 
             let mut cuda_results = vec![0u32; N];

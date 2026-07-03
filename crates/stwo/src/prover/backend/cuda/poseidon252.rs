@@ -1,14 +1,16 @@
 use std::ffi::c_void;
+
 use starknet_ff::FieldElement as FieldElement252;
 
-use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher as Poseidon252MerkleHasherOld;
 use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleHasher as Poseidon252MerkleHasherLifted;
+use crate::prover::backend::cuda::CudaBackend;
+use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
-
-use crate::stwo_cuda::{bindings, base_field_vec::BaseFieldVec, poseidon252::Poseidon252HashVec};
-use crate::prover::backend::cuda::CudaBackend;
+use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+use crate::stwo_cuda::bindings;
+use crate::stwo_cuda::poseidon252::Poseidon252HashVec;
 
 impl ColumnOps<FieldElement252> for CudaBackend {
     type Column = Poseidon252HashVec;
@@ -24,7 +26,6 @@ impl MerkleOps<Poseidon252MerkleHasherOld> for CudaBackend {
         prev_layer: Option<&Poseidon252HashVec>,
         columns: &[&BaseFieldVec],
     ) -> Poseidon252HashVec {
-
         let size = 1 << log_size;
         let number_of_columns = columns.len();
 
@@ -85,9 +86,11 @@ impl MerkleOpsLifted<Poseidon252MerkleHasherLifted> for CudaBackend {
         lifting_log_size: u32,
     ) -> Col<Self, FieldElement252> {
         if columns.is_empty() {
-            let cpu_result = <CpuBackend as MerkleOpsLifted<
-                Poseidon252MerkleHasherLifted,
-            >>::build_leaves(&[], lifting_log_size);
+            let cpu_result =
+                <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasherLifted>>::build_leaves(
+                    &[],
+                    lifting_log_size,
+                );
             return Poseidon252HashVec::from_vec(cpu_result);
         }
 
@@ -101,8 +104,7 @@ impl MerkleOpsLifted<Poseidon252MerkleHasherLifted> for CudaBackend {
             let size = 1usize << lifting_log_size;
             let result = Poseidon252HashVec::new_uninitialized(size);
 
-            let col_ptrs: Vec<*const u32> =
-                columns.iter().map(|c| c.device_ptr).collect();
+            let col_ptrs: Vec<*const u32> = columns.iter().map(|c| c.device_ptr).collect();
             let device_col_ptrs = unsafe {
                 bindings::copy_device_pointer_vec_from_host_to_device(
                     col_ptrs.as_ptr(),
@@ -125,25 +127,19 @@ impl MerkleOpsLifted<Poseidon252MerkleHasherLifted> for CudaBackend {
         // Slow path: columns of different sizes → fall back to CPU
         let cpu_cols: Vec<Vec<crate::core::fields::m31::BaseField>> = columns
             .iter()
-            .map(|c| {
-                if c.len() == 0 {
-                    vec![]
-                } else {
-                    c.to_cpu()
-                }
-            })
+            .map(|c| if c.len() == 0 { vec![] } else { c.to_cpu() })
             .collect();
         let cpu_col_refs: Vec<&Vec<crate::core::fields::m31::BaseField>> =
             cpu_cols.iter().collect();
-        let cpu_result = <CpuBackend as MerkleOpsLifted<
-            Poseidon252MerkleHasherLifted,
-        >>::build_leaves(&cpu_col_refs, lifting_log_size);
+        let cpu_result =
+            <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasherLifted>>::build_leaves(
+                &cpu_col_refs,
+                lifting_log_size,
+            );
         Poseidon252HashVec::from_vec(cpu_result)
     }
 
-    fn build_next_layer(
-        prev_layer: &Col<Self, FieldElement252>,
-    ) -> Col<Self, FieldElement252> {
+    fn build_next_layer(prev_layer: &Col<Self, FieldElement252>) -> Col<Self, FieldElement252> {
         if prev_layer.len() == 0 {
             return Poseidon252HashVec::from_vec(vec![]);
         }
@@ -162,12 +158,11 @@ impl MerkleOpsLifted<Poseidon252MerkleHasherLifted> for CudaBackend {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use crate::prover::backend::{Column, CpuBackend};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher as Poseidon252MerkleHasherOld;
-    use crate::prover::vcs::ops::MerkleOps;
-
     use crate::prover::backend::cuda::CudaBackend;
+    use crate::prover::backend::{Column, CpuBackend};
+    use crate::prover::vcs::ops::MerkleOps;
     use crate::stwo_cuda::base_field_vec::BaseFieldVec;
     use crate::stwo_cuda::poseidon252::Poseidon252HashVec;
 
@@ -179,16 +174,18 @@ mod tests {
         let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(16, size);
         let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
 
-        let expected_result = <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            log_size,
-            None,
-            &cpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
-        let result: Poseidon252HashVec = <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            log_size,
-            None,
-            &gpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
+        let expected_result =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                log_size,
+                None,
+                &cpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+        let result: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                log_size,
+                None,
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
 
         assert_eq!(result.to_cpu(), expected_result);
     }
@@ -204,31 +201,35 @@ mod tests {
         let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(12, previous_layer_size);
         let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
 
-        let cpu_previous_layer = <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            previous_layer_log_size,
-            None,
-            &cpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
-        let gpu_previous_layer: Poseidon252HashVec = <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            previous_layer_log_size,
-            None,
-            &gpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
+        let cpu_previous_layer =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &cpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+        let gpu_previous_layer: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
 
         // Current layer
         let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(10, current_layer_size);
         let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
 
-        let expected_result = <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            current_layer_log_size,
-            Some(&cpu_previous_layer),
-            &cpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
-        let result: Poseidon252HashVec = <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            current_layer_log_size,
-            Some(&gpu_previous_layer),
-            &gpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
+        let expected_result =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                current_layer_log_size,
+                Some(&cpu_previous_layer),
+                &cpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+        let result: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                current_layer_log_size,
+                Some(&gpu_previous_layer),
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
 
         assert_eq!(result.to_cpu(), expected_result);
     }
@@ -266,33 +267,36 @@ mod tests {
         let cpu_columns_vector: Vec<Vec<BaseField>> = columns_test_vector(12, previous_layer_size);
         let gpu_columns_vector: Vec<BaseFieldVec> = gpu_columns_from(&cpu_columns_vector);
 
-        let cpu_previous_layer = <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            previous_layer_log_size,
-            None,
-            &cpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
-        let gpu_previous_layer: Poseidon252HashVec = <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            previous_layer_log_size,
-            None,
-            &gpu_columns_vector.iter().collect::<Vec<_>>(),
-        );
+        let cpu_previous_layer =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &cpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
+        let gpu_previous_layer: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                previous_layer_log_size,
+                None,
+                &gpu_columns_vector.iter().collect::<Vec<_>>(),
+            );
 
         // Now build a layer WITH previous but WITHOUT columns
         let empty_cpu_columns: Vec<Vec<BaseField>> = vec![];
         let empty_gpu_columns: Vec<BaseFieldVec> = vec![];
 
-        let expected_result = <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            current_layer_log_size,
-            Some(&cpu_previous_layer),
-            &empty_cpu_columns.iter().collect::<Vec<_>>(),
-        );
-        let result: Poseidon252HashVec = <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
-            current_layer_log_size,
-            Some(&gpu_previous_layer),
-            &empty_gpu_columns.iter().collect::<Vec<_>>(),
-        );
+        let expected_result =
+            <CpuBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                current_layer_log_size,
+                Some(&cpu_previous_layer),
+                &empty_cpu_columns.iter().collect::<Vec<_>>(),
+            );
+        let result: Poseidon252HashVec =
+            <CudaBackend as MerkleOps<Poseidon252MerkleHasherOld>>::commit_on_layer(
+                current_layer_log_size,
+                Some(&gpu_previous_layer),
+                &empty_gpu_columns.iter().collect::<Vec<_>>(),
+            );
 
         assert_eq!(result.to_cpu(), expected_result);
     }
 }
-

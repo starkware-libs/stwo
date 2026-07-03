@@ -2,15 +2,15 @@ use bytemuck::cast_slice;
 use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
-use crate::core::channel::Blake2sChannelGeneric;
-use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
-use crate::prover::backend::{Backend, BackendForChannel, simd::SimdBackend};
-use crate::core::{
-    channel::{Blake2sChannel, Blake2sM31Channel, Poseidon252Channel},
-    proof_of_work::GrindOps,
-    vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sM31MerkleChannel},
-    vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel,
+use crate::core::channel::{
+    Blake2sChannel, Blake2sChannelGeneric, Blake2sM31Channel, Poseidon252Channel,
 };
+use crate::core::proof_of_work::GrindOps;
+use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
+use crate::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::{Backend, BackendForChannel};
 use crate::stwo_cuda::bindings;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]

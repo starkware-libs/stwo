@@ -1,9 +1,9 @@
-use crate::prover::AccumulationOps;
-use crate::prover::secure_column::SecureColumnByCoords;
 use crate::core::fields::qm31::SecureField;
-use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::backend::cuda::secure_column::CudaSecureColumn;
+use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::backend::CpuBackend;
+use crate::prover::secure_column::SecureColumnByCoords;
+use crate::prover::AccumulationOps;
 use crate::stwo_cuda::bindings;
 
 impl AccumulationOps for CudaBackend {
@@ -58,12 +58,11 @@ impl AccumulationOps for CudaBackend {
 
 #[cfg(test)]
 mod tests {
-    use crate::prover::AccumulationOps;
-    use crate::prover::backend::Column;
     use crate::core::fields::m31::{M31, P};
-    use crate::prover::secure_column::SecureColumnByCoords;
-
     use crate::prover::backend::cuda::CudaBackend;
+    use crate::prover::backend::Column;
+    use crate::prover::secure_column::SecureColumnByCoords;
+    use crate::prover::AccumulationOps;
     use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
     #[test]
@@ -134,10 +133,30 @@ mod tests {
         let result3 = left_secure_column.columns[3].to_cpu();
 
         for i in 0..1000 {
-            assert_eq!(result0[i], M31::from((i + i * 5) as u32), "Mismatch at index {} for column 0", i);
-            assert_eq!(result1[i], M31::from((i * 2 + i * 6) as u32), "Mismatch at index {} for column 1", i);
-            assert_eq!(result2[i], M31::from((i * 3 + i * 7) as u32), "Mismatch at index {} for column 2", i);
-            assert_eq!(result3[i], M31::from((i * 4 + i * 8) as u32), "Mismatch at index {} for column 3", i);
+            assert_eq!(
+                result0[i],
+                M31::from((i + i * 5) as u32),
+                "Mismatch at index {} for column 0",
+                i
+            );
+            assert_eq!(
+                result1[i],
+                M31::from((i * 2 + i * 6) as u32),
+                "Mismatch at index {} for column 1",
+                i
+            );
+            assert_eq!(
+                result2[i],
+                M31::from((i * 3 + i * 7) as u32),
+                "Mismatch at index {} for column 2",
+                i
+            );
+            assert_eq!(
+                result3[i],
+                M31::from((i * 4 + i * 8) as u32),
+                "Mismatch at index {} for column 3",
+                i
+            );
         }
 
         // Check last 1000 elements
@@ -146,10 +165,26 @@ mod tests {
             let expected1 = M31::from((i * 2) as u32) + M31::from((i * 6) as u32);
             let expected2 = M31::from((i * 3) as u32) + M31::from((i * 7) as u32);
             let expected3 = M31::from((i * 4) as u32) + M31::from((i * 8) as u32);
-            assert_eq!(result0[i], expected0, "Mismatch at index {} for column 0", i);
-            assert_eq!(result1[i], expected1, "Mismatch at index {} for column 1", i);
-            assert_eq!(result2[i], expected2, "Mismatch at index {} for column 2", i);
-            assert_eq!(result3[i], expected3, "Mismatch at index {} for column 3", i);
+            assert_eq!(
+                result0[i], expected0,
+                "Mismatch at index {} for column 0",
+                i
+            );
+            assert_eq!(
+                result1[i], expected1,
+                "Mismatch at index {} for column 1",
+                i
+            );
+            assert_eq!(
+                result2[i], expected2,
+                "Mismatch at index {} for column 2",
+                i
+            );
+            assert_eq!(
+                result3[i], expected3,
+                "Mismatch at index {} for column 3",
+                i
+            );
         }
     }
 
@@ -157,11 +192,13 @@ mod tests {
     /// This is the exact scenario that fails in test_prove_verify_all_builtins_cuda_v0.
     #[test]
     fn test_finalize_sequence_20_to_24() {
-        use crate::prover::poly::circle::{CircleEvaluation, CircleCoefficients, PolyOps, SecureCirclePoly};
-        use crate::core::poly::circle::CanonicCoset;
-        use crate::prover::poly::BitReversedOrder;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
+        use crate::prover::poly::circle::{
+            CircleCoefficients, CircleEvaluation, PolyOps, SecureCirclePoly,
+        };
+        use crate::prover::poly::BitReversedOrder;
         use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
         const SMALL_LOG_SIZE: u32 = 20;
@@ -178,7 +215,9 @@ mod tests {
 
         // Create 4 BaseField polynomials for SecureCirclePoly
         let cpu_values: [Vec<BaseField>; 4] = std::array::from_fn(|component| {
-            (0..small_size).map(|i| BaseField::from((i * (component + 1)) as u32)).collect()
+            (0..small_size)
+                .map(|i| BaseField::from((i * (component + 1)) as u32))
+                .collect()
         });
 
         let gpu_values: [BaseFieldVec; 4] = cpu_values.clone().map(|v| BaseFieldVec::from_vec(v));
@@ -202,27 +241,51 @@ mod tests {
         let gpu_large_twiddles = CudaBackend::precompute_twiddles(large_coset.half_coset());
 
         // Evaluate polynomials on large domain (this is what finalize does)
-        let cpu_evals: [Vec<BaseField>; 4] = cpu_polys.map(|p| {
-            CpuBackend::evaluate(&p, large_domain, &cpu_large_twiddles).values
-        });
+        let cpu_evals: [Vec<BaseField>; 4] =
+            cpu_polys.map(|p| CpuBackend::evaluate(&p, large_domain, &cpu_large_twiddles).values);
 
         let gpu_evals: [Vec<BaseField>; 4] = gpu_polys.map(|p| {
-            CudaBackend::evaluate(&p, large_domain, &gpu_large_twiddles).values.to_cpu()
+            CudaBackend::evaluate(&p, large_domain, &gpu_large_twiddles)
+                .values
+                .to_cpu()
         });
 
         // Compare evaluations
         for i in 0..4 {
-            assert_eq!(cpu_evals[i].len(), large_size, "CPU eval {} length mismatch", i);
-            assert_eq!(gpu_evals[i].len(), large_size, "GPU eval {} length mismatch", i);
-            assert_eq!(cpu_evals[i][..1000], gpu_evals[i][..1000], "First 1000 of eval {} mismatch", i);
-            assert_eq!(cpu_evals[i][large_size-1000..], gpu_evals[i][large_size-1000..], "Last 1000 of eval {} mismatch", i);
+            assert_eq!(
+                cpu_evals[i].len(),
+                large_size,
+                "CPU eval {} length mismatch",
+                i
+            );
+            assert_eq!(
+                gpu_evals[i].len(),
+                large_size,
+                "GPU eval {} length mismatch",
+                i
+            );
+            assert_eq!(
+                cpu_evals[i][..1000],
+                gpu_evals[i][..1000],
+                "First 1000 of eval {} mismatch",
+                i
+            );
+            assert_eq!(
+                cpu_evals[i][large_size - 1000..],
+                gpu_evals[i][large_size - 1000..],
+                "Last 1000 of eval {} mismatch",
+                i
+            );
         }
 
         // Create values at large_size (like values in finalize)
         let cpu_values_large: [Vec<BaseField>; 4] = std::array::from_fn(|component| {
-            (0..large_size).map(|i| BaseField::from((i * (component + 10)) as u32)).collect()
+            (0..large_size)
+                .map(|i| BaseField::from((i * (component + 10)) as u32))
+                .collect()
         });
-        let gpu_values_large: [BaseFieldVec; 4] = cpu_values_large.clone().map(|v| BaseFieldVec::from_vec(v));
+        let gpu_values_large: [BaseFieldVec; 4] =
+            cpu_values_large.clone().map(|v| BaseFieldVec::from_vec(v));
 
         // Accumulate (eval + values)
         let mut cpu_accumulated: [Vec<BaseField>; 4] = cpu_values_large.clone();
@@ -243,8 +306,18 @@ mod tests {
         // Compare accumulated values by checking the first and last elements (without consuming)
         for i in 0..4 {
             let gpu_col = gpu_secure_col.columns[i].to_cpu();
-            assert_eq!(cpu_accumulated[i][..1000], gpu_col[..1000], "First 1000 of accumulated {} mismatch", i);
-            assert_eq!(cpu_accumulated[i][large_size-1000..], gpu_col[large_size-1000..], "Last 1000 of accumulated {} mismatch", i);
+            assert_eq!(
+                cpu_accumulated[i][..1000],
+                gpu_col[..1000],
+                "First 1000 of accumulated {} mismatch",
+                i
+            );
+            assert_eq!(
+                cpu_accumulated[i][large_size - 1000..],
+                gpu_col[large_size - 1000..],
+                "Last 1000 of accumulated {} mismatch",
+                i
+            );
         }
 
         // Now interpolate the accumulated values to get final polynomial
@@ -263,9 +336,24 @@ mod tests {
         for i in 0..4 {
             let cpu_coeffs = &cpu_final_polys[i].coeffs;
             let gpu_coeffs = gpu_final_polys[i].coeffs.to_cpu();
-            assert_eq!(cpu_coeffs.len(), gpu_coeffs.len(), "Coeffs length mismatch for poly {}", i);
-            assert_eq!(cpu_coeffs[..1000], gpu_coeffs[..1000], "First 1000 coeffs of poly {} mismatch", i);
-            assert_eq!(cpu_coeffs[large_size-1000..], gpu_coeffs[large_size-1000..], "Last 1000 coeffs of poly {} mismatch", i);
+            assert_eq!(
+                cpu_coeffs.len(),
+                gpu_coeffs.len(),
+                "Coeffs length mismatch for poly {}",
+                i
+            );
+            assert_eq!(
+                cpu_coeffs[..1000],
+                gpu_coeffs[..1000],
+                "First 1000 coeffs of poly {} mismatch",
+                i
+            );
+            assert_eq!(
+                cpu_coeffs[large_size - 1000..],
+                gpu_coeffs[large_size - 1000..],
+                "Last 1000 coeffs of poly {} mismatch",
+                i
+            );
         }
 
         println!("test_finalize_sequence_20_to_24: All checks passed!");
@@ -311,21 +399,25 @@ mod tests {
     /// This tests the hypothesis that the bug is in CUDA NTT for log_n >= 13.
     #[test]
     fn test_poly_extend_evaluate_log19() {
-        use crate::prover::poly::circle::{CircleEvaluation, CircleCoefficients, PolyOps};
-        use crate::core::poly::circle::CanonicCoset;
-        use crate::prover::poly::BitReversedOrder;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
+        use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
+        use crate::prover::poly::BitReversedOrder;
         use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
-        const SMALL_LOG_SIZE: u32 = 7;  // Small polynomial
+        const SMALL_LOG_SIZE: u32 = 7; // Small polynomial
         const LARGE_LOG_SIZE: u32 = 19; // Evaluate on large domain (uses two-stage NTT)
 
         let small_size = 1usize << SMALL_LOG_SIZE;
         let large_size = 1usize << LARGE_LOG_SIZE;
 
-        println!("Testing poly extend+evaluate: {} -> {} ({}x expansion)",
-            SMALL_LOG_SIZE, LARGE_LOG_SIZE, large_size / small_size);
+        println!(
+            "Testing poly extend+evaluate: {} -> {} ({}x expansion)",
+            SMALL_LOG_SIZE,
+            LARGE_LOG_SIZE,
+            large_size / small_size
+        );
 
         // Create a small polynomial with some non-trivial coefficients
         let cpu_coeffs: Vec<BaseField> = (0..small_size)
@@ -336,8 +428,16 @@ mod tests {
         let cpu_poly = CircleCoefficients::<CpuBackend>::new(cpu_coeffs);
         let gpu_poly = CircleCoefficients::<CudaBackend>::new(gpu_coeffs);
 
-        println!("CPU poly log_size: {}, coeffs.len: {}", cpu_poly.log_size(), cpu_poly.coeffs.len());
-        println!("GPU poly log_size: {}, coeffs.len: {}", gpu_poly.log_size(), gpu_poly.coeffs.len());
+        println!(
+            "CPU poly log_size: {}, coeffs.len: {}",
+            cpu_poly.log_size(),
+            cpu_poly.coeffs.len()
+        );
+        println!(
+            "GPU poly log_size: {}, coeffs.len: {}",
+            gpu_poly.log_size(),
+            gpu_poly.coeffs.len()
+        );
 
         // Compute twiddles for the large domain
         let large_coset = CanonicCoset::new(LARGE_LOG_SIZE);
@@ -347,10 +447,16 @@ mod tests {
         let gpu_twiddles = CudaBackend::precompute_twiddles(large_coset.half_coset());
 
         // Evaluate both polynomials on the large domain
-        println!("Evaluating CPU poly on domain log_size={}...", LARGE_LOG_SIZE);
+        println!(
+            "Evaluating CPU poly on domain log_size={}...",
+            LARGE_LOG_SIZE
+        );
         let cpu_eval = CpuBackend::evaluate(&cpu_poly, large_domain, &cpu_twiddles);
 
-        println!("Evaluating GPU poly on domain log_size={}...", LARGE_LOG_SIZE);
+        println!(
+            "Evaluating GPU poly on domain log_size={}...",
+            LARGE_LOG_SIZE
+        );
         let gpu_eval = CudaBackend::evaluate(&gpu_poly, large_domain, &gpu_twiddles);
 
         // Compare results
@@ -372,18 +478,26 @@ mod tests {
         }
 
         if diff_count > 0 {
-            println!("MISMATCH: {} differences out of {} (first at index {})",
-                diff_count, cpu_values.len(), first_diff_idx.unwrap());
+            println!(
+                "MISMATCH: {} differences out of {} (first at index {})",
+                diff_count,
+                cpu_values.len(),
+                first_diff_idx.unwrap()
+            );
             let idx = first_diff_idx.unwrap();
             println!("  cpu_eval[{}] = {:?}", idx, cpu_values[idx]);
             println!("  gpu_eval[{}] = {:?}", idx, gpu_values[idx]);
 
             // Also check a few more indices
-            for check_idx in [0, 1, 16, 128, 256, large_size/2, large_size-1] {
+            for check_idx in [0, 1, 16, 128, 256, large_size / 2, large_size - 1] {
                 if check_idx < large_size {
-                    println!("  [{}]: CPU={:?}, GPU={:?}, match={}",
-                        check_idx, cpu_values[check_idx], gpu_values[check_idx],
-                        cpu_values[check_idx] == gpu_values[check_idx]);
+                    println!(
+                        "  [{}]: CPU={:?}, GPU={:?}, match={}",
+                        check_idx,
+                        cpu_values[check_idx],
+                        gpu_values[check_idx],
+                        cpu_values[check_idx] == gpu_values[check_idx]
+                    );
                 }
             }
         } else {
@@ -397,11 +511,11 @@ mod tests {
     /// This should PASS since single-stage NTT works.
     #[test]
     fn test_poly_extend_evaluate_log12() {
-        use crate::prover::poly::circle::{CircleEvaluation, CircleCoefficients, PolyOps};
-        use crate::core::poly::circle::CanonicCoset;
-        use crate::prover::poly::BitReversedOrder;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
+        use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
+        use crate::prover::poly::BitReversedOrder;
         use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
         const SMALL_LOG_SIZE: u32 = 7;
@@ -410,8 +524,12 @@ mod tests {
         let small_size = 1usize << SMALL_LOG_SIZE;
         let large_size = 1usize << LARGE_LOG_SIZE;
 
-        println!("Testing poly extend+evaluate: {} -> {} ({}x expansion)",
-            SMALL_LOG_SIZE, LARGE_LOG_SIZE, large_size / small_size);
+        println!(
+            "Testing poly extend+evaluate: {} -> {} ({}x expansion)",
+            SMALL_LOG_SIZE,
+            LARGE_LOG_SIZE,
+            large_size / small_size
+        );
 
         let cpu_coeffs: Vec<BaseField> = (0..small_size)
             .map(|i| BaseField::from((i * 7 + 13) as u32))
@@ -442,19 +560,28 @@ mod tests {
             }
         }
 
-        println!("Result: {} differences out of {}", diff_count, cpu_values.len());
-        assert_eq!(diff_count, 0, "CPU and GPU evaluations should match for log_size 12!");
+        println!(
+            "Result: {} differences out of {}",
+            diff_count,
+            cpu_values.len()
+        );
+        assert_eq!(
+            diff_count, 0,
+            "CPU and GPU evaluations should match for log_size 12!"
+        );
     }
 
     /// Test the exact finalize sequence with two components of very different sizes.
     /// This mimics what happens with rc_6 (log_size=7) + rc_9_9 (log_size=19).
     #[test]
     fn test_finalize_sequence_7_to_19() {
-        use crate::prover::poly::circle::{CircleEvaluation, CircleCoefficients, PolyOps, SecureCirclePoly};
-        use crate::core::poly::circle::CanonicCoset;
-        use crate::prover::poly::BitReversedOrder;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
+        use crate::prover::poly::circle::{
+            CircleCoefficients, CircleEvaluation, PolyOps, SecureCirclePoly,
+        };
+        use crate::prover::poly::BitReversedOrder;
         use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
         const SMALL_LOG_SIZE: u32 = 7;
@@ -463,7 +590,10 @@ mod tests {
         let small_size = 1usize << SMALL_LOG_SIZE;
         let large_size = 1usize << LARGE_LOG_SIZE;
 
-        println!("Testing finalize sequence: {} -> {}", SMALL_LOG_SIZE, LARGE_LOG_SIZE);
+        println!(
+            "Testing finalize sequence: {} -> {}",
+            SMALL_LOG_SIZE, LARGE_LOG_SIZE
+        );
 
         // Precompute twiddles for the large domain (like finalize does)
         let large_coset = CanonicCoset::new(LARGE_LOG_SIZE);
@@ -473,18 +603,25 @@ mod tests {
         // Step 1: Create values at small log_size (simulates sub_accumulations[7])
         let small_domain = CanonicCoset::new(SMALL_LOG_SIZE).circle_domain();
         let cpu_small_values: [Vec<BaseField>; 4] = std::array::from_fn(|c| {
-            (0..small_size).map(|i| BaseField::from(((i * (c + 1) * 7) % 2147483647) as u32)).collect()
+            (0..small_size)
+                .map(|i| BaseField::from(((i * (c + 1) * 7) % 2147483647) as u32))
+                .collect()
         });
-        let gpu_small_values: [BaseFieldVec; 4] = cpu_small_values.clone().map(|v| BaseFieldVec::from_vec(v));
+        let gpu_small_values: [BaseFieldVec; 4] =
+            cpu_small_values.clone().map(|v| BaseFieldVec::from_vec(v));
 
         // Step 2: Interpolate to get prev_poly (simulates creating cur_poly at log_size=7)
-        println!("Step 2: Interpolating small values at log_size={}...", SMALL_LOG_SIZE);
+        println!(
+            "Step 2: Interpolating small values at log_size={}...",
+            SMALL_LOG_SIZE
+        );
         let cpu_prev_poly: [CircleCoefficients<CpuBackend>; 4] = cpu_small_values.map(|v| {
             let eval = CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(small_domain, v);
             eval.interpolate_with_twiddles(&cpu_twiddles)
         });
         let gpu_prev_poly: [CircleCoefficients<CudaBackend>; 4] = gpu_small_values.map(|v| {
-            let eval = CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(small_domain, v);
+            let eval =
+                CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(small_domain, v);
             CudaBackend::interpolate(eval, &gpu_twiddles)
         });
 
@@ -492,31 +629,52 @@ mod tests {
         for i in 0..4 {
             let cpu_coeffs = &cpu_prev_poly[i].coeffs;
             let gpu_coeffs = gpu_prev_poly[i].coeffs.to_cpu();
-            assert_eq!(cpu_coeffs.len(), gpu_coeffs.len(), "prev_poly[{}] size mismatch", i);
+            assert_eq!(
+                cpu_coeffs.len(),
+                gpu_coeffs.len(),
+                "prev_poly[{}] size mismatch",
+                i
+            );
             let mismatches: Vec<_> = (0..cpu_coeffs.len())
                 .filter(|&j| cpu_coeffs[j] != gpu_coeffs[j])
                 .collect();
             if !mismatches.is_empty() {
-                println!("prev_poly[{}] has {} mismatches: {:?}", i, mismatches.len(), &mismatches[..mismatches.len().min(10)]);
+                println!(
+                    "prev_poly[{}] has {} mismatches: {:?}",
+                    i,
+                    mismatches.len(),
+                    &mismatches[..mismatches.len().min(10)]
+                );
             }
-            assert!(mismatches.is_empty(), "prev_poly[{}] should match after interpolation", i);
+            assert!(
+                mismatches.is_empty(),
+                "prev_poly[{}] should match after interpolation",
+                i
+            );
         }
         println!("Step 2: prev_poly interpolation matches!");
 
         // Step 3: Create values at large log_size (simulates sub_accumulations[19])
         let large_domain = CanonicCoset::new(LARGE_LOG_SIZE).circle_domain();
         let cpu_large_values: [Vec<BaseField>; 4] = std::array::from_fn(|c| {
-            (0..large_size).map(|i| BaseField::from(((i * (c + 10) * 13) % 2147483647) as u32)).collect()
+            (0..large_size)
+                .map(|i| BaseField::from(((i * (c + 10) * 13) % 2147483647) as u32))
+                .collect()
         });
-        let gpu_large_values: [BaseFieldVec; 4] = cpu_large_values.clone().map(|v| BaseFieldVec::from_vec(v));
+        let gpu_large_values: [BaseFieldVec; 4] =
+            cpu_large_values.clone().map(|v| BaseFieldVec::from_vec(v));
 
         // Step 4: Evaluate prev_poly on large domain
-        println!("Step 4: Evaluating prev_poly on domain log_size={}...", LARGE_LOG_SIZE);
-        let cpu_eval: [Vec<BaseField>; 4] = cpu_prev_poly.map(|p| {
-            CpuBackend::evaluate(&p, large_domain, &cpu_twiddles).values
-        });
+        println!(
+            "Step 4: Evaluating prev_poly on domain log_size={}...",
+            LARGE_LOG_SIZE
+        );
+        let cpu_eval: [Vec<BaseField>; 4] =
+            cpu_prev_poly.map(|p| CpuBackend::evaluate(&p, large_domain, &cpu_twiddles).values);
         let gpu_eval: [Vec<BaseField>; 4] = gpu_prev_poly.map(|p| {
-            CudaBackend::evaluate(&p, large_domain, &gpu_twiddles).values.to_cpu()
+            CudaBackend::evaluate(&p, large_domain, &gpu_twiddles)
+                .values
+                .to_cpu()
         });
 
         // Verify evaluation matches
@@ -525,11 +683,22 @@ mod tests {
                 .filter(|&j| cpu_eval[i][j] != gpu_eval[i][j])
                 .collect();
             if !mismatches.is_empty() {
-                println!("eval[{}] has {} mismatches (first 10): {:?}", i, mismatches.len(), &mismatches[..mismatches.len().min(10)]);
-                println!("  first mismatch at {}: CPU={:?}, GPU={:?}",
-                    mismatches[0], cpu_eval[i][mismatches[0]], gpu_eval[i][mismatches[0]]);
+                println!(
+                    "eval[{}] has {} mismatches (first 10): {:?}",
+                    i,
+                    mismatches.len(),
+                    &mismatches[..mismatches.len().min(10)]
+                );
+                println!(
+                    "  first mismatch at {}: CPU={:?}, GPU={:?}",
+                    mismatches[0], cpu_eval[i][mismatches[0]], gpu_eval[i][mismatches[0]]
+                );
             }
-            assert!(mismatches.is_empty(), "eval[{}] should match after evaluation", i);
+            assert!(
+                mismatches.is_empty(),
+                "eval[{}] should match after evaluation",
+                i
+            );
         }
         println!("Step 4: prev_poly evaluation matches!");
 
@@ -557,7 +726,12 @@ mod tests {
                 .filter(|&j| cpu_accumulated[i][j] != gpu_acc[j])
                 .collect();
             if !mismatches.is_empty() {
-                println!("accumulated[{}] has {} mismatches (first 10): {:?}", i, mismatches.len(), &mismatches[..mismatches.len().min(10)]);
+                println!(
+                    "accumulated[{}] has {} mismatches (first 10): {:?}",
+                    i,
+                    mismatches.len(),
+                    &mismatches[..mismatches.len().min(10)]
+                );
             }
             assert!(mismatches.is_empty(), "accumulated[{}] should match", i);
         }
@@ -571,7 +745,8 @@ mod tests {
         });
         let gpu_accumulated_cols: [BaseFieldVec; 4] = gpu_values_col.columns;
         let gpu_final: [CircleCoefficients<CudaBackend>; 4] = gpu_accumulated_cols.map(|v| {
-            let eval = CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(large_domain, v);
+            let eval =
+                CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(large_domain, v);
             CudaBackend::interpolate(eval, &gpu_twiddles)
         });
 
@@ -583,9 +758,16 @@ mod tests {
                 .filter(|&j| cpu_coeffs[j] != gpu_coeffs[j])
                 .collect();
             if !mismatches.is_empty() {
-                println!("final_poly[{}] has {} mismatches (first 10): {:?}", i, mismatches.len(), &mismatches[..mismatches.len().min(10)]);
-                println!("  first mismatch at {}: CPU={:?}, GPU={:?}",
-                    mismatches[0], cpu_coeffs[mismatches[0]], gpu_coeffs[mismatches[0]]);
+                println!(
+                    "final_poly[{}] has {} mismatches (first 10): {:?}",
+                    i,
+                    mismatches.len(),
+                    &mismatches[..mismatches.len().min(10)]
+                );
+                println!(
+                    "  first mismatch at {}: CPU={:?}, GPU={:?}",
+                    mismatches[0], cpu_coeffs[mismatches[0]], gpu_coeffs[mismatches[0]]
+                );
             }
             assert!(mismatches.is_empty(), "final_poly[{}] should match", i);
         }
@@ -599,11 +781,11 @@ mod tests {
     /// when given the same input values.
     #[test]
     fn test_interpolation_log19_with_real_values() {
-        use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
-        use crate::core::poly::circle::CanonicCoset;
-        use crate::prover::poly::BitReversedOrder;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
+        use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
+        use crate::prover::poly::BitReversedOrder;
         use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
         const LOG_SIZE: u32 = 19;
@@ -613,18 +795,20 @@ mod tests {
 
         // Create values that mimic actual constraint evaluation results
         // Use a pattern that might trigger bugs (not just sequential numbers)
-        let values: Vec<BaseField> = (0..size).map(|i| {
-            // Mix of different patterns to simulate real constraint values
-            let val = ((i as u64 * 1863506683u64) % 2147483647) as u32;
-            BaseField::from(val)
-        }).collect();
+        let values: Vec<BaseField> = (0..size)
+            .map(|i| {
+                // Mix of different patterns to simulate real constraint values
+                let val = ((i as u64 * 1863506683u64) % 2147483647) as u32;
+                BaseField::from(val)
+            })
+            .collect();
 
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
 
         // CPU interpolation
         let cpu_eval = CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
             domain,
-            values.clone().into_iter().collect()
+            values.clone().into_iter().collect(),
         );
         let cpu_twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
         let cpu_poly = cpu_eval.interpolate_with_twiddles(&cpu_twiddles);
@@ -633,14 +817,18 @@ mod tests {
         // GPU interpolation
         let gpu_eval = CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(
             domain,
-            BaseFieldVec::from_vec(values)
+            BaseFieldVec::from_vec(values),
         );
         let gpu_twiddles = CudaBackend::precompute_twiddles(domain.half_coset);
         let gpu_poly = gpu_eval.interpolate_with_twiddles(&gpu_twiddles);
         let gpu_coeffs = gpu_poly.coeffs.to_cpu();
 
         // Compare
-        assert_eq!(cpu_coeffs.len(), gpu_coeffs.len(), "Coefficient count mismatch");
+        assert_eq!(
+            cpu_coeffs.len(),
+            gpu_coeffs.len(),
+            "Coefficient count mismatch"
+        );
 
         let mut diff_count = 0;
         let mut first_diff_idx = None;
@@ -654,25 +842,38 @@ mod tests {
         }
 
         if diff_count > 0 {
-            println!("MISMATCH: {} differences out of {}", diff_count, cpu_coeffs.len());
+            println!(
+                "MISMATCH: {} differences out of {}",
+                diff_count,
+                cpu_coeffs.len()
+            );
             if let Some(idx) = first_diff_idx {
-                println!("First mismatch at index {}: CPU={:?}, GPU={:?}",
-                    idx, cpu_coeffs[idx], gpu_coeffs[idx]);
+                println!(
+                    "First mismatch at index {}: CPU={:?}, GPU={:?}",
+                    idx, cpu_coeffs[idx], gpu_coeffs[idx]
+                );
                 // Print surrounding values
                 let start = idx.saturating_sub(4);
                 let end = (idx + 5).min(cpu_coeffs.len());
                 println!("Context [{}..{}]:", start, end);
                 for j in start..end {
-                    println!("  [{}]: CPU={:?}, GPU={:?} {}",
-                        j, cpu_coeffs[j], gpu_coeffs[j],
-                        if j == idx { "<-- FIRST DIFF" } else { "" });
+                    println!(
+                        "  [{}]: CPU={:?}, GPU={:?} {}",
+                        j,
+                        cpu_coeffs[j],
+                        gpu_coeffs[j],
+                        if j == idx { "<-- FIRST DIFF" } else { "" }
+                    );
                 }
             }
         } else {
             println!("SUCCESS: All {} coefficients match!", cpu_coeffs.len());
         }
 
-        assert_eq!(diff_count, 0, "CPU and GPU interpolation should match at log_size=19!");
+        assert_eq!(
+            diff_count, 0,
+            "CPU and GPU interpolation should match at log_size=19!"
+        );
     }
 
     #[test]
@@ -685,11 +886,12 @@ mod tests {
         let cpu_cols: Vec<SecureColumnByCoords<CpuBackend>> = sizes
             .iter()
             .map(|&size| {
-                let columns: [Vec<crate::core::fields::m31::BaseField>; 4] = std::array::from_fn(|c| {
-                    (0..size)
-                        .map(|i| M31::from(((i * (c + 1) * 7 + c * 13) % 2147483647) as u32))
-                        .collect()
-                });
+                let columns: [Vec<crate::core::fields::m31::BaseField>; 4] =
+                    std::array::from_fn(|c| {
+                        (0..size)
+                            .map(|i| M31::from(((i * (c + 1) * 7 + c * 13) % 2147483647) as u32))
+                            .collect()
+                    });
                 SecureColumnByCoords { columns }
             })
             .collect();
@@ -706,14 +908,17 @@ mod tests {
 
         let cpu_vals = cpu_result.to_vec();
         let gpu_vals_on_cpu = gpu_result.to_cpu().to_vec();
-        assert_eq!(cpu_vals, gpu_vals_on_cpu, "lift_and_accumulate GPU vs CPU mismatch");
+        assert_eq!(
+            cpu_vals, gpu_vals_on_cpu,
+            "lift_and_accumulate GPU vs CPU mismatch"
+        );
     }
 
     /// Test if SIMD and CUDA twiddles are identical at log_size=19
     #[test]
     fn test_twiddles_match_log19() {
-        use crate::core::poly::circle::CanonicCoset;
         use crate::core::fields::m31::BaseField;
+        use crate::core::poly::circle::CanonicCoset;
         use crate::prover::backend::CpuBackend;
         use crate::prover::poly::circle::PolyOps;
 
@@ -744,15 +949,24 @@ mod tests {
         }
 
         if diff_count > 0 {
-            println!("TWIDDLES MISMATCH: {} differences out of {}", diff_count, cpu_tw.len());
+            println!(
+                "TWIDDLES MISMATCH: {} differences out of {}",
+                diff_count,
+                cpu_tw.len()
+            );
             if let Some(idx) = first_diff_idx {
-                println!("First mismatch at index {}: CPU={:?}, GPU={:?}",
-                    idx, cpu_tw[idx], gpu_tw[idx]);
+                println!(
+                    "First mismatch at index {}: CPU={:?}, GPU={:?}",
+                    idx, cpu_tw[idx], gpu_tw[idx]
+                );
             }
         } else {
             println!("SUCCESS: All {} twiddles match!", cpu_tw.len());
         }
 
-        assert_eq!(diff_count, 0, "CPU and GPU twiddles should match at log_size=19!");
+        assert_eq!(
+            diff_count, 0,
+            "CPU and GPU twiddles should match at log_size=19!"
+        );
     }
 }

@@ -20,7 +20,9 @@ fn main() {
     // `cargo check`): STWO_CUDA_SKIP_BUILD=1 skips the native compile + link. `cargo check`
     // does not link, so the missing libstwo_cuda is fine. On the GPU box leave it unset.
     if std::env::var_os("STWO_CUDA_SKIP_BUILD").is_some() {
-        println!("cargo:warning=STWO_CUDA_SKIP_BUILD set — skipping CUDA native build (check-only)");
+        println!(
+            "cargo:warning=STWO_CUDA_SKIP_BUILD set — skipping CUDA native build (check-only)"
+        );
         return;
     }
 

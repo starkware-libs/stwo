@@ -408,6 +408,255 @@ void cuda_free_memory(void *device_ptr) {
 #endif
 }
 
+// STOPGAP (GATE_AIR_STREAM_COMMIT only): force a deferred cudaFreeAsync to
+// actually complete and return its block to the pool free-list BEFORE the next
+// per-column cudaMallocFromPoolAsync, so the streamed fused-commit loop reuses
+// one 128 MiB segment instead of hoarding one per eval column (~170x -> OOM at
+// 2^24). cudaStreamSynchronize(0) drains the default stream so the pending free
+// completes; cudaMemPoolTrimTo then hands the reclaimed segment back to the
+// driver. Trim is GUARDED on the pool being initialized, so on the
+// cudaMalloc-fallback path (no pool) this is just a stream sync — no-op growth
+// control. Called only from fused_commit::dehydrate_column (streamed path); the
+// legacy/non-stream path never reaches it. This is a throwaway stopgap; the
+// async-overlap version supersedes it later.
+extern "C" void cuda_stream_reclaim_freed(size_t keep_bytes) {
+    cudaStreamSynchronize(0);
+    if (g_mem_pool_initialized && g_mem_pool != nullptr) {
+        cudaMemPoolTrimTo(g_mem_pool, keep_bytes);
+    }
+}
+
+// PART A (GATE_AIR_STREAM_COMMIT reclaim without the per-column OS release/re-map churn):
+// drain the default stream so the deferred cudaFreeAsync completes and the freed block is back on
+// the pool free-list BEFORE the next cudaMallocFromPoolAsync (this bounds live memory — no OOM
+// regression), but do NOT cudaMemPoolTrimTo. With ReleaseThreshold=UINT64_MAX the pool CACHES the
+// freed segment and hands it straight back to the next same-size alloc, instead of releasing it to
+// the OS and re-mapping it every column. The per-column TrimTo(0)->re-cudaMalloc round trip is the
+// bulk of the ~22 s tree1 streaming serialization tax (TBASE_DECOMP_ANALYSIS Q1b); removing it keeps
+// the memory bound (the sync still gates live buffers) while eliminating the OS churn.
+//
+// CORRECTNESS: unchanged from cuda_stream_reclaim_freed for the dehydrate/rehydrate byte capture —
+// the pageable D2H (`to_vec`) / H2D already blocked the host until the copy completed, so the bytes
+// are captured before this runs; this only governs WHEN freed device memory is reused. Byte-
+// identical committed data. The stream sync is retained precisely to preserve the memory bound
+// (Part A drops the TrimTo, NOT the sync — dropping the sync is Part B's job and needs events).
+extern "C" void cuda_stream_reclaim_freed_notrim() {
+    cudaStreamSynchronize(0);
+}
+
+// OPTION-0 (GATE_AIR_BOUNDARY_TRIM): a ONE-SHOT pool defrag at the tree1->interaction boundary.
+// After the streamed tree1 commit, the pool caches ~23.5 GiB of freed 256-MiB tree1 eval segments
+// (ReleaseThreshold=UINT64_MAX + Part-A notrim, on purpose — no per-column churn). Those cached
+// segments, interleaved with the live contiguous 23.5 GiB d_cols, prevent the pool from carving the
+// fresh CONTIGUOUS 3 GiB d_inter at 2^25 even though the live working set (~29 GiB) fits 40 GB. This
+// releases ALL cached (already-freed) segments back to the OS ONCE so the contiguous d_inter fits.
+// Sync first so any deferred cudaFreeAsync has completed and its block is trimmable.
+//
+// CORRECTNESS: cudaMemPoolTrimTo only returns segments that are already FREE (freed + drained) to
+// the OS; it never touches a LIVE allocation (d_cols, tree0, twiddles are untouched). Byte-identical
+// proof, no working-set change. This is ONE call per proof at a phase boundary (negligible), NOT the
+// per-column reclaim (that stays notrim by default). Guarded on pool init; no-op on the
+// cudaMalloc-fallback path.
+extern "C" void cuda_pool_trim() {
+    cudaStreamSynchronize(0);
+    if (g_mem_pool_initialized && g_mem_pool != nullptr) {
+        cudaMemPoolTrimTo(g_mem_pool, 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// STEP 2 (GATE_AIR_STREAM_COMMIT) async substrate: PINNED (page-locked) host
+// buffers + async H2D/D2H on a caller stream. Pinned host memory lets the copy
+// engine DMA concurrently with kernel compute, so the streamed-commit D2H (at
+// commit) and per-reader H2D (OODS/quotient/composition rehydration) can be
+// OVERLAPPED with GPU work instead of stalling on pageable-memory staging.
+//
+// These are the minimal primitives; wiring the streaming-commit stash onto a
+// pinned buffer + a dedicated copy stream (so the overlap actually happens) is
+// the remaining async work — see the deferred note in fused_commit.rs. Today
+// the stash is pageable `Vec<u32>` and the existing cuda_mem_copy_* helpers
+// already issue cudaMemcpyAsync on the default stream, so correctness holds;
+// these give the box the substrate to switch the stash to pinned + overlap.
+// ---------------------------------------------------------------------------
+
+// Allocate `size` u32s of page-locked host memory (cudaHostAlloc). Returns NULL
+// on failure. Free with cuda_free_pinned_host.
+extern "C" uint32_t *cuda_alloc_pinned_host_uint32_t(unsigned int size) {
+    void *host_ptr = nullptr;
+    cudaError_t err = cudaHostAlloc(&host_ptr, (size_t)size * sizeof(uint32_t),
+                                    cudaHostAllocDefault);
+    if (err != cudaSuccess) {
+        printf("Error allocating pinned host memory: %s\n", cudaGetErrorString(err));
+        return nullptr;
+    }
+    return (uint32_t *)host_ptr;
+}
+
+extern "C" void cuda_free_pinned_host(void *host_ptr) {
+    cudaError_t err = cudaFreeHost(host_ptr);
+    if (err != cudaSuccess) {
+        printf("Error freeing pinned host memory: %s\n", cudaGetErrorString(err));
+    }
+}
+
+// Async D2H copy of `size` u32s from device to (ideally pinned) host on
+// `stream`. Does NOT synchronize — the caller sequences the stream. When
+// `host_ptr` is pinned, this overlaps with compute on other streams.
+extern "C" void copy_uint32_t_vec_from_device_to_host_async(
+        uint32_t *device_ptr, uint32_t *host_ptr, unsigned int size, cudaStream_t stream) {
+    cudaMemcpyAsync(host_ptr, device_ptr, (size_t)size * sizeof(uint32_t),
+                    cudaMemcpyDeviceToHost, stream);
+}
+
+// Async H2D copy of `size` u32s from (ideally pinned) host into a freshly
+// allocated device buffer on `stream`. Returns the device pointer. Does NOT
+// synchronize.
+extern "C" uint32_t *copy_uint32_t_vec_from_host_to_device_async(
+        uint32_t *host_ptr, unsigned int size, cudaStream_t stream) {
+    uint32_t *device_ptr = cuda_malloc_uint32_t((int)size);
+    cudaMemcpyAsync(device_ptr, host_ptr, (size_t)size * sizeof(uint32_t),
+                    cudaMemcpyHostToDevice, stream);
+    return device_ptr;
+}
+
+// ---------------------------------------------------------------------------
+// PART B1/B2 (GATE_AIR_ASYNC_STASH): dedicated copy stream + events + a
+// no-redundant-memset async H2D. The default `copy_uint32_t_vec_from_host_to_device`
+// path does cuda_malloc_uint32_t (which cudaMemsetAsync-zeroes the WHOLE buffer)
+// AND a second cudaMemsetAsync(0) before the copy — TWO full-column device memsets
+// per rehydrate, all on stream 0, serialized. Since the H2D copy fully overwrites
+// [0,size), both memsets are dead work. The helpers below allocate WITHOUT the
+// memset and copy on a dedicated stream so the transfer can overlap compute and
+// so parallel readers (OODS/quotient, rayon workers) don't serialize on stream 0.
+//
+// CORRECTNESS: byte-identical. The destination is fully written by the H2D of the
+// exact committed bytes; the caller synchronizes the copy stream (or waits on the
+// recorded event) before any kernel reads the buffer, so no consumer ever observes
+// partially-arrived or uninitialized data. Dropping the memset is safe precisely
+// because the copy covers the entire allocation.
+// ---------------------------------------------------------------------------
+
+// Create a non-blocking copy stream (does NOT implicitly sync the default stream,
+// so copies on it overlap default-stream compute). Returned as an opaque handle.
+extern "C" cudaStream_t cuda_create_copy_stream() {
+    cudaStream_t s = nullptr;
+    cudaError_t err = cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+    if (err != cudaSuccess) {
+        printf("Error creating copy stream: %s\n", cudaGetErrorString(err));
+        return nullptr;
+    }
+    return s;
+}
+
+extern "C" void cuda_destroy_stream(cudaStream_t stream) {
+    if (stream != nullptr) {
+        cudaStreamSynchronize(stream);
+        cudaStreamDestroy(stream);
+    }
+}
+
+extern "C" void cuda_stream_synchronize(cudaStream_t stream) {
+    cudaStreamSynchronize(stream);
+}
+
+// Create an event with timing disabled (cheaper, sync-only).
+extern "C" cudaEvent_t cuda_create_event() {
+    cudaEvent_t e = nullptr;
+    cudaError_t err = cudaEventCreateWithFlags(&e, cudaEventDisableTiming);
+    if (err != cudaSuccess) {
+        printf("Error creating event: %s\n", cudaGetErrorString(err));
+        return nullptr;
+    }
+    return e;
+}
+
+extern "C" void cuda_destroy_event(cudaEvent_t event) {
+    if (event != nullptr) {
+        cudaEventDestroy(event);
+    }
+}
+
+// Record `event` on `stream` (marks the point after all work so-far enqueued on it).
+extern "C" void cuda_event_record(cudaEvent_t event, cudaStream_t stream) {
+    cudaEventRecord(event, stream);
+}
+
+// Block the HOST until `event` completes (used to gate a pinned-slot reuse or a
+// free-after-D2H on the producer thread).
+extern "C" void cuda_event_synchronize(cudaEvent_t event) {
+    cudaEventSynchronize(event);
+}
+
+// Make `stream` wait (device-side, non-blocking to host) until `event` completes.
+// Used to order the default (compute) stream after a copy-stream transfer.
+extern "C" void cuda_stream_wait_event(cudaStream_t stream, cudaEvent_t event) {
+    cudaStreamWaitEvent(stream, event, 0);
+}
+
+// PART B3 (GATE_AIR_ASYNC_STASH_BATCHED): free a pool-allocated device buffer
+// STREAM-ORDERED on `stream`, WITHOUT any host block. Enqueued after the D2H on
+// the same copy stream, so the free executes only once the copy has consumed the
+// bytes; the segment then returns to the pool free-list. No cudaStreamSynchronize,
+// no cudaMemPoolTrimTo — the run-ahead (and thus device residency) is bounded
+// instead by a device-side event ring in fused_commit.rs (stream 0 waits on the
+// ring-old free event before allocating the next eval buffer). Falls back to a
+// plain (still async) cudaFree on the no-pool path. CORRECTNESS: byte-identical —
+// this only governs WHEN the device buffer is reused, never the committed bytes.
+extern "C" void cuda_free_memory_on_stream(void *device_ptr, cudaStream_t stream) {
+    if (device_ptr == nullptr) return;
+#if USE_CUDA_MEM_POOL
+    if (g_mem_pool_initialized && g_mem_pool != nullptr) {
+        cudaFreeAsync(device_ptr, stream);
+    } else {
+        cudaFree(device_ptr);
+    }
+#else
+    cudaFree(device_ptr);
+#endif
+}
+
+// Async D2H of `size` u32s device->pinned-host on `stream`, WITHOUT any memset.
+// The producer records an event after this so slot reuse / device free can wait on it.
+extern "C" void copy_uint32_t_d2h_pinned_async(
+        uint32_t *device_ptr, uint32_t *pinned_host_ptr, unsigned int size, cudaStream_t stream) {
+    cudaMemcpyAsync(pinned_host_ptr, device_ptr, (size_t)size * sizeof(uint32_t),
+                    cudaMemcpyDeviceToHost, stream);
+}
+
+// Async H2D from (pinned) host into a freshly allocated device buffer on `stream`,
+// WITHOUT the redundant memset (the copy overwrites the whole buffer). Returns the
+// device pointer; caller syncs the stream / waits the event before the kernel reads.
+//
+// The alloc AND the copy are issued on the SAME `stream` (cudaMallocFromPoolAsync on
+// `stream`), so the allocation is stream-ordered before the copy — no cross-stream
+// hazard vs. the default-stream pool wrapper. Skipping the memset is safe because the
+// copy fully overwrites [0,size). Falls back to plain cudaMalloc if the pool is
+// unavailable (matches cuda_mem_pool_allocate's fallback).
+extern "C" uint32_t *copy_uint32_t_h2d_nomemset_async(
+        uint32_t *host_ptr, unsigned int size, cudaStream_t stream) {
+    uint32_t *device_ptr = nullptr;
+    size_t bytes = (size_t)size * sizeof(uint32_t);
+#if USE_CUDA_MEM_POOL
+    if (!g_mem_pool_initialized) {
+        cuda_mem_pool_init();
+    }
+    if (g_mem_pool_initialized && g_mem_pool != nullptr) {
+        cudaError_t err = cudaMallocFromPoolAsync((void**)&device_ptr, bytes, g_mem_pool, stream);
+        if (err != cudaSuccess) {
+            printf("h2d_nomemset pool alloc failed: %s\n", cudaGetErrorString(err));
+            device_ptr = nullptr;
+        }
+    }
+    if (device_ptr == nullptr) {
+        cudaMalloc((void**)&device_ptr, bytes);
+    }
+#else
+    cudaMalloc((void**)&device_ptr, bytes);
+#endif
+    cudaMemcpyAsync(device_ptr, host_ptr, bytes, cudaMemcpyHostToDevice, stream);
+    return device_ptr;
+}
+
 // M31 modular add offset: data[i] = add(data[i], offset) for all i < n.
 __global__ void m31_vector_add_offset_kernel(m31 *data, unsigned int n, m31 offset) {
     unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -618,4 +867,29 @@ extern "C" void cuda_get_memory_info(size_t* free_mem, size_t* total_mem) {
         *free_mem = 0;
         *total_mem = 0;
     }
+}
+
+// MEM PROBE (diagnostic; read-only). Prints, for a labeled boundary:
+//   - driver free/total    (cudaMemGetInfo)
+//   - pool reserved         (cudaMemPoolAttrReservedMemCurrent: bytes the pool holds FROM the driver)
+//   - pool used             (cudaMemPoolAttrUsedMemCurrent: LIVE bytes within the pool)
+// The difference reserved-used = pool-cached-freed (the HOARDING candidate a TrimTo would return).
+// Read-only: does not allocate, free, or trim; does NOT change allocation behavior. Safe to call
+// unconditionally at phase boundaries. Values are MiB. `tag` names the probe point.
+extern "C" void cuda_mem_probe(const char* tag) {
+    size_t free_mem = 0, total_mem = 0;
+    cudaMemGetInfo(&free_mem, &total_mem);
+    unsigned long long reserved = 0, used = 0;
+    if (g_mem_pool_initialized && g_mem_pool != nullptr) {
+        cudaMemPoolGetAttribute(g_mem_pool, cudaMemPoolAttrReservedMemCurrent, &reserved);
+        cudaMemPoolGetAttribute(g_mem_pool, cudaMemPoolAttrUsedMemCurrent, &used);
+    }
+    const double MiB = 1024.0 * 1024.0;
+    printf("[mem_probe] %-28s free=%.0f total=%.0f pool_reserved=%.0f pool_used=%.0f pool_cached_freed=%.0f (MiB) pool_init=%d\n",
+           tag,
+           free_mem / MiB, total_mem / MiB,
+           reserved / MiB, used / MiB,
+           (double)(reserved >= used ? reserved - used : 0) / MiB,
+           (g_mem_pool_initialized && g_mem_pool != nullptr) ? 1 : 0);
+    fflush(stdout);
 }

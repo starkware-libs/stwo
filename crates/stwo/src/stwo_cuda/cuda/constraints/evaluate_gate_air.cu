@@ -5,6 +5,14 @@
 // Transcribed line-for-line from `impl FrameworkEval for GateEval`
 // (gate-air-leaf/src/main.rs). Build + validate on the GPU box before trusting.
 //
+// WITNESS-SHRINK LAYOUT (matches main.rs ~lines 379-401, 778-797): the main
+// (witness) trace is 188 columns. `enabler`, `shot_id`, `pc` (and the
+// pre-existing `pc_in_prog`) live in the PREPROCESSED tree (tree0) and are read
+// via eval0.get_preprocessed_column() in call order enabler/shot_id/pc/pc_in_prog.
+// The main trace header is just the 4 opcode masks; all later main reads shift
+// down by 3 vs the old 191-col layout. The main.rs line citations below were
+// re-derived against the witness-shrunk source.
+//
 // Pipeline (mirror of evaluate_memory_address_to_id.cu):
 //   1. pre_kernel  : per eval-domain row, run the 151 ALGEBRAIC add_constraints
 //                    (-> numerators[row] = row_res) and emit the 12 LogUp
@@ -214,19 +222,23 @@ __global__ void evaluate_gate_air_pre_kernel(
     const unsigned row = row_offset + local;
 
     // Two evaluators sharing the SAME row_res / constraint_index / fraction
-    // index accumulation is NOT how NitrooZK does it: instead each evaluator
-    // tracks its own col_index per interaction. The preprocessed column lives in
-    // trace0 (1 column), the main columns in trace1 (191 columns). We therefore
-    // use a SINGLE evaluator whose col_index[0] indexes trace0 and col_index[1]
-    // indexes trace1, by giving it a combined trace pointer table is impossible
-    // (two arrays). So mirror memory_address_to_id: use evaluator0 for trace0
-    // reads (preprocessed) and evaluator1 for trace1 reads (main), and carry
-    // row_res / constraint_index / fraction_index forward by hand.
+    // index accumulation. Each evaluator tracks its own col_index per
+    // interaction. The PREPROCESSED columns (tree0) and the MAIN columns (tree1)
+    // are two separate device pointer tables, so we mirror
+    // memory_address_to_id: use eval0 for trace0 reads (preprocessed) and eval
+    // for trace1 reads (main), carrying row_res / constraint_index /
+    // fraction_index forward by hand.
     //
-    // The Rust `evaluate()` reads the preprocessed column FIRST (main.rs:768),
-    // then 191 main columns. Because the preprocessed value is only USED in the
-    // program-consistency relation (the very last emit), but is CONSUMED from the
-    // mask stream first, we read it up front and keep it.
+    // WITNESS-SHRINK (main.rs:778-797). The Rust `evaluate()` now reads FOUR
+    // preprocessed columns up front, in this EXACT call order:
+    //     enabler, shot_id, pc, pc_in_prog
+    // (= GateEval's `preprocessed_column_indices` order, which is the order the
+    // InfoEvaluator records `get_preprocessed_column` calls; the CUDA component
+    // prover gathers `trace0_evaluations` in precisely that index order — see
+    // constraint-framework component.rs / component_prover.rs). eval0 therefore
+    // reads them sequentially via col_index[0] in the SAME order. Only the 4
+    // opcode masks (is_nop/is_not/is_cnot/is_toffoli) remain in the main trace
+    // header; everything else shifts down by 3 vs the old 191-col layout.
 
     EvaluatorT eval0(
         trace0_evaluations, random_coeff_powers,
@@ -234,8 +246,12 @@ __global__ void evaluate_gate_air_pre_kernel(
         0, cumsum_shift, domain_log_size, eval_domain_log_size,
         intermediate_fractions, logup_counts
     );
-    // gate_pc_in_prog (preprocessed). main.rs:768.
-    m31 pc_in_prog = eval0.get_preprocessed_column();
+    // Preprocessed (tree0) reads, in GateEval call order (main.rs:778-781):
+    //   enabler, shot_id, pc, pc_in_prog.
+    m31 enabler    = eval0.get_preprocessed_column();  // gate_enabler   (main.rs:778)
+    m31 shot_id    = eval0.get_preprocessed_column();  // gate_shot_id   (main.rs:779)
+    m31 pc         = eval0.get_preprocessed_column();  // gate_pc        (main.rs:780)
+    m31 pc_in_prog = eval0.get_preprocessed_column();  // gate_pc_in_prog(main.rs:781)
 
     EvaluatorT eval(
         trace1_evaluations, random_coeff_powers,
@@ -244,14 +260,12 @@ __global__ void evaluate_gate_air_pre_kernel(
         intermediate_fractions, logup_counts
     );
 
-    // --- Main-trace masks, in declaration order (main.rs:770-787). ---
-    m31 enabler    = eval.next_trace_mask();
+    // --- Main-trace masks (188 cols), in declaration order (main.rs:783-797). ---
+    // Header is now ONLY the 4 opcode masks (enabler/shot_id/pc moved to tree0).
     m31 is_nop     = eval.next_trace_mask();
     m31 is_not     = eval.next_trace_mask();
     m31 is_cnot    = eval.next_trace_mask();
     m31 is_toffoli = eval.next_trace_mask();
-    m31 shot_id    = eval.next_trace_mask();
-    m31 pc         = eval.next_trace_mask();
 
     m31 in_limb[GATE_AIR_N_LIMBS];
     for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) in_limb[j] = eval.next_trace_mask();
@@ -465,6 +479,22 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
 // ----------------------------------------------------------------------------
 // Host entry: launch pre -> post -> finalize (mirror evaluate_memory_address_to_id).
 // ----------------------------------------------------------------------------
+// Resolve the row-tile size (rows/block). GATE_AIR_TILE_ROWS is the preferred
+// knob (COMPOSITION_TILING_SCOPE §3, default in [2^20, 2^22]); GATE_AIR_COMP_TILE
+// is kept as a back-compat alias for the fraction-only tiling that shipped in
+// steps 1-2. Default 2^20. Clamped to eval_domain_size by the caller.
+static unsigned gate_air_resolve_tile_rows() {
+    unsigned tile_rows = 1u << 20;  // 2^20 default
+    if (const char *env = std::getenv("GATE_AIR_TILE_ROWS")) {
+        unsigned long parsed = std::strtoul(env, nullptr, 10);
+        if (parsed > 0) tile_rows = (unsigned)parsed;
+    } else if (const char *env2 = std::getenv("GATE_AIR_COMP_TILE")) {
+        unsigned long parsed = std::strtoul(env2, nullptr, 10);
+        if (parsed > 0) tile_rows = (unsigned)parsed;
+    }
+    return tile_rows;
+}
+
 extern "C"
 void evaluate_gate_air(
     m31 *quotients_0, m31 *quotients_1, m31 *quotients_2, m31 *quotients_3,
@@ -474,6 +504,21 @@ void evaluate_gate_air(
     unsigned trace1_evaluations_len,
     m31 **trace2_evaluations,
     unsigned trace2_evaluations_len,
+    // COMPOSITION_TILING_SCOPE (route c): host-tile-source pointers for tree0/tree1.
+    // When BOTH are non-null the columns are host-staged (GATE_AIR_STREAM_COMMIT):
+    // instead of holding all trace0_evaluations_len + trace1_evaluations_len eval
+    // columns resident (~47 GB @2^24), we H2D only the current row-block's
+    // contiguous slice of each column into a REUSED tile buffer and index it with a
+    // biased pointer. host_trace{0,1}[c] is the base of column c's committed eval
+    // bytes in the SAME eval-domain order the kernel indexes, so the physical slice
+    // [tile_start, tile_start+this_tile) is exactly the logical row-block. When
+    // NULL (legacy/resident path) the trace{0,1}_evaluations device pointers are
+    // used whole — BYTE-FOR-BYTE the pre-tiling behavior. tree2 is ALWAYS resident
+    // (its post_kernel `-1` LogUp-cumsum offset is a bit-reversed scattered index, a
+    // row-block halo would read wrong bytes — scope §1.3/§1.4), so it has no host
+    // supply here; post_kernel + generic_constraint_post_kernel are unchanged.
+    const uint32_t * const *host_trace0,
+    const uint32_t * const *host_trace1,
     qm31 *random_coeff_powers,
     m31 *denominator_inverses,
     unsigned int domain_log_size,
@@ -491,8 +536,39 @@ void evaluate_gate_air(
     GateAirEval *gate_eval = (GateAirEval *) eval;
     const unsigned eval_domain_size = 1u << eval_domain_log_size;
 
-    m31 **d_trace0 = clone_to_device<m31 *>(trace0_evaluations, trace0_evaluations_len);
-    m31 **d_trace1 = clone_to_device<m31 *>(trace1_evaluations, trace1_evaluations_len);
+    // FULL (A) per-column mixed supply: the input columns are a MIX of host-staged
+    // (the 188 large tree1 eval columns, dehydrated by GATE_AIR_STREAM_COMMIT — their
+    // trace{0,1}_evaluations device pointers are FREED stash keys, must not be
+    // dereferenced) and RESIDENT (the 4 tree0 preprocessed + the small tree1
+    // multiplicity/witness/program columns, kept live on device — their
+    // trace{0,1}_evaluations pointers are valid full-eval-domain buffers). The host
+    // supplies host_trace{0,1} as PER-COLUMN tables: entry c is the column's committed
+    // host bytes if staged, or NULL if that column is resident. A whole table may be
+    // null when EVERY column of that tree is resident (the tree0 case). `tiled_input`
+    // is true iff ANY column is staged (either table non-null); then the per-block loop
+    // handles each column independently. When both tables are null (legacy/resident
+    // shard) the whole-buffer resident path runs — BYTE-FOR-BYTE the pre-tiling
+    // behavior.
+    //
+    // Read semantics preserved (verified): every gate_air trace read is
+    // trace_evaluations[c][GLOBAL row] (next_interaction_mask, eval_at_row.cuh) at the
+    // single component eval_domain_size — NO per-column lift/log_size remap. So a
+    // resident column is supplied to the tiled pre_kernel as its LIVE full-size buffer
+    // biased by -tile_start (biased[c] = trace_evaluations[c] - tile_start), exactly
+    // like a staged tile buffer, and col[global_row] reads the identical element the
+    // whole-buffer resident path reads. Byte-identical (same +off/-tile_start trick as
+    // the quotient Site-1 fix). No H2D, no re-staging for resident columns.
+    const bool tiled_input = (host_trace0 != nullptr) || (host_trace1 != nullptr);
+
+    // Resident device pointer tables. Under tiled_input, tree0/tree1 tables are
+    // REBUILT per block into d_tile{0,1}_ptrs (staged cols -> biased tile buffer,
+    // resident cols -> biased live buffer), so we do not clone the whole
+    // trace{0,1}_evaluations here (staged entries are freed stash keys). tree2 is
+    // always resident.
+    m31 **d_trace0 = tiled_input ? nullptr
+        : clone_to_device<m31 *>(trace0_evaluations, trace0_evaluations_len);
+    m31 **d_trace1 = tiled_input ? nullptr
+        : clone_to_device<m31 *>(trace1_evaluations, trace1_evaluations_len);
     m31 **d_trace2 = clone_to_device<m31 *>(trace2_evaluations, trace2_evaluations_len);
 
     qm31 *numerators =
@@ -501,29 +577,51 @@ void evaluate_gate_air(
     GateAirEval *d_gate_eval = cuda_malloc<GateAirEval>(1);
     cuda_mem_copy_host_to_device<GateAirEval>(gate_eval, d_gate_eval, 1);
 
-    // ----- Candidate 2: row-tile the d_fractions transient. -----
-    // d_fractions was Fraction[eval_domain_size * logup_counts] (= 2^25*12*32B
-    // ~= 12GB at shard 2^24), allocated for the WHOLE eval domain and freed only
-    // at the end. The composition constraint-eval is pointwise per eval-domain
-    // row (pre/post/finalize have no cross-row dependency among the rows being
-    // computed; the LogUp cumsum reads the ALREADY-COMMITTED interaction trace as
-    // per-row masks), so we may process the eval domain in row tiles and reuse a
-    // tile-sized fraction buffer. Only this INTERMEDIATE is tiled; numerators /
-    // constraint_index_array / the quotient output stay full-size & persistent.
-    //
-    // Tile size: GATE_AIR_COMP_TILE rows (default 2^20). At logup_counts=12 that
-    // is 2^20 * 12 * 32B ~= 0.4GB instead of ~12GB. Clamp to eval_domain_size.
-    unsigned tile_rows = 1u << 20;  // 2^20 default
-    if (const char *env = std::getenv("GATE_AIR_COMP_TILE")) {
-        unsigned long parsed = std::strtoul(env, nullptr, 10);
-        if (parsed > 0) tile_rows = (unsigned)parsed;
-    }
+    // ----- Row-tiling (COMPOSITION_TILING_SCOPE route c). -----
+    // Steps 1-2 already row-tiled the d_fractions INTERMEDIATE (a ~12 GB @2^24
+    // transient) with the same tile_start/this_tile passed to the kernels; the
+    // kernels index every trace read by GLOBAL row and only the fraction pointer
+    // was biased. This completes route (c): under tiled_input we ALSO row-tile the
+    // 188 main + 4 preprocessed INPUT columns so their residency is
+    // O(this_tile * (trace0_len + trace1_len)) instead of the full ~47 GB eval set.
+    // The eval is pure pointwise for tree0/tree1 (offset 0, no next-row mask), so a
+    // row-block is a contiguous committed-byte slice and biased-pointer indexing is
+    // byte-trivially correct.
+    unsigned tile_rows = gate_air_resolve_tile_rows();
     if (tile_rows > eval_domain_size) tile_rows = eval_domain_size;
 
     Fraction *d_fractions =
         cuda_malloc<Fraction>((size_t)tile_rows * logup_counts);
     unsigned *constraint_index_array =
         cuda_alloc_zeroes_uint32_t(eval_domain_size);
+
+    // Per-block tile buffers for tree0/tree1 STAGED columns only. One device buffer
+    // per STAGED column of length tile_rows, REUSED across all blocks; a RESIDENT
+    // column gets NO tile buffer (tileX_bufs[c] == nullptr) because it is supplied by
+    // its live full-size device buffer, not H2D. Device residency for the staged
+    // inputs = (num_staged_tree0 + num_staged_tree1) * tile_rows * 4B. The per-block
+    // biased pointer tables are rebuilt into d_tile{0,1}_ptrs each iteration.
+    // SYNCHRONOUS per-block H2D is landed here (correctness first, scope §2); the
+    // async/pinned double-buffer overlap is DEFERRED (note below).
+    m31 **tile0_bufs = nullptr;   // host array of device buffers (or null), trace0_len entries
+    m31 **tile1_bufs = nullptr;   // host array of device buffers (or null), trace1_len entries
+    m31 **d_tile0_ptrs = nullptr; // device pointer table (biased) for tree0
+    m31 **d_tile1_ptrs = nullptr; // device pointer table (biased) for tree1
+    if (tiled_input) {
+        tile0_bufs = (m31 **)std::malloc(sizeof(m31 *) * trace0_evaluations_len);
+        tile1_bufs = (m31 **)std::malloc(sizeof(m31 *) * trace1_evaluations_len);
+        // Allocate a tile buffer ONLY for a staged column (non-null host entry). A
+        // resident column (null host entry, or a wholly-null table) uses its live
+        // device buffer, so no tile buffer is needed.
+        for (unsigned c = 0; c < trace0_evaluations_len; ++c)
+            tile0_bufs[c] = (host_trace0 != nullptr && host_trace0[c] != nullptr)
+                ? (m31 *)cuda_malloc_uint32_t(tile_rows) : nullptr;
+        for (unsigned c = 0; c < trace1_evaluations_len; ++c)
+            tile1_bufs[c] = (host_trace1 != nullptr && host_trace1[c] != nullptr)
+                ? (m31 *)cuda_malloc_uint32_t(tile_rows) : nullptr;
+        d_tile0_ptrs = cuda_malloc<m31 *>(trace0_evaluations_len);
+        d_tile1_ptrs = cuda_malloc<m31 *>(trace1_evaluations_len);
+    }
 
     timer global_timer;
     global_timer.start("evaluate_gate_air");
@@ -550,6 +648,75 @@ void evaluate_gate_air(
         // active thread has row in [tile_start, tile_start+this_tile).
         Fraction *frac_biased = d_fractions - (size_t)tile_start * logup_counts;
 
+        // Select the tree0/tree1 pointer tables the pre_kernel dereferences. Under
+        // tiled_input, build a PER-COLUMN biased pointer table. For each column c:
+        //   * STAGED (host_traceX[c] != nullptr): H2D this block's slice
+        //     [tile_start, tile_start+this_tile) of the committed host bytes into the
+        //     reused tile buffer, then bias by -tile_start so the kernel's GLOBAL-row
+        //     read trace_evaluations[c][row] lands at tile-local slot row-tile_start.
+        //     The slice is contiguous because tree0/tree1 reads are pure pointwise
+        //     [row]. Its trace_evaluations[c] device pointer is a FREED stash key and
+        //     is NEVER dereferenced.
+        //   * RESIDENT (host_traceX[c] == nullptr, or a wholly-null table): use the
+        //     LIVE full-eval-domain device buffer trace_evaluations[c] with NO bias.
+        //     The kernel reads col[global_row] and the resident buffer is already the
+        //     full domain indexed by global row, so it must be passed unbiased (a
+        //     -tile_start bias would read col[global-tile_start] = the WRONG row on
+        //     every tile after the first). This matches the resident tree2 (d_trace2)
+        //     pointers, which are likewise passed whole/unbiased. Only a STAGED tile
+        //     buffer (local rows [0,this_tile)) needs -tile_start. No H2D, no re-staging.
+        // Same biased-pointer trick as d_fractions above and the quotient Site-1 fix —
+        // no eval_at_row.cuh change, byte-identical. FAIL LOUD if a staged column has a
+        // tile buffer mismatch (never H2D into a null buffer / read a bad address).
+        m31 **pre_trace0 = d_trace0;
+        m31 **pre_trace1 = d_trace1;
+        if (tiled_input) {
+            std::vector<m31 *> biased0(trace0_evaluations_len);
+            std::vector<m31 *> biased1(trace1_evaluations_len);
+            for (unsigned c = 0; c < trace0_evaluations_len; ++c) {
+                bool staged = (host_trace0 != nullptr) && (host_trace0[c] != nullptr);
+                if (staged) {
+                    if (tile0_bufs[c] == nullptr) {
+                        printf("evaluate_gate_air: tree0 col %u staged but no tile buffer\n", c);
+                        assert(false && "staged tree0 col missing tile buffer");
+                    }
+                    cuda_mem_copy_host_to_device<uint32_t>(
+                        (uint32_t *)host_trace0[c] + tile_start,
+                        (uint32_t *)tile0_bufs[c], this_tile);
+                    biased0[c] = tile0_bufs[c] - (size_t)tile_start;
+                } else {
+                    // Resident: live full-eval-domain buffer, indexed by the kernel's
+                    // GLOBAL row directly — NO bias (unlike a staged tile buffer, which
+                    // holds only local rows [0,this_tile) and therefore needs -tile_start).
+                    // Same convention as the resident tree2 (d_trace2) pointers below.
+                    biased0[c] = trace0_evaluations[c];
+                }
+            }
+            for (unsigned c = 0; c < trace1_evaluations_len; ++c) {
+                bool staged = (host_trace1 != nullptr) && (host_trace1[c] != nullptr);
+                if (staged) {
+                    if (tile1_bufs[c] == nullptr) {
+                        printf("evaluate_gate_air: tree1 col %u staged but no tile buffer\n", c);
+                        assert(false && "staged tree1 col missing tile buffer");
+                    }
+                    cuda_mem_copy_host_to_device<uint32_t>(
+                        (uint32_t *)host_trace1[c] + tile_start,
+                        (uint32_t *)tile1_bufs[c], this_tile);
+                    biased1[c] = tile1_bufs[c] - (size_t)tile_start;
+                } else {
+                    // Resident: live full-eval-domain buffer, indexed by the kernel's
+                    // GLOBAL row directly — NO bias (unlike a staged tile buffer, which
+                    // holds only local rows [0,this_tile) and therefore needs -tile_start).
+                    // Same convention as the resident tree2 (d_trace2) pointers below.
+                    biased1[c] = trace1_evaluations[c];
+                }
+            }
+            cuda_mem_copy_host_to_device<m31 *>(biased0.data(), d_tile0_ptrs, trace0_evaluations_len);
+            cuda_mem_copy_host_to_device<m31 *>(biased1.data(), d_tile1_ptrs, trace1_evaluations_len);
+            pre_trace0 = d_tile0_ptrs;
+            pre_trace1 = d_tile1_ptrs;
+        }
+
         int block_dim = this_tile < GATE_AIR_THREAD_COUNT_MAX
             ? (int)this_tile : GATE_AIR_THREAD_COUNT_MAX;
         int num_blocks = (this_tile + block_dim - 1) / block_dim;
@@ -557,13 +724,13 @@ void evaluate_gate_air(
         // ----- pre_kernel (PHASE 1: algebraic + relation emits) -----
         if (use_assert_evaluator) {
             evaluate_gate_air_pre_kernel<CudaAssertEvaluator><<<num_blocks, block_dim, 0, stream>>>(
-                numerators, d_trace0, d_trace1, random_coeff_powers,
+                numerators, pre_trace0, pre_trace1, random_coeff_powers,
                 domain_log_size, eval_domain_log_size, d_gate_eval, cumsum_shift,
                 frac_biased, logup_counts, constraint_index_array,
                 tile_start, this_tile);
         } else {
             evaluate_gate_air_pre_kernel<CudaEvaluator><<<num_blocks, block_dim, 0, stream>>>(
-                numerators, d_trace0, d_trace1, random_coeff_powers,
+                numerators, pre_trace0, pre_trace1, random_coeff_powers,
                 domain_log_size, eval_domain_log_size, d_gate_eval, cumsum_shift,
                 frac_biased, logup_counts, constraint_index_array,
                 tile_start, this_tile);
@@ -572,6 +739,7 @@ void evaluate_gate_air(
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
 
         // ----- post_kernel (PHASE 2 SOUNDNESS GATE: LogUp pair-batches) -----
+        // tree2 (d_trace2) is FULLY RESIDENT in both paths — byte-unchanged.
         if (use_assert_evaluator) {
             evaluate_gate_air_post_kernel_tiled<CudaAssertEvaluator><<<num_blocks, block_dim, 0, stream>>>(
                 numerators, frac_biased, constraint_index_array, d_trace2,
@@ -589,10 +757,22 @@ void evaluate_gate_air(
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
     }
 
+    // DEFERRED ASYNC (correctness-first, scope §2): the per-block H2D above is
+    // SYNCHRONOUS on the compute stream, so block b's transfer serializes before
+    // block b's kernels. To overlap, wire the pinned + async primitives
+    // (cuda_alloc_pinned_host_uint32_t / copy_uint32_t_vec_from_host_to_device_async
+    // in utils.cu, exposed in bindings.rs) as a two-buffer ping-pong: while the
+    // kernel computes block b from tile-buffer set A, H2D block b+1 into set B on a
+    // dedicated copy stream, then swap (device cost doubles the tile-buffer term).
+    // The stash host bytes must be pinned at dehydrate time for the async H2D to
+    // overlap. Correctness and the residency win hold WITHOUT this (the ceiling
+    // lift is the point); the overlap is a PCIe-latency optimization only.
+
     // ----- finalize: quotient = numerators[row] * denom_inv[row>>trace_log] -----
     // Pointwise per row over the FULL eval domain (the tiling above only bounded
-    // the d_fractions transient; numerators[] is now fully populated). Identical
-    // to accumulate_pointwise_cpu (component_prover.rs:288-289).
+    // the d_fractions transient and the tree0/tree1 input residency; numerators[]
+    // is now fully populated). Identical to accumulate_pointwise_cpu
+    // (component_prover.rs:288-289).
     int finalize_block_dim = eval_domain_size < GATE_AIR_THREAD_COUNT_MAX
         ? (int)eval_domain_size : GATE_AIR_THREAD_COUNT_MAX;
     int finalize_num_blocks = (eval_domain_size + finalize_block_dim - 1) / finalize_block_dim;
@@ -605,8 +785,20 @@ void evaluate_gate_air(
     ASSERT_CUDA_SUCCESS(cudaGetLastError());
     global_timer.end("evaluate_gate_air");
 
-    cuda_free_memory(d_trace0);
-    cuda_free_memory(d_trace1);
+    if (tiled_input) {
+        // Only staged columns allocated a tile buffer; resident columns are null.
+        for (unsigned c = 0; c < trace0_evaluations_len; ++c)
+            if (tile0_bufs[c] != nullptr) cuda_free_memory(tile0_bufs[c]);
+        for (unsigned c = 0; c < trace1_evaluations_len; ++c)
+            if (tile1_bufs[c] != nullptr) cuda_free_memory(tile1_bufs[c]);
+        std::free(tile0_bufs);
+        std::free(tile1_bufs);
+        cuda_free_memory(d_tile0_ptrs);
+        cuda_free_memory(d_tile1_ptrs);
+    } else {
+        cuda_free_memory(d_trace0);
+        cuda_free_memory(d_trace1);
+    }
     cuda_free_memory(d_trace2);
     cuda_free_memory(numerators);
     cuda_free_memory(d_gate_eval);

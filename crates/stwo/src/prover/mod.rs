@@ -176,10 +176,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
     if timers {
         prove_ex_sync();
-        eprintln!(
-            "[prove_ex] TOTAL {:.3}s",
-            t_total.elapsed().as_secs_f64()
-        );
+        eprintln!("[prove_ex] TOTAL {:.3}s", t_total.elapsed().as_secs_f64());
     }
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());

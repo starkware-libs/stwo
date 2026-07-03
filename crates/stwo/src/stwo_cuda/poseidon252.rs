@@ -1,5 +1,8 @@
-use std::{ffi::c_void, fmt::Debug};
+use std::ffi::c_void;
+use std::fmt::Debug;
+
 use starknet_ff::FieldElement as FieldElement252;
+
 use crate::prover::backend::Column;
 use crate::stwo_cuda::bindings;
 
@@ -27,25 +30,18 @@ impl Poseidon252HashVec {
         let size = host_array.len();
 
         // Convert to array of [u8; 32]
-        let host_bytes: Vec<[u8; 32]> = host_array.iter()
-            .map(|hash| hash.to_bytes_be())
-            .collect();
+        let host_bytes: Vec<[u8; 32]> = host_array.iter().map(|hash| hash.to_bytes_be()).collect();
 
         // Use the proper CUDA copy function
         let device_ptr = unsafe {
-            bindings::copy_poseidon252_hash_vec_from_host_to_device(
-                host_bytes.as_ptr(),
-                size
-            )
+            bindings::copy_poseidon252_hash_vec_from_host_to_device(host_bytes.as_ptr(), size)
         };
 
         Self::new(device_ptr, size)
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
-        let device_ptr = unsafe {
-            bindings::cuda_malloc_poseidon252_hash(size)
-        };
+        let device_ptr = unsafe { bindings::cuda_malloc_poseidon252_hash(size) };
 
         if device_ptr.is_null() {
             panic!("RUST ERROR: cuda_malloc_poseidon252_hash returned null pointer!");
@@ -97,13 +93,7 @@ impl Poseidon252HashVec {
 
     pub fn get_data(&self, index: usize) -> FieldElement252 {
         let mut host_bytes = [0u8; 32];
-        unsafe {
-            bindings::cuda_get_poseidon252_hash(
-                self.device_ptr,
-                &mut host_bytes,
-                index
-            )
-        };
+        unsafe { bindings::cuda_get_poseidon252_hash(self.device_ptr, &mut host_bytes, index) };
         FieldElement252::from_bytes_be(&host_bytes).unwrap()
     }
 }
@@ -150,7 +140,7 @@ impl Column<FieldElement252> for Poseidon252HashVec {
             bindings::cuda_set_poseidon252_hash(
                 self.device_ptr as *mut [u8; 32],
                 index,
-                &value_bytes as *const [u8; 32]
+                &value_bytes as *const [u8; 32],
             );
         }
     }

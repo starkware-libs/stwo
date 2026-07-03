@@ -1,8 +1,7 @@
 use std::ffi::c_void;
 
-use crate::core::fields::m31::BaseField;
-
 use super::bindings;
+use crate::core::fields::m31::BaseField;
 
 #[derive(Debug)]
 pub struct BaseFieldVec {
@@ -15,14 +14,22 @@ unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
     pub fn new(device_ptr: *const u32, size: usize) -> Self {
-        Self { device_ptr, size, owns_memory: true }
+        Self {
+            device_ptr,
+            size,
+            owns_memory: true,
+        }
     }
 
     /// Create a BaseFieldVec that references existing device memory without owning it.
     /// The caller is responsible for ensuring the memory outlives this BaseFieldVec.
     /// Drop will NOT free the memory. Clone will produce an owned copy.
     pub fn from_borrowed_ptr(device_ptr: *const u32, size: usize) -> Self {
-        Self { device_ptr, size, owns_memory: false }
+        Self {
+            device_ptr,
+            size,
+            owns_memory: false,
+        }
     }
 
     pub fn from_vec(host_array: Vec<BaseField>) -> Self {
@@ -37,16 +44,12 @@ impl BaseFieldVec {
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
-        let device_ptr = unsafe {
-            bindings::cuda_malloc_uint32_t(size as u32)
-        };
+        let device_ptr = unsafe { bindings::cuda_malloc_uint32_t(size as u32) };
         Self::new(device_ptr, size)
     }
 
     pub fn new_zeroes(size: usize) -> Self {
-        let device_ptr = unsafe {
-            bindings::cuda_alloc_zeroes_uint32_t(size as u32)
-        };
+        let device_ptr = unsafe { bindings::cuda_alloc_zeroes_uint32_t(size as u32) };
         Self::new(device_ptr, size)
     }
 
@@ -65,9 +68,7 @@ impl BaseFieldVec {
     }
 
     pub fn get_data(&self, index: usize) -> BaseField {
-        let value = unsafe {
-            bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index)
-        };
+        let value = unsafe { bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index) };
         BaseField::from_u32_unchecked(value)
     }
 
@@ -325,9 +326,7 @@ impl Uint32Vec {
     }
 
     pub fn get_data(&self, index: usize) -> u32 {
-        let value = unsafe {
-            bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index)
-        };
+        let value = unsafe { bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index) };
         value
     }
 
@@ -357,9 +356,7 @@ impl Uint32Vec {
     }
 
     pub fn increase_at(&self, address: u32) {
-        unsafe {
-            bindings::cuda_increase_at(self.device_ptr as *const c_void, address)
-        }
+        unsafe { bindings::cuda_increase_at(self.device_ptr as *const c_void, address) }
     }
 
     pub fn copy_from(&mut self, other: &Self) {
@@ -485,7 +482,10 @@ impl Uint128Vec {
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
-        Self::new(unsafe { bindings::cuda_malloc_uint32_t(4 * size as u32) }, size)
+        Self::new(
+            unsafe { bindings::cuda_malloc_uint32_t(4 * size as u32) },
+            size,
+        )
     }
 
     pub fn new_zeroes(size: usize) -> Self {

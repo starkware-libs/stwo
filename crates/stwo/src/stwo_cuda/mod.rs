@@ -22,6 +22,15 @@ pub fn get_cuda_memory_info() -> (usize, usize) {
     (free_mem, total_mem)
 }
 
+/// MEM PROBE (diagnostic, read-only): print driver free/total + cudaMallocAsync pool
+/// reserved/used/cached-freed at a labeled boundary. Does not change allocation behavior.
+pub fn cuda_mem_probe(tag: &str) {
+    let c = std::ffi::CString::new(tag).unwrap_or_default();
+    unsafe {
+        bindings::cuda_mem_probe(c.as_ptr());
+    }
+}
+
 /// Print CUDA memory usage
 pub fn print_cuda_memory(label: &str) {
     let (free, total) = get_cuda_memory_info();

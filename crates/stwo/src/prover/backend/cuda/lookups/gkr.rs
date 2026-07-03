@@ -1,9 +1,10 @@
-use crate::stwo_cuda::bindings::CudaSecureField;
-use crate::stwo_cuda::{bindings, secure_field_vec::SecureFieldVec};
+use crate::core::fields::qm31::SecureField;
 use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::lookups::gkr_prover::GkrOps;
 use crate::prover::lookups::mle::Mle;
-use crate::core::fields::qm31::SecureField;
+use crate::stwo_cuda::bindings;
+use crate::stwo_cuda::bindings::CudaSecureField;
+use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
 #[allow(unused_variables)]
 impl GkrOps for CudaBackend {
@@ -42,12 +43,13 @@ mod tests {
 
     #[test]
     fn gen_eq_evals_matches_cpu() {
-        use crate::prover::backend::{Column, CpuBackend};
+        use itertools::Itertools;
+
         use crate::core::fields::m31::BaseField;
         use crate::core::fields::qm31::SecureField;
-        use crate::prover::lookups::gkr_prover::GkrOps;
-        use itertools::Itertools;
         use crate::prover::backend::cuda::CudaBackend;
+        use crate::prover::backend::{Column, CpuBackend};
+        use crate::prover::lookups::gkr_prover::GkrOps;
 
         let two = BaseField::from(2).into();
 

@@ -36,11 +36,18 @@
 #include "eval_at_row.cuh"
 
 // gate_air structural constants (must equal the Rust constants in gate-air-leaf
-// src/main.rs: N_LIMBS=32, READ_COLS=39, TRACE_COLUMNS=191, GATE_REL_WIDTH=35,
+// src/main.rs: N_LIMBS=32, READ_COLS=39, TRACE_COLUMNS=188, GATE_REL_WIDTH=35,
 // and the TAG_* relation ids).
+//
+// WITNESS-SHRINK (matches main.rs ~lines 379-401 + 778-797): enabler, shot_id, pc
+// were MOVED OUT of the main (witness) trace into the PREPROCESSED tree (tree0),
+// alongside pc_in_prog. The main trace header is now just the 4 opcode masks
+// (is_nop/is_not/is_cnot/is_toffoli). So TRACE_COLUMNS = 4 + 32 + 32 + 3*39 + 3
+// = 188 (was 191), and GateEval reads FOUR preprocessed columns up front.
 #define GATE_AIR_N_LIMBS 32
 #define GATE_AIR_READ_COLS 39          // 4 + N_LIMBS + 3
-#define GATE_AIR_TRACE_COLUMNS 191     // 1+4+2 + 32 + 32 + 3*39 + 3
+#define GATE_AIR_TRACE_COLUMNS 188     // 4 + 32 + 32 + 3*39 + 3 (header = 4 opcode masks)
+#define GATE_AIR_N_PREPROCESSED 4      // enabler, shot_id, pc, pc_in_prog (tree0, call order)
 #define GATE_AIR_REL_WIDTH 35          // 1 + STATE_WIDTH (STATE_WIDTH = 2 + N_LIMBS)
 #define GATE_AIR_LOGUP_COUNTS 12       // 12 relation entries -> 6 pairs
 #define GATE_AIR_N_ALGEBRAIC 151       // algebraic add_constraint count (sanity)
@@ -75,6 +82,14 @@ void evaluate_gate_air(
     unsigned trace1_evaluations_len,
     m31 **trace2_evaluations,
     unsigned trace2_evaluations_len,
+    // COMPOSITION_TILING_SCOPE (route c) host-tile-source pointers for tree0/tree1
+    // (GATE_AIR_STREAM_COMMIT). Both non-null => row-tile the 188 main + 4
+    // preprocessed INPUT columns, H2D per block from these host bases into reused
+    // tile buffers (residency O(tile_rows*(len0+len1)) instead of the full eval
+    // set). Both null => legacy resident path, BYTE-FOR-BYTE unchanged. tree2 is
+    // always resident (its post_kernel `-1` offset is a scattered index — no tile).
+    const uint32_t * const *host_trace0,
+    const uint32_t * const *host_trace1,
     qm31 *random_coeff_powers,
     m31 *denominator_inverses,
     unsigned int domain_log_size,

@@ -1,12 +1,11 @@
 use std::ffi::c_void;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
-use crate::prover::backend::simd::qm31;
-use crate::core::fields::qm31::SecureField;
-use crate::prover::backend::simd::very_packed_m31::VeryPackedSecureField;
 // use crate::stwo_cuda::mem_pool; // DEPRECATED: Using CUDA allocation directly
-
 use super::bindings;
+use crate::core::fields::qm31::SecureField;
+use crate::prover::backend::simd::qm31;
+use crate::prover::backend::simd::very_packed_m31::VeryPackedSecureField;
 
 #[derive(Debug)]
 pub struct SecureFieldVec {
@@ -33,23 +32,20 @@ impl SecureFieldVec {
         };
         // let elapsed_time = Instant::now().duration_since(start_time);
 
-        // let transfer_speed_gbps = (data_size_bytes as f64 / 1_000_000_000.0) / elapsed_time.as_secs_f64();
+        // let transfer_speed_gbps = (data_size_bytes as f64 / 1_000_000_000.0) /
+        // elapsed_time.as_secs_f64();
 
         let size = host_array.len();
         Self::new(device_ptr, size)
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
-        let device_ptr = unsafe {
-            bindings::cuda_malloc_uint32_t((4 * size) as u32)
-        };
+        let device_ptr = unsafe { bindings::cuda_malloc_uint32_t((4 * size) as u32) };
         Self::new(device_ptr, size)
     }
 
     pub fn new_zeroes(size: usize) -> Self {
-        let device_ptr = unsafe {
-            bindings::cuda_alloc_zeroes_uint32_t((4 * size) as u32)
-        };
+        let device_ptr = unsafe { bindings::cuda_alloc_zeroes_uint32_t((4 * size) as u32) };
         Self::new(device_ptr, size)
     }
 
@@ -78,9 +74,8 @@ impl SecureFieldVec {
     }
 
     pub fn get_data(&self, index: usize) -> SecureField {
-        let cuda_val = unsafe {
-            bindings::cuda_get_secure_field(self.device_ptr as *const c_void, index)
-        };
+        let cuda_val =
+            unsafe { bindings::cuda_get_secure_field(self.device_ptr as *const c_void, index) };
         SecureField::from(cuda_val)
     }
 }

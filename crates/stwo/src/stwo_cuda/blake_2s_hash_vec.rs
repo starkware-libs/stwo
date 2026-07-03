@@ -1,6 +1,8 @@
-use crate::stwo_cuda::bindings;
-use std::{ffi::c_void, fmt::Debug};
+use std::ffi::c_void;
+use std::fmt::Debug;
+
 use crate::core::vcs::blake2_hash::Blake2sHash;
+use crate::stwo_cuda::bindings;
 
 #[derive(Debug)]
 pub struct Blake2sHashVec {
@@ -12,7 +14,6 @@ pub struct Blake2sHashVec {
 // CUDA manages GPU memory synchronization internally.
 unsafe impl Send for Blake2sHashVec {}
 unsafe impl Sync for Blake2sHashVec {}
-
 
 impl Blake2sHashVec {
     pub fn new(device_ptr: *const Blake2sHash, size: usize) -> Self {
@@ -65,7 +66,11 @@ impl Blake2sHashVec {
     pub fn get_data(&self, index: usize) -> Blake2sHash {
         let host_value = Blake2sHash([0u8; 32]);
         unsafe {
-            bindings::cuda_get_blake_2s_hash(self.device_ptr, &host_value as *const Blake2sHash, index)
+            bindings::cuda_get_blake_2s_hash(
+                self.device_ptr,
+                &host_value as *const Blake2sHash,
+                index,
+            )
         };
         host_value
     }
@@ -112,8 +117,7 @@ impl Blake2sHashVec {
             return Vec::new();
         }
 
-        let layer_ptrs: Vec<*const Blake2sHash> =
-            layers.iter().map(|l| l.device_ptr).collect();
+        let layer_ptrs: Vec<*const Blake2sHash> = layers.iter().map(|l| l.device_ptr).collect();
 
         let mut result: Vec<Blake2sHash> = Vec::with_capacity(pairs.len());
         unsafe {

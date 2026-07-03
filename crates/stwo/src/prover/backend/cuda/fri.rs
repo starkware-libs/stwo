@@ -1,20 +1,19 @@
-use crate::core::fri::FOLD_STEP as CIRCLE_TO_LINE_FOLD_STEP;
-use crate::core::circle::Coset;
-use crate::core::fields::qm31::SecureField;
-use crate::core::poly::line::LineDomain;
-use crate::prover::poly::circle::SecureEvaluation;
-use crate::prover::line::LineEvaluation;
-use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
-use crate::prover::fri::FriOps;
-use crate::prover::secure_column::SecureColumnByCoords;
-
-use super::CudaBackend;
-use crate::stwo_cuda as interface;
-
 use interface::bindings;
 use interface::bindings::CudaSecureField;
+
+use super::CudaBackend;
+use crate::core::circle::Coset;
+use crate::core::fields::qm31::SecureField;
+use crate::core::fri::FOLD_STEP as CIRCLE_TO_LINE_FOLD_STEP;
+use crate::core::poly::line::LineDomain;
 use crate::prover::backend::cuda::secure_column::CudaSecureColumn;
+use crate::prover::fri::FriOps;
+use crate::prover::line::LineEvaluation;
+use crate::prover::poly::circle::SecureEvaluation;
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
+use crate::stwo_cuda as interface;
 
 /// Single fold step (NitrooZK's original `fold_line`, fold_step = 1): folds a degree-d line
 /// polynomial into degree d/2 using one `alpha`. The 74951f79 `FriOps::fold_line` (below) loops
@@ -95,12 +94,12 @@ impl FriOps for CudaBackend {
     fn decompose(
         _eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField) {
-        // This method will be deprecated and is no longer used in stwo. In stwo, every polynomial that goes into FRI is
-        // in the FFT space already and there's no need to decompose it.
+        // This method will be deprecated and is no longer used in stwo. In stwo, every polynomial
+        // that goes into FRI is in the FFT space already and there's no need to decompose
+        // it.
         todo!()
     }
 }
-
 
 // NitrooZK's original tests use the pre-74951f79 signatures (single-alpha fold_line with a
 // fold_step arg, dst-style fold_circle_into_line) and are incompatible with our reconciled
@@ -113,22 +112,21 @@ mod tests {
     use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use crate::prover::backend::{Column, ColumnOps, CpuBackend};
+
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::{SecureField, QM31};
-    use crate::prover::secure_column::SecureColumnByCoords;
     use crate::core::fields::Field;
-    use crate::prover::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
     use crate::core::poly::line::{LineDomain, LinePoly};
-    use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
+    use crate::prover::backend::cuda::CudaBackend;
+    use crate::prover::backend::{Column, ColumnOps, CpuBackend};
+    use crate::prover::fri::FriOps;
     use crate::prover::line::LineEvaluation;
+    use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::poly::twiddles::TwiddleTree;
     use crate::prover::poly::BitReversedOrder;
-
-    use crate::prover::backend::cuda::CudaBackend;
-
+    use crate::prover::secure_column::SecureColumnByCoords;
     use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 
     #[test]

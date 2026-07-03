@@ -1,6 +1,6 @@
+use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::stwo_cuda::base_field_vec::BaseFieldVec;
-use crate::prover::backend::cuda::CudaBackend;
 
 pub struct CudaSecureColumn {
     columns: [*const u32; 4],

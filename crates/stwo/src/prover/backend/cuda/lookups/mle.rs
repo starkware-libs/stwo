@@ -1,15 +1,10 @@
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::backend::Column;
 use crate::prover::lookups::mle::{Mle, MleOps};
-use crate::core::{
-    fields::{m31::BaseField, qm31::SecureField},
-};
-
-use crate::{
-    stwo_cuda::secure_field_vec::SecureFieldVec,
-    prover::backend::cuda::CudaBackend,
-};
-
 use crate::stwo_cuda as interface;
+use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
 impl MleOps<BaseField> for CudaBackend {
     fn fix_first_variable(
@@ -58,16 +53,14 @@ impl MleOps<SecureField> for CudaBackend {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+
+    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
+    use crate::prover::backend::cuda::CudaBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::lookups::mle::{Mle, MleOps};
-    use crate::core::{
-        fields::{m31::BaseField, qm31::SecureField},
-    };
-
-    use crate::stwo_cuda::{
-        base_field_vec::BaseFieldVec, secure_field_vec::SecureFieldVec
-    };
-    use crate::prover::backend::cuda::CudaBackend;
+    use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+    use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
     #[test]
     fn fix_first_variable_with_base_field_mle_matches_cpu() {

@@ -1,12 +1,15 @@
-use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::prover::backend::{Column, ColumnOps};
-use crate::core::{
-    fields::{m31::BaseField, qm31::SecureField},
-};
 use itertools::izip;
-use crate::stwo_cuda::{bindings, base_field_vec::BaseFieldVec, secure_field_vec::SecureFieldVec, blake_2s_hash_vec::Blake2sHashVec};
+
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::prover::backend::cuda::CudaBackend;
+use crate::prover::backend::{Column, ColumnOps};
 use crate::stwo_cuda as interface;
+use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+use crate::stwo_cuda::bindings;
+use crate::stwo_cuda::blake_2s_hash_vec::Blake2sHashVec;
+use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
 impl ColumnOps<BaseField> for CudaBackend {
     type Column = BaseFieldVec;
@@ -29,8 +32,8 @@ impl crate::prover::vcs_lifted::ops::PackLeavesOps for CudaBackend {
         values: &[&crate::prover::backend::Col<Self, BaseField>;
              crate::core::fields::qm31::SECURE_EXTENSION_DEGREE],
     ) -> [crate::prover::backend::Col<Self, BaseField>;
-             crate::core::fields::qm31::SECURE_EXTENSION_DEGREE
-                 * crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE] {
+           crate::core::fields::qm31::SECURE_EXTENSION_DEGREE
+               * crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE] {
         use crate::prover::backend::simd::column::BaseColumn as SimdBaseColumn;
         use crate::prover::backend::simd::SimdBackend;
         use crate::prover::vcs_lifted::ops::PackLeavesOps;
@@ -89,6 +92,16 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
     }
 
     fn at(&self, index: usize) -> BaseField {
+        // STEP 2 decommit reader-site (GATE_AIR_STREAM_COMMIT): the generic
+        // `MerkleProverLifted::decommit` reads each committed column at ~70 sparse query positions
+        // via `col.at(idx)`. Under the streamed commit the device buffer was freed and the exact
+        // bytes live in the streaming-commit-layer stash (fused_commit), so serve the read from
+        // there — byte-identical to the resident device read. This keeps the recovery in the CUDA
+        // backend layer (not the shared generic PCS/verifier). For a resident column the stash has
+        // no entry and this is the plain device read.
+        if crate::prover::backend::cuda::fused_commit::is_staged(self) {
+            return crate::prover::backend::cuda::fused_commit::host_batch_get(self, &[index])[0];
+        }
         Self::get_data(self, index)
     }
 
@@ -275,7 +288,6 @@ impl FromIterator<Blake2sHash> for Blake2sHashVec {
 }
 use crate::prover::secure_column::SecureColumnByCoords;
 impl SecureColumnByCoords<CudaBackend> {
-
     pub fn to_vec(&self) -> Vec<SecureField> {
         izip!(
             self.columns[0].to_cpu(),
@@ -290,14 +302,12 @@ impl SecureColumnByCoords<CudaBackend> {
 
 #[cfg(test)]
 mod tests {
-    use crate::prover::backend::{Column, ColumnOps, CpuBackend};
-    use crate::core::{
-        fields::{m31::BaseField, qm31::SecureField},
-    };
-
+    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::prover::backend::cuda::CudaBackend;
-    use crate::stwo_cuda::{base_field_vec::BaseFieldVec, secure_field_vec::SecureFieldVec};
-
+    use crate::prover::backend::{Column, ColumnOps, CpuBackend};
+    use crate::stwo_cuda::base_field_vec::BaseFieldVec;
+    use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
     #[test]
     fn test_bit_reverse_base_field() {

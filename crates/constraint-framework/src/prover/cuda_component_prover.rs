@@ -27,8 +27,8 @@
 //!    reinterprets *host* SIMD memory. A `CudaBackend` `BaseFieldVec` is a raw device pointer, so
 //!    that transmute is undefined behavior; its non-zero-offset path would also issue one
 //!    single-element D2H copy (`Column::at`) per masked value. (Independently, obelyzk's evaluator
-//!    already produced WRONG values on real gate_air even on the host-layout `GpuBackend` — see
-//!    the note in `gpu_component_prover.rs` — so it is not a trustworthy reference to port.)
+//!    already produced WRONG values on real gate_air even on the host-layout `GpuBackend` — see the
+//!    note in `gpu_component_prover.rs` — so it is not a trustworthy reference to port.)
 //!
 //! 2. The NitrooZK device path (`stwo_cuda/cuda/evaluate_constraints.cu`, FFI-exposed as
 //!    `bindings::evaluate_constraint_quotients_on_domain`) is NOT generic: it `switch`es on an
@@ -46,6 +46,7 @@
 //! `!cpu_fallback_forced()` and leave this delegate reachable via `CUDA_CONSTRAINT_CPU_FALLBACK=1`.
 
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use num_traits::Zero;
 use stwo::core::air::Component;
@@ -66,7 +67,7 @@ use super::component_prover::{
 use super::cuda_constraint_kernel::{
     gpu_constraints_opt_in, registered_gpu_constraint_kernel, GpuConstraintDispatch,
 };
-use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
+use crate::{FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX};
 
 /// Whether the operator has forced the audited CPU-delegate constraint path via
 /// `CUDA_CONSTRAINT_CPU_FALLBACK=1`. Read fresh on each call (cheap; once per component per prove).
@@ -80,6 +81,37 @@ fn cpu_fallback_forced() -> bool {
         std::env::var("CUDA_CONSTRAINT_CPU_FALLBACK").as_deref(),
         Ok("1") | Ok("true") | Ok("TRUE")
     )
+}
+
+/// Fires at most once per process for the loud host-delegate warning below.
+static HOST_DELEGATE_WARNING_FIRED: AtomicBool = AtomicBool::new(false);
+
+/// Loudly warn ONCE per process when the big gate_air MAIN component falls to the host-delegate
+/// constraint path, since that path runs composition_eval ~60x slower than the GPU kernel and is
+/// almost always an unintended regression (kernel declined / disabled / mismatched layout).
+///
+/// DIAGNOSTIC ONLY: no behavior change, no control-flow change. The warning is gated on a
+/// STRUCTURAL FINGERPRINT so it fires for the gate_air MAIN component ONLY, never for the small
+/// fixed-size table components (qdecode / rc_lo / rc_hi / program), whose host-delegation is normal
+/// and silent. The MAIN component is the only one that is BOTH large (~2^23 rows) AND has many
+/// constraints (151 algebraic + 6 LogUp = 157); every table eval emits a single `finalize_logup`
+/// constraint over a small fixed domain (qdecode 2^9, rc 2^16, program ~2^4). The thresholds
+/// `n_constraints > 50` and `log_n_rows >= 18` sit far above any table component and far below the
+/// MAIN component, so the classification is unambiguous and not benchmark-size-specific.
+fn warn_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
+    let is_gate_air_main = n_constraints > 50 && log_n_rows >= 18;
+    if !is_gate_air_main {
+        return;
+    }
+    if HOST_DELEGATE_WARNING_FIRED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    eprintln!(
+        "[WARN] gate_air MAIN component fell to HOST-DELEGATE constraints \
+         (GPU kernel declined/disabled) — composition_eval will be ~60x slower; \
+         expected the GPU kernel. Set CUDA_GPU_CONSTRAINTS or fix the kernel. \
+         (n_constraints={n_constraints}, log_n_rows={log_n_rows})"
+    );
 }
 
 /// Copies a single committed `Poly<CudaBackend>` to a host `Poly<CpuBackend>` by moving its
@@ -110,13 +142,134 @@ fn dummy_host_poly() -> Poly<CpuBackend> {
     Poly::new(None, evals)
 }
 
+/// STEP 2 (GATE_AIR_STREAM_COMMIT): rehydrate this component's host-staged eval columns back to the
+/// device so the GPU constraint kernel can read them, preserving the EXACT global [`TreeVec`]
+/// shape.
+///
+/// Returns `None` when NO column this component reads is staged — the common/legacy case — so the
+/// caller dispatches on the committed device trace unchanged (byte-for-byte). When at least one
+/// read column is staged, returns an owned `TreeVec` in which:
+///   * every column THIS component reads (its [`stwo::core::pcs::TreeSubspan`]s + the preprocessed
+///     column indices) is a device-resident rehydration ([`fused_commit::rehydrate_owned`], H2D
+///     from the stash) if staged, else a device clone of the resident committed column;
+///   * every other slot is a tiny never-read placeholder ([`dummy_device_poly`]), keeping the
+///     global `(tree, column)` indexing bit-identical so `sub_tree(trace_locations)` /
+///     `[PREPROCESSED_TRACE_IDX][idx]` resolve to the same data as the committed trace.
+///
+/// The returned polys OWN their device buffers; dropping the value frees them, so composition
+/// residency is bounded to this component's read set and released afterwards. The rehydrated bytes
+/// equal the committed bytes (same u32 payload), so the composition result is identical.
+fn build_scoped_device_trace<E: FrameworkEval>(
+    component: &FrameworkComponent<E>,
+    device_polys: &TreeVec<ColumnVec<&Poly<CudaBackend>>>,
+) -> Option<TreeVec<ColumnVec<Poly<CudaBackend>>>> {
+    use stwo::prover::backend::cuda::fused_commit;
+    use stwo::stwo_cuda::base_field_vec::BaseFieldVec;
+
+    // Mark which (tree, column) positions the eval reads.
+    let mut needed: Vec<Vec<bool>> = device_polys
+        .iter()
+        .map(|tree| vec![false; tree.len()])
+        .collect();
+    for location in component.trace_locations() {
+        for col in location.col_start..location.col_end {
+            needed[location.tree_index][col] = true;
+        }
+    }
+    for &idx in component.preprocessed_column_indices() {
+        needed[PREPROCESSED_TRACE_IDX][idx] = true;
+    }
+
+    // Only rehydrate if a NEEDED column is actually staged; otherwise leave the committed trace
+    // alone (legacy/resident path, byte-for-byte unchanged).
+    let any_needed_staged = device_polys.iter().enumerate().any(|(t, tree)| {
+        tree.iter()
+            .enumerate()
+            .any(|(c, poly)| needed[t][c] && fused_commit::is_staged(&poly.evals.values))
+    });
+    if !any_needed_staged {
+        return None;
+    }
+
+    Some(TreeVec::new(
+        device_polys
+            .iter()
+            .enumerate()
+            .map(|(tree_index, tree)| {
+                tree.iter()
+                    .enumerate()
+                    .map(|(col, poly)| {
+                        if !needed[tree_index][col] {
+                            return dummy_device_poly();
+                        }
+                        // COMPOSITION_TILING_SCOPE (route c): a NEEDED, STAGED column in tree0
+                        // (preprocessed) or tree1 (main) is NOT rehydrated whole here — that whole-
+                        // column H2D is exactly the ~47 GB residency that still OOMs at 2^24.
+                        // Instead we pass through a NON-OWNING
+                        // `BaseFieldVec` carrying the column's ORIGINAL
+                        // (freed) device pointer, which is the fused_commit HOST_STASH key. The
+                        // downstream gate_air GPU kernel detects the stage via `staged_host_ptr`,
+                        // builds its host-tile-source table, and row-tiles the H2D per block — so
+                        // this device pointer is used ONLY as a stash key,
+                        // never dereferenced. `owns_memory` is false, so
+                        // Drop never double-frees the already-freed committed buffer.
+                        //
+                        // tree2 (interaction) MUST stay fully resident (its post_kernel `-1` LogUp-
+                        // cumsum offset is a bit-reversed scattered index — a row-block halo would
+                        // read wrong bytes, scope §1.3/§1.4), so staged
+                        // tree2 columns are rehydrated WHOLE here exactly
+                        // as before. Non-staged needed columns are device-cloned so the
+                        // owned trace fully owns its buffers (legacy path, byte-for-byte
+                        // unchanged).
+                        let is_input_tree = tree_index == PREPROCESSED_TRACE_IDX
+                            || tree_index == ORIGINAL_TRACE_IDX;
+                        let staged = fused_commit::is_staged(&poly.evals.values);
+                        let evals_values = if staged && is_input_tree {
+                            // Non-owning passthrough of the stash-key pointer (row-tiled
+                            // downstream).
+                            BaseFieldVec::from_borrowed_ptr(
+                                poly.evals.values.device_ptr,
+                                poly.evals.values.size,
+                            )
+                        } else if staged {
+                            // tree2 (or any other resident-required tree): rehydrate whole.
+                            fused_commit::rehydrate_owned(&poly.evals.values)
+                        } else {
+                            poly.evals.values.clone()
+                        };
+                        let evals =
+                            CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(
+                                poly.evals.domain,
+                                evals_values,
+                            );
+                        // Coeffs are not read by the eval-domain constraint kernel; omit them.
+                        Poly::new(None, evals)
+                    })
+                    .collect()
+            })
+            .collect(),
+    ))
+}
+
+/// A tiny valid device placeholder `Poly<CudaBackend>` for the columns this component does NOT read
+/// (never dereferenced by the eval; fills the [`TreeVec`] slot so global indexing is preserved).
+fn dummy_device_poly() -> Poly<CudaBackend> {
+    use stwo::prover::backend::Column;
+    let domain = CanonicCoset::new(1).circle_domain();
+    let values =
+        <CudaBackend as stwo::prover::backend::ColumnOps<BaseField>>::Column::zeros(domain.size());
+    let evals = CircleEvaluation::<CudaBackend, BaseField, BitReversedOrder>::new(domain, values);
+    Poly::new(None, evals)
+}
+
 /// Builds a host copy of `device_polys` that preserves the EXACT global [`TreeVec`] shape (same
 /// number of trees, same number of columns per tree, in the same positions) but only performs a
 /// device->host copy ([`poly_to_cpu`]) for the columns THIS component actually consumes.
 ///
 /// The audited host eval ([`get_constraint_quotient_inputs`]) reads exactly:
 ///   * every column in each [`stwo::core::pcs::TreeSubspan`] of `trace_locations` (the
-///     `col_start..col_end` range within `tree_index`), via `trace.polys.sub_tree(trace_locations)`,
+///     `col_start..col_end` range within `tree_index`), via
+///     `trace.polys.sub_tree(trace_locations)`,
 ///   * plus, in tree [`PREPROCESSED_TRACE_IDX`], the columns at `preprocessed_column_indices`
 ///     (which fully replace the preprocessed sub-tree slot).
 /// Every other column is a dead copy in the old full-trace path. Here those slots get a shared
@@ -193,10 +346,37 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         // ============================================================================
         if gpu_constraints_opt_in() && !_cpu_fallback_forced {
             if let Some(kernel) = registered_gpu_constraint_kernel() {
+                // STEP 2 (GATE_AIR_STREAM_COMMIT): the streamed commit freed this component's
+                // committed eval columns (bytes live in the streaming-commit-layer stash). The GPU
+                // constraint kernel reads those columns' device buffers, so we REHYDRATE only the
+                // columns THIS component reads (via `trace_locations` +
+                // `preprocessed_column_indices`) back to the device (H2D from the
+                // stash), build a resident device trace, and dispatch the SAME GPU
+                // kernel on it — composition stays on GPU (no host-delegate),
+                // and the `warn_if_main_host_delegate` path is NOT reached for staged shards. The
+                // rehydrated columns are OWNED by `resident_polys` and freed when it drops at the
+                // end of this block, so device residency during composition is
+                // bounded to this component's read set (transient), then released.
+                // Bit-identical to the resident path (same committed bytes, same
+                // kernel). When nothing is staged (legacy/resident
+                // path) `build_scoped_device_trace` returns `None` and we dispatch on the committed
+                // trace directly — byte-for-byte unchanged.
+                let resident_polys = build_scoped_device_trace(self, &trace.polys);
+                let scoped_trace;
+                let dispatch_trace: &Trace<'_, CudaBackend> = match &resident_polys {
+                    Some(polys) => {
+                        scoped_trace = Trace {
+                            polys: polys.as_cols_ref(),
+                        };
+                        &scoped_trace
+                    }
+                    None => trace,
+                };
+
                 // Device-resident constraint-quotient inputs (no D2H) on the CudaBackend trace.
                 let inputs = get_constraint_quotient_inputs(
                     self,
-                    trace,
+                    dispatch_trace,
                     evaluation_accumulator.evaluation_mode(),
                 );
                 let dispatch = GpuConstraintDispatch {
@@ -209,9 +389,15 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
                 if kernel(dispatch) {
                     return;
                 }
-                // Kernel declined (not its target AIR) -> fall through to the audited host delegate.
+                // Kernel declined (not its target AIR) -> fall through to the audited host
+                // delegate.
             }
         }
+
+        // Reaching here means this component takes the audited host-delegate constraint path.
+        // Loudly warn ONCE if it's the big gate_air MAIN component (where host-delegate is a ~60x
+        // regression vs the GPU kernel); silent for the small table components. Diagnostic only.
+        warn_if_main_host_delegate(self.n_constraints(), self.eval.log_size());
 
         // Move ONLY this component's committed trace polynomials to host. The audited host eval
         // (`get_constraint_quotient_inputs`) reads exactly the columns in `trace_locations` plus
@@ -233,7 +419,11 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             trace_domain,
             trace: cpu_trace_cols,
             denom_inv,
-        } = get_constraint_quotient_inputs(self, &cpu_trace, evaluation_accumulator.evaluation_mode());
+        } = get_constraint_quotient_inputs(
+            self,
+            &cpu_trace,
+            evaluation_accumulator.evaluation_mode(),
+        );
 
         // Grab the Cuda accumulator's column and its slice of `random_coeff_powers`. This is the
         // SAME split as the SimdBackend/CpuBackend impls, guaranteeing identical coefficients.
@@ -243,11 +433,9 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
 
         // Run the audited CPU constraint evaluation, seeded with the current (device) accumulator
         // contents copied to host.
-        let trace_cols = cpu_trace_cols
-            .as_cols_ref()
-            .map_cols(|c: &Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>| {
-                c.as_ref()
-            });
+        let trace_cols = cpu_trace_cols.as_cols_ref().map_cols(
+            |c: &Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>| c.as_ref(),
+        );
         let host_result: SecureColumnByCoords<CpuBackend> = accumulate_pointwise_cpu(
             self,
             trace_cols,
