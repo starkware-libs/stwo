@@ -863,9 +863,11 @@ mod tests {
         verify(&components.components, channel, commitment_scheme, proof)
     }
 
-    fn prove_and_verify_two_mle_eval_components(
+    fn prove_and_verify_two_mle_eval_components_with_claim_delta(
         n_variables_a: usize,
         n_variables_b: usize,
+        verify_delta_a: SecureField,
+        verify_delta_b: SecureField,
     ) -> Result<(), VerificationError> {
         const COEFFS_COL_TRACE: usize = 1;
         const MLE_EVAL_TRACE: usize = 2;
@@ -958,18 +960,20 @@ mod tests {
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, n_variables_b),
             SecureField::zero(),
         );
+        let verify_claim_a = claim_a + verify_delta_a;
+        let verify_claim_b = claim_b + verify_delta_b;
         let mle_eval_a = MleEvalVerifierComponent::new(
             trace_location_allocator,
             &coeffs_a,
             &eval_point_a,
-            claim_a,
+            verify_claim_a,
             MLE_EVAL_TRACE,
         );
         let mle_eval_b = MleEvalVerifierComponent::new(
             trace_location_allocator,
             &coeffs_b,
             &eval_point_b,
-            claim_b,
+            verify_claim_b,
             MLE_EVAL_TRACE,
         );
         let components = Components {
@@ -986,6 +990,18 @@ mod tests {
         verify(&components.components, channel, commitment_scheme, proof)
     }
 
+    fn prove_and_verify_two_mle_eval_components(
+        n_variables_a: usize,
+        n_variables_b: usize,
+    ) -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components_with_claim_delta(
+            n_variables_a,
+            n_variables_b,
+            SecureField::zero(),
+            SecureField::zero(),
+        )
+    }
+
     #[test]
     fn mle_eval_two_same_height_components() -> Result<(), VerificationError> {
         prove_and_verify_two_mle_eval_components(6, 6)
@@ -994,6 +1010,36 @@ mod tests {
     #[test]
     fn mle_eval_two_mixed_height_components() -> Result<(), VerificationError> {
         prove_and_verify_two_mle_eval_components(6, 8)
+    }
+
+    #[test]
+    fn mle_eval_mixed_height_false_claim_short_rejected() {
+        // Tamper the SHORTER component (n=6, repeated_double by 3 in the fix).
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            8,
+            SecureField::one(),
+            SecureField::zero(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on short component was ACCEPTED (unsound)"
+        );
+    }
+
+    #[test]
+    fn mle_eval_mixed_height_false_claim_tall_rejected() {
+        // Tamper the TALLER component (n=8, repeated_double by 1 in the fix).
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            8,
+            SecureField::zero(),
+            SecureField::one(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on tall component was ACCEPTED (unsound)"
+        );
     }
 
     #[test]
