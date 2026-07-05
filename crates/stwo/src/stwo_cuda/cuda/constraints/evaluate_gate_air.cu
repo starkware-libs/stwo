@@ -3,24 +3,30 @@
 //
 // !!! BOX-UNVALIDATED CUDA — cannot be compiled on the laptop (no nvcc). !!!
 // Transcribed line-for-line from `impl FrameworkEval for GateEval`
-// (gate-air-leaf/src/main.rs). Build + validate on the GPU box before trusting.
+// (gate-air-leaf/src/main.rs, QUBIT-MEMORY + ts=pc+1 (inlined) + rc-table encoding).
+// Build + validate on the GPU box.
 //
-// WITNESS-SHRINK LAYOUT (matches main.rs ~lines 379-401, 778-797): the main
-// (witness) trace is 188 columns. `enabler`, `shot_id`, `pc` (and the
-// pre-existing `pc_in_prog`) live in the PREPROCESSED tree (tree0) and are read
-// via eval0.get_preprocessed_column() in call order enabler/shot_id/pc/pc_in_prog.
-// The main trace header is just the 4 opcode masks; all later main reads shift
-// down by 3 vs the old 191-col layout. The main.rs line citations below were
-// re-derived against the witness-shrunk source.
+// QUBIT-MEMORY LAYOUT (main.rs, 22 cols, ACCESS_BLOCK=5): the main (witness) trace is:
+//   [0..4) opcode one-hots; [4..9) target addr/prev_ts/v/rc_lo/rc_hi;
+//   [9..14) ctrl_a access; [14..19) ctrl_b access; [19..22) ab/fire/delta.
+// ts (= pc+1) and the target's v_after (= v_before+delta) are INLINED, NOT columns.
+// `enabler`, `shot_id`, `pc`, `pc_in_prog` live in the PREPROCESSED tree (tree0), read via
+// eval0.get_preprocessed_column() in that call order (GATE_AIR_N_PREPROCESSED = 4). `pc` feeds
+// the inlined ts = pc + 1.
 //
 // Pipeline (mirror of evaluate_memory_address_to_id.cu):
-//   1. pre_kernel  : per eval-domain row, run the 151 ALGEBRAIC add_constraints
-//                    (-> numerators[row] = row_res) and emit the 12 LogUp
+//   1. pre_kernel  : per eval-domain row, run the 15 ALGEBRAIC add_constraints
+//                    (-> numerators[row] = row_res) and emit the 13 LogUp
 //                    relation entries (-> intermediate_fractions). PHASE 1.
+//                    (ts=pc+1 inlined + rc-table: per active access 1 ts algebraic
+//                    constraint (RANGE recon only; PIN dropped) + 2 rc-limb LOOKUPs;
+//                    the v_after equality is dropped (inlined). Algebraic 19->15,
+//                    LogUp entries stay 13 (only ts/v_after tuple VALUES change).)
 //   2. post_kernel : generic_constraint_post_kernel (evaluate_common.cuh) folds
-//                    the 12 fractions into 6 pair-batches and adds the 6 LogUp
-//                    cumsum constraints. PHASE 2 SOUNDNESS GATE — wired here but
-//                    NOT trusted until box accumulator-diff is zero.
+//                    the 13 fractions into 7 batches (6 pairs + 1 singleton tail)
+//                    and adds the 7 LogUp cumsum constraints. PHASE 2 SOUNDNESS
+//                    GATE — wired here but NOT trusted until box accumulator-diff
+//                    is zero.
 //   3. finalize    : generic_constraint_quotients_finalize_kernel — quotient =
 //                    numerators[row] * denom_inv[row >> trace_log_size], written
 //                    into the 4 accumulator coord columns honoring
@@ -44,22 +50,17 @@
 // ----------------------------------------------------------------------------
 // Relation slicing helper.
 //
-// gate_air draws ONE width-35 relation (`relation!(GateRel, 35)`, main.rs:110)
-// shared by all five logical relations (state/qdecode/rc_lo/rc_hi/program); they
-// are kept distinct only by the integer TAG prepended as values[0]
-// (main.rs:120-142). Every emit therefore combines against the SAME (z, alpha,
-// alpha_powers), using only the first N alpha_powers for an N-wide tuple — see
-// the Rust `combine` (constraint-framework logup.rs:84-99), which folds
-// `alpha_powers[0..values.len()]` and subtracts z.
+// gate_air draws ONE width-6 relation (`relation!(GateRel, 6)`, main.rs) shared by all three
+// logical relations (qubitmem / rc / program); they are kept distinct only by the integer TAG
+// prepended as values[0] (main.rs). Every emit combines against the SAME (z, alpha, alpha_powers),
+// using only the first N alpha_powers for an N-wide tuple — see the Rust `combine`
+// (constraint-framework logup.rs), which folds `alpha_powers[0..values.len()]` and subtracts z.
 //
-// The `CudaEvaluator::add_to_relation<N>(RelationEntry<N>)` overload
-// (eval_at_row.cuh:320) requires a `RelationEntry<N>`, whose `relation` field is
-// a `LookupElementsBasic<N>`. The gate relation is `LookupElementsBasic<35>`, so
-// for the N<35 entries (qdecode N=5, rc N=3, program N=6) we build the matching
-// `LookupElementsBasic<N>` by copying z, alpha, and the first N alpha_powers.
-// This yields bit-identical `combine` to the width-35 relation (the math only
-// touches alpha_powers[0..N]) while making the template overload match for both
-// CudaAssertEvaluator and CudaEvaluator. N==35 needs no slice.
+// The `CudaEvaluator::add_to_relation<N>(RelationEntry<N>)` overload requires a `RelationEntry<N>`
+// whose `relation` field is a `LookupElementsBasic<N>`. The gate relation is
+// `LookupElementsBasic<6>`, so for the N<6 entries (qubitmem N=5, rc N=3) we build the matching
+// `LookupElementsBasic<N>` by copying z, alpha, and the first N alpha_powers. This yields
+// bit-identical `combine` (the math only touches alpha_powers[0..N]). N==6 (program) needs no slice.
 template<int N>
 DEVICE_FORCEINLINE LookupElementsBasic<N> gate_relation_slice(
     const LookupElementsBasic<GATE_AIR_REL_WIDTH> &rel
@@ -74,115 +75,96 @@ DEVICE_FORCEINLINE LookupElementsBasic<N> gate_relation_slice(
 }
 
 // ----------------------------------------------------------------------------
-// Per-read masks, in the EXACT order `read_masks` (main.rs:954-973) consumes
-// columns from the main trace: q, limb_idx, bit_pos, mask, lsel[0..32], lo, hi,
-// bit. 39 columns per read.
+// Per-access masks (qubit-memory), in the EXACT order `access_masks` (main.rs) consumes columns
+// from the main trace: addr, prev_ts, v, rc_lo, rc_hi. 5 columns per access (ACCESS_BLOCK).
+// ts is NOT a column — it is the inlined `pc + 1`.
 // ----------------------------------------------------------------------------
-struct GateReadMasks {
-    m31 q;
-    m31 limb_idx;
-    m31 bit_pos;
-    m31 mask;
-    m31 lsel[GATE_AIR_N_LIMBS];
-    m31 lo;
-    m31 hi;
-    m31 bit;
+struct GateAccessMasks {
+    m31 addr;
+    m31 prev_ts;
+    m31 v;
+    m31 rc_lo;    // low limb of d = ts - prev_ts - 1 = pc - prev_ts
+    m31 rc_hi;    // high limb of d
 };
 
-// Mirror of `read_masks` (main.rs:954-973): pull 39 consecutive main-trace masks.
+// Mirror of `access_masks` (main.rs): pull 5 consecutive main-trace masks (addr,prev_ts,v then
+// rc_lo,rc_hi — matching cell_at's per-access column order).
 template<typename EvaluatorT>
-DEVICE_FORCEINLINE GateReadMasks gate_read_masks(EvaluatorT &eval) {
-    GateReadMasks r;
-    r.q = eval.next_trace_mask();
-    r.limb_idx = eval.next_trace_mask();
-    r.bit_pos = eval.next_trace_mask();
-    r.mask = eval.next_trace_mask();
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) {
-        r.lsel[j] = eval.next_trace_mask();
-    }
-    r.lo = eval.next_trace_mask();
-    r.hi = eval.next_trace_mask();
-    r.bit = eval.next_trace_mask();
-    return r;
+DEVICE_FORCEINLINE GateAccessMasks gate_access_masks(EvaluatorT &eval) {
+    GateAccessMasks a;
+    a.addr    = eval.next_trace_mask();
+    a.prev_ts = eval.next_trace_mask();
+    a.v       = eval.next_trace_mask();
+    a.rc_lo   = eval.next_trace_mask();
+    a.rc_hi   = eval.next_trace_mask();
+    return a;
 }
 
-// Mirror of `read_constraints` (main.rs:916-952). Emits, IN ORDER:
-//   * 32 lsel booleanity constraints  s*(s-1)              (main.rs:924-926)
-//   * sum(lsel) - active                                   (main.rs:934)
-//   * sum(j*lsel_j) - limb_idx                             (main.rs:935)
-//   * L - hi*mask*2 - bit*mask - lo, L = sum lsel_j*in_limb_j (main.rs:937-947)
-//   * bit*(bit-1)                                          (main.rs:949)
-//   * (1-active)*bit                                       (main.rs:951)
-// => 37 add_constraints per read, matching the Rust order exactly.
+// Mirror of `add_qubitmem_pair` (main.rs): emit the chain Use(predecessor) + Yield(successor) pair
+// for one access, gated by `active`. `ts` = the inlined timestamp (pc+1, shared across the step);
+// `v_out` = value written forward (v_after = v_before+delta for the target, v for a control read).
+//   Use   [+active] : (TAG_QUBITMEM, shot, addr, prev_ts, v_before)
+//   Yield [-active] : (TAG_QUBITMEM, shot, addr, ts=pc+1, v_out)
+// Order is Use then Yield — load-bearing (fraction index order).
 template<typename EvaluatorT>
-DEVICE_FORCEINLINE void gate_read_constraints(
-    EvaluatorT &eval,
-    const GateReadMasks &r,
-    m31 active,
-    const m31 *in_limb
-) {
-    // lsel booleanity (32).
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) {
-        m31 s = r.lsel[j];
-        eval.add_constraint(mul(s, sub(s, m31(1))));
-    }
-    // sum lsel = active ; sum j*lsel_j = limb_idx.
-    m31 sum = 0;
-    m31 weighted = 0;
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) {
-        sum = add(sum, r.lsel[j]);
-        weighted = add(weighted, mul(r.lsel[j], m31((unsigned)j)));
-    }
-    eval.add_constraint(sub(sum, active));
-    eval.add_constraint(sub(weighted, r.limb_idx));
-    // selected limb L = sum lsel_j * in_limb_j.
-    m31 l = 0;
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) {
-        l = add(l, mul(r.lsel[j], in_limb[j]));
-    }
-    // L = hi*2*mask + bit*mask + lo  ->  L - hi*mask*2 - bit*mask - lo = 0.
-    m31 hi_mask_two = mul(mul(r.hi, r.mask), m31(2));
-    m31 bit_mask = mul(r.bit, r.mask);
-    eval.add_constraint(sub(sub(sub(l, hi_mask_two), bit_mask), r.lo));
-    // bit booleanity.
-    eval.add_constraint(mul(r.bit, sub(r.bit, m31(1))));
-    // inactive => bit forced 0:  (1 - active) * bit.
-    eval.add_constraint(mul(sub(m31(1), active), r.bit));
-}
-
-// Mirror of `add_qdecode_lookup` (main.rs:975-995): emit relation entry
-//   (TAG_QDECODE, q, limb_idx, bit_pos, mask) with multiplicity = active.
-template<typename EvaluatorT>
-DEVICE_FORCEINLINE void gate_add_qdecode_lookup(
+DEVICE_FORCEINLINE void gate_add_qubitmem_pair(
     EvaluatorT &eval,
     const LookupElementsBasic<GATE_AIR_REL_WIDTH> &relation,
-    const GateReadMasks &r,
+    m31 shot_id,
+    const GateAccessMasks &a,
+    m31 ts,
+    m31 v_out,
     m31 active
 ) {
-    m31 values[5] = { m31(GATE_AIR_TAG_QDECODE), r.q, r.limb_idx, r.bit_pos, r.mask };
-    qm31 mult = { { active, 0 }, { 0, 0 } };  // E::EF::from(active)
-    RelationEntry<5> entry(gate_relation_slice<5>(relation), mult, values);
-    eval.template add_to_relation<5>(entry);
+    qm31 mult = { { active, 0 }, { 0, 0 } };            // E::EF::from(active)
+    m31 use_values[5] = { m31(GATE_AIR_TAG_QUBITMEM), shot_id, a.addr, a.prev_ts, a.v };
+    RelationEntry<5> use_entry(gate_relation_slice<5>(relation), mult, use_values);
+    eval.template add_to_relation<5>(use_entry);
+
+    m31 neg_active = neg(active);
+    qm31 neg_mult = { { neg_active, 0 }, { 0, 0 } };
+    m31 yield_values[5] = { m31(GATE_AIR_TAG_QUBITMEM), shot_id, a.addr, ts, v_out };
+    RelationEntry<5> yield_entry(gate_relation_slice<5>(relation), neg_mult, yield_values);
+    eval.template add_to_relation<5>(yield_entry);
 }
 
-// Mirror of `add_rc_lookup` (main.rs:997-1024): emit lo entry THEN hi entry
-//   (TAG_RC_LO, bit_pos, lo) and (TAG_RC_HI, bit_pos, hi), multiplicity=active.
-// Order is lo, then hi — this ordering is load-bearing (fraction index order).
+// Mirror of `add_rc_lookup` (main.rs): emit the two rc-table range-check LOOKUPs for one access,
+// gated by `active`. Each limb is looked up as (TAG_RC, pos, limb); the rc supply table supplies
+// each in-range (pos, value). Emitted lo then hi (consecutive => one finalize-in-pairs batch).
 template<typename EvaluatorT>
 DEVICE_FORCEINLINE void gate_add_rc_lookup(
     EvaluatorT &eval,
     const LookupElementsBasic<GATE_AIR_REL_WIDTH> &relation,
-    const GateReadMasks &r,
+    const GateAccessMasks &a,
     m31 active
 ) {
-    qm31 mult = { { active, 0 }, { 0, 0 } };
-    m31 lo_values[3] = { m31(GATE_AIR_TAG_RC_LO), r.bit_pos, r.lo };
+    qm31 mult = { { active, 0 }, { 0, 0 } };            // E::EF::from(active)
+    m31 lo_values[3] = { m31(GATE_AIR_TAG_RC), m31(GATE_AIR_RC_POS_LO), a.rc_lo };
     RelationEntry<3> lo_entry(gate_relation_slice<3>(relation), mult, lo_values);
     eval.template add_to_relation<3>(lo_entry);
 
-    m31 hi_values[3] = { m31(GATE_AIR_TAG_RC_HI), r.bit_pos, r.hi };
+    m31 hi_values[3] = { m31(GATE_AIR_TAG_RC), m31(GATE_AIR_RC_POS_HI), a.rc_hi };
     RelationEntry<3> hi_entry(gate_relation_slice<3>(relation), mult, hi_values);
     eval.template add_to_relation<3>(hi_entry);
+}
+
+// Mirror of `add_ts_range` (main.rs): emit the ONE flag-gated degree-1 ts-ordering ALGEBRAIC
+// constraint for one access:
+//   RANGE: active * (d - rc_lo - 2^RC_LO_BITS*rc_hi) = 0 with d = ts - prev_ts - 1 = pc - prev_ts —
+//          reconstructs d from its two limbs (the limbs are range-checked by gate_add_rc_lookup, not
+//          here). `ts` is the inlined `pc + 1`. The old PIN constraint is GONE (ts is structurally
+//          pc+1, so the pin is vacuous).
+template<typename EvaluatorT>
+DEVICE_FORCEINLINE void gate_add_ts_range(
+    EvaluatorT &eval,
+    m31 ts,
+    const GateAccessMasks &a,
+    m31 active
+) {
+    // RANGE recon: active * (d - (rc_lo + 2^RC_LO_BITS * rc_hi)), d = ts - prev_ts - 1 = pc - prev_ts.
+    m31 recon = add(a.rc_lo, mul(a.rc_hi, m31(1u << GATE_AIR_RC_LO_BITS)));
+    m31 d = sub(sub(ts, a.prev_ts), m31(1));
+    eval.add_constraint(mul(active, sub(d, recon)));
 }
 
 // ----------------------------------------------------------------------------
@@ -229,16 +211,16 @@ __global__ void evaluate_gate_air_pre_kernel(
     // for trace1 reads (main), carrying row_res / constraint_index /
     // fraction_index forward by hand.
     //
-    // WITNESS-SHRINK (main.rs:778-797). The Rust `evaluate()` now reads FOUR
+    // PREPROCESSED (main.rs GateEval::evaluate). The Rust `evaluate()` reads FOUR
     // preprocessed columns up front, in this EXACT call order:
     //     enabler, shot_id, pc, pc_in_prog
     // (= GateEval's `preprocessed_column_indices` order, which is the order the
     // InfoEvaluator records `get_preprocessed_column` calls; the CUDA component
     // prover gathers `trace0_evaluations` in precisely that index order — see
     // constraint-framework component.rs / component_prover.rs). eval0 therefore
-    // reads them sequentially via col_index[0] in the SAME order. Only the 4
-    // opcode masks (is_nop/is_not/is_cnot/is_toffoli) remain in the main trace
-    // header; everything else shifts down by 3 vs the old 191-col layout.
+    // reads them sequentially via col_index[0] in the SAME order. The main trace is
+    // the 22-column qubit-memory layout (4 opcode masks + target(5) + 2*ctrl(5) + 3;
+    // ts = pc+1 and v_after = v_before+delta are inlined, not columns).
 
     EvaluatorT eval0(
         trace0_evaluations, random_coeff_powers,
@@ -260,121 +242,107 @@ __global__ void evaluate_gate_air_pre_kernel(
         intermediate_fractions, logup_counts
     );
 
-    // --- Main-trace masks (188 cols), in declaration order (main.rs:783-797). ---
-    // Header is now ONLY the 4 opcode masks (enabler/shot_id/pc moved to tree0).
-    m31 is_nop     = eval.next_trace_mask();
-    m31 is_not     = eval.next_trace_mask();
-    m31 is_cnot    = eval.next_trace_mask();
-    m31 is_toffoli = eval.next_trace_mask();
+    // --- Main-trace masks (22 cols), in declaration order (main.rs GateEval::evaluate). ---
+    // Header is ONLY the 4 opcode masks (enabler/shot_id/pc/pc_in_prog are tree0).
+    m31 is_nop     = eval.next_trace_mask();   // col 0
+    m31 is_not     = eval.next_trace_mask();   // col 1
+    m31 is_cnot    = eval.next_trace_mask();   // col 2
+    m31 is_toffoli = eval.next_trace_mask();   // col 3
 
-    m31 in_limb[GATE_AIR_N_LIMBS];
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) in_limb[j] = eval.next_trace_mask();
-    m31 out_limb[GATE_AIR_N_LIMBS];
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) out_limb[j] = eval.next_trace_mask();
+    // target access (addr,prev_ts,v,rc_lo,rc_hi) cols 4..9. ts (=pc+1) and v_after (=v_before+delta)
+    // are NOT columns — inlined below.
+    GateAccessMasks target = gate_access_masks(eval);   // cols 4..9
+    GateAccessMasks ctrl_a = gate_access_masks(eval);   // cols 9..14
+    GateAccessMasks ctrl_b = gate_access_masks(eval);   // cols 14..19
 
-    GateReadMasks target = gate_read_masks(eval);
-    GateReadMasks ctrl_a = gate_read_masks(eval);
-    GateReadMasks ctrl_b = gate_read_masks(eval);
+    m31 ab    = eval.next_trace_mask();   // col 19
+    m31 fire  = eval.next_trace_mask();   // col 20
+    m31 delta = eval.next_trace_mask();   // col 21
 
-    m31 ab    = eval.next_trace_mask();
-    m31 fire  = eval.next_trace_mask();
-    m31 delta = eval.next_trace_mask();
+    // ts = pc + 1 (inlined affine of the preprocessed pc, shared by all accesses of the step).
+    m31 ts = add(pc, m31(1));
+    // v_after = v_before + delta (inlined; target.v is v_before).
+    m31 v_after = add(target.v, delta);
 
-    // ===================== ALGEBRAIC CONSTRAINTS (151) =====================
-    // [1-4] opcode booleanity op*(op-1) for is_nop/is_not/is_cnot/is_toffoli (main.rs:790-792).
+    // ===================== ALGEBRAIC CONSTRAINTS (part 1: 12) =====================
+    // Order MUST match GateEval::evaluate exactly. (The 3 ts-ordering accesses add 3 more algebraic
+    // constraints — ONE RANGE recon per access — emitted below in `add_ts_range` position, for 15.
+    // The old PIN per access and the v_after equality are dropped.)
+    // [1-4] opcode booleanity op*(op-1) for is_nop/is_not/is_cnot/is_toffoli.
     eval.add_constraint(mul(is_nop,     sub(is_nop,     m31(1))));
     eval.add_constraint(mul(is_not,     sub(is_not,     m31(1))));
     eval.add_constraint(mul(is_cnot,    sub(is_cnot,    m31(1))));
     eval.add_constraint(mul(is_toffoli, sub(is_toffoli, m31(1))));
-    // [5] one-hot sum = enabler: enabler - is_nop - is_not - is_cnot - is_toffoli (main.rs:793-799).
+    // [5] one-hot sum = enabler: enabler - is_nop - is_not - is_cnot - is_toffoli.
     eval.add_constraint(
         sub(sub(sub(sub(enabler, is_nop), is_not), is_cnot), is_toffoli)
     );
 
-    // active sub-expressions (main.rs:801-802). NOT columns — computed inline.
+    // active sub-expressions. NOT columns — computed inline.
     m31 a_active = add(is_cnot, is_toffoli);
     m31 b_active = is_toffoli;
 
-    // [6-42]  target read block (active = enabler)        (main.rs:806).
-    // [43-79] ctrl_a read block (active = a_active)        (main.rs:807).
-    // [80-116] ctrl_b read block (active = b_active)       (main.rs:808).
-    gate_read_constraints(eval, target, enabler,  in_limb);
-    gate_read_constraints(eval, ctrl_a, a_active, in_limb);
-    gate_read_constraints(eval, ctrl_b, b_active, in_limb);
+    // [6-9] value booleanity v*(v-1) for target.v, v_after(=v_before+delta), ctrl_a.v, ctrl_b.v (in
+    // this order). Booleanity on the derived v_after keeps the target's written memory value a bit.
+    eval.add_constraint(mul(target.v, sub(target.v, m31(1))));
+    eval.add_constraint(mul(v_after,  sub(v_after,  m31(1))));
+    eval.add_constraint(mul(ctrl_a.v, sub(ctrl_a.v, m31(1))));
+    eval.add_constraint(mul(ctrl_b.v, sub(ctrl_b.v, m31(1))));
 
-    // --- Fire / delta logic. ---
-    m31 a_bit = ctrl_a.bit;  // main.rs:811
-    m31 b_bit = ctrl_b.bit;  // main.rs:812
-    m31 t_bit = target.bit;  // main.rs:813
+    // --- Gate-apply on the memory values. ---
+    m31 a_bit = ctrl_a.v;
+    m31 b_bit = ctrl_b.v;
+    m31 t_bit = target.v;   // v_before
 
-    // [117] ab - a_bit*b_bit (main.rs:815).
+    // [10] ab - a_bit*b_bit.
     eval.add_constraint(sub(ab, mul(a_bit, b_bit)));
-    // [118] fire - is_not - is_cnot*a_bit - is_toffoli*ab (main.rs:817-822).
+    // [11] fire - is_not - is_cnot*a_bit - is_toffoli*ab.
     eval.add_constraint(
         sub(sub(sub(fire, is_not), mul(is_cnot, a_bit)), mul(is_toffoli, ab))
     );
-    // [119] delta - fire + 2*t_bit*fire (main.rs:825-827).
-    //   delta - fire + t_bit*fire*2.
+    // [12] delta - fire + 2*t_bit*fire  (delta = v_after - v_before = fire*(1 - 2*v_before)).
+    // (The old [13] v_after - v_before - delta = 0 equality is dropped — v_after is now inlined
+    // as v_before + delta.)
     eval.add_constraint(
         add(sub(delta, fire), mul(mul(t_bit, fire), m31(2)))
     );
 
-    // [120-151] out_limb[j] - in_limb[j] - lsel_t[j]*delta*mask_t  (main.rs:830-836).
-    for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) {
-        m31 sel_term = mul(mul(target.lsel[j], delta), target.mask);
-        eval.add_constraint(sub(sub(out_limb[j], in_limb[j]), sel_term));
-    }
-
-    // ===================== LOGUP RELATION ENTRIES (12) =====================
-    // PHASE 1 emits the 12 entries (the post_kernel turns them into the 6 LogUp
-    // constraints in PHASE 2). Order MUST match `evaluate()` exactly.
+    // ===================== LOGUP RELATION ENTRIES (13) =====================
+    // PHASE 1 emits the 13 entries (the post_kernel turns them into 7 LogUp batch constraints in
+    // PHASE 2: 6 pairs + 1 singleton). Order MUST match `evaluate()` / gen_main_interaction exactly:
+    //   qubitmem target/ctrl_a/ctrl_b Use/Yield (6), rc target/ctrl_a/ctrl_b lo/hi (6), program (1).
+    // The ts-ordering RANGE recon is a degree-1 algebraic add_constraint (gate_add_ts_range), NOT a
+    // relation entry; it is emitted AFTER the rc LOOKUPs and BEFORE the program emit (the same
+    // interleave as main.rs `evaluate()`), so the relation-batch order stays qubitmem, rc, program.
     const LookupElementsBasic<GATE_AIR_REL_WIDTH> &rel = gate_eval->relation;
 
-    // 1. state input  (+enabler), 35-wide  (main.rs:839-856).
-    //    [TAG_STATE, shot_id, pc, in_limb[0..32]]
-    {
-        m31 in_state[GATE_AIR_REL_WIDTH];
-        in_state[0] = m31(GATE_AIR_TAG_STATE);
-        in_state[1] = shot_id;
-        in_state[2] = pc;
-        for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) in_state[3 + j] = in_limb[j];
-        qm31 mult = { { enabler, 0 }, { 0, 0 } };            // E::EF::from(enabler)
-        RelationEntry<GATE_AIR_REL_WIDTH> entry(rel, mult, in_state);
-        eval.template add_to_relation<GATE_AIR_REL_WIDTH>(entry);
-    }
-    // 2. state output (-enabler), 35-wide  (main.rs:845-861).
-    //    [TAG_STATE, shot_id, pc+1, out_limb[0..32]]
-    {
-        m31 out_state[GATE_AIR_REL_WIDTH];
-        out_state[0] = m31(GATE_AIR_TAG_STATE);
-        out_state[1] = shot_id;
-        out_state[2] = add(pc, m31(1));
-        for (int j = 0; j < GATE_AIR_N_LIMBS; ++j) out_state[3 + j] = out_limb[j];
-        m31 neg_enabler = neg(enabler);                       // -mult
-        qm31 mult = { { neg_enabler, 0 }, { 0, 0 } };
-        RelationEntry<GATE_AIR_REL_WIDTH> entry(rel, mult, out_state);
-        eval.template add_to_relation<GATE_AIR_REL_WIDTH>(entry);
-    }
+    // 1,2. qubitmem target: Use(+enabler)/Yield(-enabler); ts = pc+1, v_out = v_after = v_before+delta.
+    gate_add_qubitmem_pair(eval, rel, shot_id, target, ts, v_after, enabler);
+    // 3,4. qubitmem ctrl_a: Use(+a_active)/Yield(-a_active); ts = pc+1, read propagates value (v_out = v).
+    gate_add_qubitmem_pair(eval, rel, shot_id, ctrl_a, ts, ctrl_a.v, a_active);
+    // 5,6. qubitmem ctrl_b: Use(+b_active)/Yield(-b_active); ts = pc+1.
+    gate_add_qubitmem_pair(eval, rel, shot_id, ctrl_b, ts, ctrl_b.v, b_active);
 
-    // 3,4,5. qdecode for target / ctrl_a / ctrl_b  (main.rs:864-866).
-    gate_add_qdecode_lookup(eval, rel, target, enabler);
-    gate_add_qdecode_lookup(eval, rel, ctrl_a, a_active);
-    gate_add_qdecode_lookup(eval, rel, ctrl_b, b_active);
-
-    // 6..11. rc (lo,hi) for target / ctrl_a / ctrl_b  (main.rs:869-871).
-    // Each call emits TWO entries (lo then hi) -> 6 entries.
+    // 7,8 / 9,10 / 11,12. rc range-check LOOKUPs (lo then hi) for target / ctrl_a / ctrl_b — emitted
+    // as a group AFTER the qubitmem pairs (mirrors main.rs `add_rc_lookup` × 3 order).
     gate_add_rc_lookup(eval, rel, target, enabler);
     gate_add_rc_lookup(eval, rel, ctrl_a, a_active);
     gate_add_rc_lookup(eval, rel, ctrl_b, b_active);
 
-    // 12. program (+enabler)  (main.rs:882-897).
+    // ts-ordering RANGE recon: 1 degree-1 algebraic add_constraint per access (#13..15), NOT relation
+    // entries. ts = pc+1 inlined; the old PIN per access is gone (main.rs `add_ts_range` order).
+    gate_add_ts_range(eval, ts, target, enabler);
+    gate_add_ts_range(eval, ts, ctrl_a, a_active);
+    gate_add_ts_range(eval, ts, ctrl_b, b_active);
+
+    // 13. program (+enabler).
     //   opcode_scalar = is_not*1 + is_cnot*2 + is_toffoli*3.
-    //   [TAG_PROGRAM, pc_in_prog, opcode_scalar, target.q, ctrl_a.q, ctrl_b.q]
+    //   [TAG_PROGRAM, pc_in_prog, opcode_scalar, target.addr, ctrl_a.addr, ctrl_b.addr]
     {
         m31 opcode_scalar = add(add(is_not, mul(is_cnot, m31(2))), mul(is_toffoli, m31(3)));
         m31 prog[6] = {
             m31(GATE_AIR_TAG_PROGRAM), pc_in_prog, opcode_scalar,
-            target.q, ctrl_a.q, ctrl_b.q
+            target.addr, ctrl_a.addr, ctrl_b.addr
         };
         qm31 mult = { { enabler, 0 }, { 0, 0 } };
         RelationEntry<6> entry(gate_relation_slice<6>(rel), mult, prog);
@@ -537,7 +505,7 @@ void evaluate_gate_air(
     const unsigned eval_domain_size = 1u << eval_domain_log_size;
 
     // FULL (A) per-column mixed supply: the input columns are a MIX of host-staged
-    // (the 188 large tree1 eval columns, dehydrated by GATE_AIR_STREAM_COMMIT — their
+    // (the 22 tree1 eval columns, dehydrated by GATE_AIR_STREAM_COMMIT — their
     // trace{0,1}_evaluations device pointers are FREED stash keys, must not be
     // dereferenced) and RESIDENT (the 4 tree0 preprocessed + the small tree1
     // multiplicity/witness/program columns, kept live on device — their
@@ -582,7 +550,7 @@ void evaluate_gate_air(
     // transient) with the same tile_start/this_tile passed to the kernels; the
     // kernels index every trace read by GLOBAL row and only the fraction pointer
     // was biased. This completes route (c): under tiled_input we ALSO row-tile the
-    // 188 main + 4 preprocessed INPUT columns so their residency is
+    // 22 main + 4 preprocessed INPUT columns so their residency is
     // O(this_tile * (trace0_len + trace1_len)) instead of the full ~47 GB eval set.
     // The eval is pure pointwise for tree0/tree1 (offset 0, no next-row mask), so a
     // row-block is a contiguous committed-byte slice and biased-pointer indexing is
@@ -626,7 +594,8 @@ void evaluate_gate_air(
     timer global_timer;
     global_timer.start("evaluate_gate_air");
 
-    // gate_air uses `finalize_logup_in_pairs` => batching[i] = i/2 (6 pairs).
+    // gate_air uses `finalize_logup_in_pairs` => batching[i] = i/2. For logup_counts=13 that is
+    // 6 full pairs (batches 0..5) + 1 singleton tail (entry 12) = 7 batches.
     // The post_kernel folds each pair, reads the interaction cumsum mask (offset
     // 0 for full batches; offsets {0,-1} + cumsum_shift for the last), and adds
     // `diff*denom - num`. This is EXACTLY finalize_logup_in_pairs (lib.rs:185-221).
