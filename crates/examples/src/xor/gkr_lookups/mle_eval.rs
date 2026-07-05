@@ -66,6 +66,17 @@ pub struct MleEvalProverComponent<'twiddles, 'oracle, O: MleCoeffColumnOracle> {
     twiddles: &'twiddles TwiddleTree<SimdBackend>,
 }
 
+fn local_point_for_component(
+    point: CirclePoint<SecureField>,
+    max_log_degree_bound: u32,
+    component_log_size: u32,
+) -> CirclePoint<SecureField> {
+    let fold_steps = max_log_degree_bound
+        .checked_sub(component_log_size)
+        .expect("max_log_degree_bound must be at least component log_size");
+    point.repeated_double(fold_steps)
+}
+
 impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> MleEvalProverComponent<'twiddles, 'oracle, O> {
     /// Generates prover component that carries out univariate IOP for MLE eval at point.
     ///
@@ -159,7 +170,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
         accumulator: &mut PointEvaluationAccumulator,
         max_log_degree_bound: u32,
     ) {
-        let local_point = point.repeated_double(max_log_degree_bound - self.log_size());
+        let local_point = local_point_for_component(point, max_log_degree_bound, self.log_size());
         // Consistency check the MLE coeffs column polynomial and oracle.
         let direct_mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(local_point);
         let oracle_mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
@@ -382,7 +393,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         max_log_degree_bound: u32,
     ) {
         let component_mask = mask.sub_tree(&self.trace_location);
-        let local_point = point.repeated_double(max_log_degree_bound - self.log_size());
+        let local_point = local_point_for_component(point, max_log_degree_bound, self.log_size());
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
         let vanish_on_trace_eval_inv =
             coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse();
