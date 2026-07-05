@@ -56,11 +56,18 @@ pub(crate) fn registered_gpu_constraint_kernel() -> Option<GpuConstraintKernel> 
     *GPU_CONSTRAINT_KERNEL.lock().unwrap()
 }
 
-/// Whether the operator opted into the device-resident GPU constraint path
-/// (`CUDA_GPU_CONSTRAINTS=1`). Default (unset / "0") keeps the audited host-delegate.
+/// Whether the device-resident GPU constraint path is engaged. It is now the DEFAULT for GPU
+/// (`--features cuda`) builds: a registered kernel is used unless the operator EXPLICITLY opts out
+/// with `CUDA_GPU_CONSTRAINTS=0` (or "false"). This makes the fast path default — no `=1` env
+/// gymnastics — so a plain cuda prove cannot silently benchmark the slow host-delegate path. The
+/// opt-out escape hatch remains for the deliberate CPU-vs-GPU byte-identity diff (paired with the
+/// `panic_if_main_host_delegate` escape hatch `CUDA_CONSTRAINT_CPU_FALLBACK=1`).
+///
+/// This only decides whether to OFFER a component to a registered kernel; if no kernel is installed
+/// via `set_gpu_constraint_kernel`, the prover still takes the host delegate regardless.
 pub fn gpu_constraints_opt_in() -> bool {
-    matches!(
+    !matches!(
         std::env::var("CUDA_GPU_CONSTRAINTS").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
+        Ok("0") | Ok("false") | Ok("FALSE")
     )
 }

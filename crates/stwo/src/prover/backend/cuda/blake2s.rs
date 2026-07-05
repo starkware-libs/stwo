@@ -2,7 +2,7 @@ use std::ffi::c_void;
 
 use crate::core::vcs::blake2_hash::{reduce_to_m31, Blake2sHash};
 use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleHasher, Blake2sMerkleHasher};
-use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasherGeneric;
+use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher as Blake2sMerkleHasherLifted;
 use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::prover::vcs::ops::MerkleOps;
@@ -98,17 +98,22 @@ impl CudaBackend {
     }
 }
 
-impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>
-    for CudaBackend
-{
+// PR #1425: the lifted Blake2s Merkle hasher is now the *standard* (non-M31-reduced)
+// `Blake2sMerkleHasher = Blake2sHasherGeneric<false>` — the same hasher for BOTH
+// `Blake2sMerkleChannel` and `Blake2sM31MerkleChannel` (only the Fiat-Shamir channel differs).
+// The former `<const IS_M31_OUTPUT: bool>` generic collapses to the single `false` case, so the
+// device kernels below are always called with the non-reduced (`false`) finalize path.
+impl MerkleOpsLifted<Blake2sMerkleHasherLifted> for CudaBackend {
     fn build_leaves(
         columns: &[&Col<Self, crate::core::fields::m31::BaseField>],
         lifting_log_size: u32,
     ) -> Col<Self, Blake2sHash> {
         if columns.is_empty() {
-            let cpu_result = <CpuBackend as MerkleOpsLifted<
-                Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>,
-            >>::build_leaves(&[], lifting_log_size);
+            let cpu_result =
+                <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasherLifted>>::build_leaves(
+                    &[],
+                    lifting_log_size,
+                );
             return Blake2sHashVec::from_vec(cpu_result);
         }
 
@@ -127,20 +132,19 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             // (staged) main tree is MIXED-SIZE and is handled by the heterogeneous path (which
             // rehydrates staged columns from the host stash before absorbing), so it never reaches
             // here; an all-staged same-size set arriving here is a bug, never a silent
-            // use-after-free. Guarded to IS_M31_OUTPUT == true (the streamed base main tree uses the
-            // M31-output reduction, Blake2sM31MerkleHasher). `all()` on an empty slice is true, but
-            // we only reach here with columns non-empty.
-            if IS_M31_OUTPUT {
-                let columns_all_staged = columns
-                    .iter()
-                    .all(|c| crate::prover::backend::cuda::fused_commit::is_staged(c));
-                assert!(
-                    !columns_all_staged,
-                    "all columns are host-staged in the same-size fast path — refusing to hash \
-                     freed device buffers (staged trees are mixed-size and must use the \
-                     heterogeneous rehydrate path)"
-                );
-            }
+            // use-after-free. Post-#1425 the lifted hasher is the single non-reduced
+            // `Blake2sMerkleHasher` (no `IS_M31_OUTPUT` variant), so the guard always applies to the
+            // one lifted build path (the streamed base main tree). `all()` on an empty slice is true,
+            // but we only reach here with columns non-empty.
+            let columns_all_staged = columns
+                .iter()
+                .all(|c| crate::prover::backend::cuda::fused_commit::is_staged(c));
+            assert!(
+                !columns_all_staged,
+                "all columns are host-staged in the same-size fast path — refusing to hash \
+                 freed device buffers (staged trees are mixed-size and must use the \
+                 heterogeneous rehydrate path)"
+            );
 
             // P-S0 (streaming-Merkle redesign): optionally build the leaf hash by streaming one
             // eval column at a time into a persistent per-row Blake2s state array, instead of the
@@ -174,7 +178,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                         states,
                         result.device_ptr as *mut Blake2sHash,
                         size,
-                        IS_M31_OUTPUT,
+                        // #1425: lifted hasher is the non-reduced `Blake2sMerkleHasher` (<false>).
+                        false,
                     );
                     bindings::cuda_free_memory(states as *const c_void);
                 }
@@ -197,7 +202,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                     columns.len() as u32,
                     device_col_ptrs,
                     result.device_ptr as *mut Blake2sHash,
-                    IS_M31_OUTPUT,
+                    // #1425: lifted hasher is the non-reduced `Blake2sMerkleHasher` (<false>).
+                    false,
                 );
                 bindings::cuda_free_memory(device_col_ptrs as *const c_void);
             }
@@ -348,7 +354,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 states,
                 result.device_ptr as *mut Blake2sHash,
                 final_size,
-                IS_M31_OUTPUT,
+                // #1425: lifted hasher is the non-reduced `Blake2sMerkleHasher` (<false>).
+                false,
             );
             bindings::cuda_free_memory(states as *const c_void);
 
@@ -367,7 +374,8 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 output_size as u32,
                 prev_layer.device_ptr,
                 result.device_ptr as *mut Blake2sHash,
-                IS_M31_OUTPUT,
+                // #1425: lifted hasher is the non-reduced `Blake2sMerkleHasher` (<false>).
+                false,
             );
         }
         result

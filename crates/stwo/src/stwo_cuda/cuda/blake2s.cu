@@ -34,31 +34,54 @@ __device__ __constant__ uint8_t blake2s_sigma[10][16] = {
         b = ROTR32(b ^ c, 7); \
     } while(0)
 
+// ---------------------------------------------------------------------------
+// L3 change 2: word-path Blake2s.
+//
+// The original byte-path streamed message bytes into `buf[64]`, then `compress`
+// reassembled each 4-byte little-endian group back into a word `m[i]`. But every
+// byte fed came from an M31 word via `val.to_le_bytes()`
+// (bytes = { val>>0, val>>8, val>>16, val>>24 }), so `compress`'s reassembly
+// `m[i] = b0 | b1<<8 | b2<<16 | b3<<24` reproduced EXACTLY the original word.
+// The round-trip word -> 4 LE bytes -> word is the identity on u32. Every message
+// this file hashes is a whole number of 4-byte M31 words (leaf columns are u32;
+// child hashes are 8 u32 words), so the byte buffer never holds a partial word.
+//
+// The word-path therefore skips the byte detour: it feeds message words straight
+// into `m[]`. Because `m[]` is bit-identical to the byte-path's, and the IV,
+// parameter block (0x01010020, digest len 32), `t` byte counter, high-offset
+// word (v[13]^=0), final-block flag (v[14]^=0xFFFFFFFF) and the 10 G-rounds are
+// all unchanged, the output hash is bit-identical. `t` is still counted in BYTES
+// (16 words = 64 bytes per full block), preserving the exact final-block offset.
+//
+// The word buffer holds the same words, in the same order, that the byte buffer
+// held as LE bytes; a block boundary fires at the same cumulative 64-byte mark.
+// ---------------------------------------------------------------------------
+
+// Streaming state, word-path. Buffer is 16 WORDS (== 64 bytes), matching the
+// byte-path's buf[64] exactly, but indexed in words. `wlen` counts BUFFERED
+// WORDS (0..15). `t` still counts TOTAL BYTES so the final-block offset is
+// identical to the byte-path. Used by the persistent (global-memory-resident)
+// streaming path: alloc_init / lift_states / update_columns / finalize_all.
 typedef struct {
     uint32_t h[8];      // hash state
     uint32_t t;         // total bytes so far
-    uint8_t  buf[64];   // buffer
-    size_t   buflen;    // buffer usage
+    uint32_t wbuf[16];  // buffered message words (== byte-path buf[64])
+    uint32_t wlen;      // buffered words in wbuf (0..15)
 } Blake2sState;
 
-__device__ void blake2s_compress(
-    Blake2sState* S,
-    const uint8_t block[64],
+// Word-path compress: `m[]` is supplied directly (no byte reassembly). This is
+// the single point that guarantees byte-identity — see the equivalence note
+// above. Semantics (IV mix, t/lastblock XORs, 10 rounds, feed-forward) are
+// copied verbatim from the byte-path `blake2s_compress`.
+__device__ __forceinline__ void blake2s_compress_words(
+    uint32_t h[8],
+    const uint32_t m[16],
     uint32_t t,         // total bytes so far
     uint32_t lastblock  // 0 for normal, 0xFFFFFFFF for last block
 ) {
-    uint32_t m[16];
-    #pragma unroll
-    for (int i = 0; i < 16; i++) {
-        m[i] =  ((uint32_t)block[4*i+0]      ) |
-                ((uint32_t)block[4*i+1] << 8 ) |
-                ((uint32_t)block[4*i+2] << 16) |
-                ((uint32_t)block[4*i+3] << 24);
-    }
-
     uint32_t v[16];
     #pragma unroll
-    for (int i = 0; i < 8; i++) v[i] = S->h[i];
+    for (int i = 0; i < 8; i++) v[i] = h[i];
     #pragma unroll
     for (int i = 0; i < 8; i++) v[i+8] = blake2s_IV[i];
 
@@ -66,7 +89,6 @@ __device__ void blake2s_compress(
     v[13] ^= 0;         // high 32 bits (always 0 for <2^32 bytes)
     v[14] ^= lastblock; // 0xFFFFFFFF for last block
 
-    // 10 rounds
     #pragma unroll
     for (int r = 0; r < 10; r++) {
         G(r,0,v[0],v[4],v[8],v[12]);
@@ -81,52 +103,145 @@ __device__ void blake2s_compress(
 
     #pragma unroll
     for (int i = 0; i < 8; i++)
-        S->h[i] ^= v[i] ^ v[i+8];
+        h[i] ^= v[i] ^ v[i+8];
+}
+
+// ---------------------------------------------------------------------------
+// Register-resident word-path hasher for SELF-CONTAINED kernels (init -> absorb
+// whole message -> finalize within one thread, state never leaves registers).
+// Keeps ONLY h[8] + a byte counter + a small word-staging buffer in registers —
+// no Blake2sState struct, no buf[64]/buflen. This is the register relief: the
+// 88-byte Blake2sState is gone from build_leaves_fused / lifted_build_next_layer.
+//
+// Byte-identity: absorb-associativity + the compress_words equivalence above.
+// Feeding words w0,w1,... in order and firing compress_words every 16 words with
+// t += 64, then finalizing the tail with t += 4*wlen and lastblock=0xFFFFFFFF,
+// reproduces the exact block sequence, `m[]` contents, `t` values and final flag
+// of the byte-path.
+// ---------------------------------------------------------------------------
+struct Blake2sWordHasher {
+    uint32_t h[8];
+    uint32_t m[16];     // current partial block (staging)
+    uint32_t t;         // total bytes absorbed so far
+    uint32_t wlen;      // words currently staged in m[] (0..15)
+
+    __device__ __forceinline__ void init() {
+        h[0] = blake2s_IV[0] ^ 0x01010020; // digest len = 32, matches blake2s_init
+        #pragma unroll
+        for (int i = 1; i < 8; i++) h[i] = blake2s_IV[i];
+        t = 0;
+        wlen = 0;
+    }
+
+    // Absorb one message word (an M31 value or a hash limb, little-endian).
+    //
+    // LAZY boundary — MUST match the byte-path exactly: the original
+    // `blake2s_update` compresses a buffered block only when the NEXT input
+    // arrives (`if (inlen > fill)`, strictly greater), never eagerly on fill. So
+    // a full 16-word block is held back and compressed as the FINAL block by
+    // finalize (with lastblock set), NOT as a non-final block. Here we mirror
+    // that: if the buffer is already full (16 words) when a new word arrives,
+    // flush it as a NON-final block first, then stage the new word.
+    __device__ __forceinline__ void absorb(uint32_t word) {
+        if (wlen == 16) {
+            t += 64;
+            blake2s_compress_words(h, m, t, 0);
+            wlen = 0;
+        }
+        m[wlen++] = word;
+    }
+
+    // Finalize: pad the partial block with zero words and compress with the
+    // final-block flag. Mirrors blake2s_finalize (t += buflen; zero-pad; compress
+    // with lastblock=0xFFFFFFFF). Here buflen == 4*wlen bytes.
+    __device__ __forceinline__ void finalize(Blake2sHash* out) {
+        t += 4 * wlen;
+        #pragma unroll
+        for (int i = 0; i < 16; i++) if ((uint32_t)i >= wlen) m[i] = 0;
+        blake2s_compress_words(h, m, t, 0xFFFFFFFF);
+        #pragma unroll
+        for (int i = 0; i < 8; i++) out->s[i] = h[i];
+    }
+};
+
+__device__ void blake2s_compress(
+    Blake2sState* S,
+    uint32_t t,         // total bytes so far
+    uint32_t lastblock  // 0 for normal, 0xFFFFFFFF for last block
+) {
+    // Word-path: wbuf already holds the block's message words (see equivalence
+    // note above compress_words). No byte reassembly needed.
+    blake2s_compress_words(S->h, S->wbuf, t, lastblock);
 }
 
 
 __device__ void blake2s_init(Blake2sState* S) {
-    const uint32_t IV[8] = {
-        0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-        0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
-    };
-    S->h[0] = IV[0] ^ 0x01010020; // digest len = 32
-    S->h[1] = IV[1];
-    S->h[2] = IV[2];
-    S->h[3] = IV[3];
-    S->h[4] = IV[4];
-    S->h[5] = IV[5];
-    S->h[6] = IV[6];
-    S->h[7] = IV[7];
+    S->h[0] = blake2s_IV[0] ^ 0x01010020; // digest len = 32
+    #pragma unroll
+    for (int i = 1; i < 8; i++) S->h[i] = blake2s_IV[i];
     S->t = 0;
-    S->buflen = 0;
+    S->wlen = 0;
 }
-__device__ void blake2s_update(Blake2sState* S, const uint8_t* in, size_t inlen) {
-    size_t left = S->buflen;
-    size_t fill = 64 - left;
 
-    if (inlen > fill) {
-        memcpy(S->buf + left, in, fill);
+// Word-path streaming absorb. Every caller in this file feeds whole 4-byte,
+// 4-byte-ALIGNED little-endian M31 words / hash limbs, so `inlen` is always a
+// multiple of 4 and the buffer never holds a partial word. Bytes are folded back
+// into their source word (b0|b1<<8|b2<<16|b3<<24), the exact inverse of the
+// `to_le_bytes` split every caller applied.
+//
+// This is a WORD-for-BYTE port of the original byte-path `blake2s_update` (16
+// words == 64 bytes; fill/left in words; `t` still in bytes). The LAZY boundary
+// is preserved: a full block is compressed only when MORE input follows
+// (`nwords > fill` and `nwords > 16`, both strictly greater) — never eagerly on
+// fill — so the last full block is deferred to `finalize` and compressed as the
+// FINAL block, exactly as before. Result: identical buffered words, block
+// boundaries, `t` values and final-block flag ⇒ bit-identical hash.
+__device__ void blake2s_update(Blake2sState* S, const uint8_t* in, size_t inlen) {
+    size_t nwords = inlen >> 2;         // inlen is a multiple of 4 for all callers
+    size_t off = 0;                     // word offset into `in`
+    size_t left = S->wlen;             // buffered words
+    size_t fill = 16 - left;           // words to top up the current block
+
+    if (nwords > fill) {
+        // Top up and flush the current (now full) block as NON-final.
+        for (size_t j = 0; j < fill; j++) {
+            const uint8_t* p = in + 4 * (off + j);
+            S->wbuf[left + j] = ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) |
+                                ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+        }
         S->t += 64;
-        blake2s_compress(S, S->buf, S->t, 0);
-        in += fill;
-        inlen -= fill;
-        while (inlen > 64) {
+        blake2s_compress(S, S->t, 0);
+        off += fill;
+        nwords -= fill;
+        // Flush every remaining FULL block except the last (deferred to finalize).
+        while (nwords > 16) {
+            for (int j = 0; j < 16; j++) {
+                const uint8_t* p = in + 4 * (off + j);
+                S->wbuf[j] = ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) |
+                             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+            }
             S->t += 64;
-            blake2s_compress(S, in, S->t, 0);
-            in += 64;
-            inlen -= 64;
+            blake2s_compress(S, S->t, 0);
+            off += 16;
+            nwords -= 16;
         }
         left = 0;
     }
-    memcpy(S->buf + left, in, inlen);
-    S->buflen = left + inlen;
+    // Buffer the tail (0..16 words) into wbuf.
+    for (size_t j = 0; j < nwords; j++) {
+        const uint8_t* p = in + 4 * (off + j);
+        S->wbuf[left + j] = ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) |
+                            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    }
+    S->wlen = left + nwords;
 }
 
 __device__ void blake2s_finalize(Blake2sState* S, Blake2sHash* out) {
-    S->t += S->buflen;
-    memset(S->buf + S->buflen, 0, 64 - S->buflen); // pad
-    blake2s_compress(S, S->buf, S->t, 0xFFFFFFFF); // lastblock = 0xFFFFFFFF
+    S->t += 4 * S->wlen;                 // == byte-path S->t += buflen
+    #pragma unroll
+    for (int i = 0; i < 16; i++)         // zero-pad the tail (== memset)
+        if ((uint32_t)i >= S->wlen) S->wbuf[i] = 0;
+    blake2s_compress(S, S->t, 0xFFFFFFFF); // lastblock = 0xFFFFFFFF
     for (int i = 0; i < 8; i++) {
         out->s[i] = S->h[i];
     }
@@ -207,7 +322,10 @@ __global__ void commit_on_layer_using_previous_in_gpu(
 // ============================================================================
 
 // build_next_layer for lifted Blake2s: hash pairs of children without NODE_PREFIX
-__global__ void blake2s_lifted_build_next_layer_kernel(
+// __launch_bounds__ (L3 change 1): cap registers so >= BLAKE2S_LIFTED_MINBLOCKS
+// blocks co-reside per SM. Output-preserving (codegen hint only).
+__global__ void __launch_bounds__(BLAKE2S_LIFTED_BLK, BLAKE2S_LIFTED_MINBLOCKS)
+blake2s_lifted_build_next_layer_kernel(
     int size,
     Blake2sHash *prev_layer,
     Blake2sHash *result,
@@ -216,34 +334,24 @@ __global__ void blake2s_lifted_build_next_layer_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= size) return;
 
-    Blake2sState state;
-    blake2s_init(&state);
+    // Word-path, register-resident (L3 change 2): node message = 16 words
+    // (left.s[0..8] then right.s[0..8]) == 64 bytes == exactly one block. Feeding
+    // each hash limb directly as a message word is bit-identical to splitting it
+    // into LE bytes and reassembling (see compress_words equivalence note).
+    Blake2sWordHasher hasher;
+    hasher.init();
 
-    // Update with left child hash (32 bytes as little-endian)
+    // Left child hash (8 words, little-endian limbs)
     Blake2sHash left = prev_layer[2 * i];
-    for (int w = 0; w < 8; w++) {
-        uint32_t word = left.s[w];
-        uint8_t bytes[4];
-        bytes[0] = (word >>  0) & 0xFF;
-        bytes[1] = (word >>  8) & 0xFF;
-        bytes[2] = (word >> 16) & 0xFF;
-        bytes[3] = (word >> 24) & 0xFF;
-        blake2s_update(&state, bytes, 4);
-    }
+    #pragma unroll
+    for (int w = 0; w < 8; w++) hasher.absorb(left.s[w]);
 
-    // Update with right child hash (32 bytes as little-endian)
+    // Right child hash (8 words, little-endian limbs)
     Blake2sHash right = prev_layer[2 * i + 1];
-    for (int w = 0; w < 8; w++) {
-        uint32_t word = right.s[w];
-        uint8_t bytes[4];
-        bytes[0] = (word >>  0) & 0xFF;
-        bytes[1] = (word >>  8) & 0xFF;
-        bytes[2] = (word >> 16) & 0xFF;
-        bytes[3] = (word >> 24) & 0xFF;
-        blake2s_update(&state, bytes, 4);
-    }
+    #pragma unroll
+    for (int w = 0; w < 8; w++) hasher.absorb(right.s[w]);
 
-    blake2s_finalize(&state, &result[i]);
+    hasher.finalize(&result[i]);
 
     if (is_m31_output) {
         // reduce_to_m31: each u32 word mod P (P = 2^31 - 1)
@@ -262,7 +370,7 @@ void blake2s_lifted_build_next_layer(
     Blake2sHash *result,
     bool is_m31_output
 ) {
-    int block_dim = 256;
+    int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (size + block_dim - 1) / block_dim;
     blake2s_lifted_build_next_layer_kernel<<<num_blocks, block_dim>>>(
         size, prev_layer, result, is_m31_output
@@ -284,7 +392,9 @@ __global__ void blake2s_lift_states_kernel(
 }
 
 // Feed column data (M31 values as 4 little-endian bytes each) to Blake2s hasher states
-__global__ void blake2s_update_columns_kernel(
+// __launch_bounds__ (L3 change 1): output-preserving occupancy hint.
+__global__ void __launch_bounds__(BLAKE2S_LIFTED_BLK, BLAKE2S_LIFTED_MINBLOCKS)
+blake2s_update_columns_kernel(
     Blake2sState *states, int size,
     m31 **column_ptrs, int num_columns
 ) {
@@ -302,7 +412,9 @@ __global__ void blake2s_update_columns_kernel(
 }
 
 // Finalize all Blake2s hasher states into output hashes
-__global__ void blake2s_finalize_all_kernel(
+// __launch_bounds__ (L3 change 1): output-preserving occupancy hint.
+__global__ void __launch_bounds__(BLAKE2S_LIFTED_BLK, BLAKE2S_LIFTED_MINBLOCKS)
+blake2s_finalize_all_kernel(
     Blake2sState *states, Blake2sHash *output,
     int size, bool is_m31_output
 ) {
@@ -330,8 +442,8 @@ void* blake2s_alloc_init_states(int count) {
     init_state.h[0] = IV[0] ^ 0x01010020;
     for (int i = 1; i < 8; i++) init_state.h[i] = IV[i];
     init_state.t = 0;
-    init_state.buflen = 0;
-    memset(init_state.buf, 0, 64);
+    init_state.wlen = 0;                     // word-path buffer empty
+    memset(init_state.wbuf, 0, sizeof(init_state.wbuf));
 
     Blake2sState *host_states = (Blake2sState*)malloc(sizeof(Blake2sState) * count);
     for (int i = 0; i < count; i++) {
@@ -350,7 +462,7 @@ void blake2s_lift_states(
 ) {
     Blake2sState *prev_states = (Blake2sState*)prev_states_ptr;
     Blake2sState *next_states = cuda_malloc<Blake2sState>(next_size);
-    int block_dim = 256;
+    int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (next_size + block_dim - 1) / block_dim;
     blake2s_lift_states_kernel<<<num_blocks, block_dim>>>(
         prev_states, next_states, next_size, log_ratio
@@ -367,7 +479,7 @@ void blake2s_update_columns(
 ) {
     Blake2sState *states = (Blake2sState*)states_ptr;
     m31 **column_ptrs_device = clone_to_device<m31*>(column_ptrs_host, num_columns);
-    int block_dim = 256;
+    int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (size + block_dim - 1) / block_dim;
     blake2s_update_columns_kernel<<<num_blocks, block_dim>>>(
         states, size, column_ptrs_device, num_columns
@@ -383,7 +495,7 @@ void blake2s_finalize_all(
     int size, bool is_m31_output
 ) {
     Blake2sState *states = (Blake2sState*)states_ptr;
-    int block_dim = 256;
+    int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (size + block_dim - 1) / block_dim;
     blake2s_finalize_all_kernel<<<num_blocks, block_dim>>>(
         states, output, size, is_m31_output
@@ -400,7 +512,10 @@ void blake2s_finalize_all(
 // State stays in registers the whole time — no global memory R/W for state.
 // This replaces the multi-step alloc_init/lift/update_columns/finalize pipeline
 // when all columns share the same log_size (the common case).
-__global__ void blake2s_build_leaves_fused_kernel(
+// __launch_bounds__ (L3 change 1): the hottest lifted kernel (leaf layer of the
+// commit). Output-preserving occupancy hint; sweep BLAKE2S_LIFTED_BLK on-box.
+__global__ void __launch_bounds__(BLAKE2S_LIFTED_BLK, BLAKE2S_LIFTED_MINBLOCKS)
+blake2s_build_leaves_fused_kernel(
     uint32_t size,
     uint32_t number_of_columns,
     uint32_t **data,
@@ -410,20 +525,19 @@ __global__ void blake2s_build_leaves_fused_kernel(
     uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= size) return;
 
-    Blake2sState state;
-    blake2s_init(&state);
+    // Word-path, register-resident (L3 change 2): absorb each column value
+    // directly as a message word. For gate_air, number_of_columns = 22 words = 88
+    // bytes = one full block (16 words, t+=64) + a 6-word tail. Feeding words is
+    // bit-identical to the LE-byte split + reassembly (compress_words note).
+    Blake2sWordHasher hasher;
+    hasher.init();
 
-    // No LEAF_PREFIX — lifted hasher has no domain separation
+    // No LEAF_PREFIX — lifted hasher has no domain separation. Column order is
+    // load-bearing: it is the caller's `columns` slice order (already sorted).
     for (int col = 0; col < number_of_columns; ++col) {
-        uint32_t val = data[col][index];
-        uint8_t bytes[4];
-        bytes[0] = (val >>  0) & 0xFF;
-        bytes[1] = (val >>  8) & 0xFF;
-        bytes[2] = (val >> 16) & 0xFF;
-        bytes[3] = (val >> 24) & 0xFF;
-        blake2s_update(&state, bytes, sizeof(bytes));
+        hasher.absorb(data[col][index]);
     }
-    blake2s_finalize(&state, &result[index]);
+    hasher.finalize(&result[index]);
 
     if (is_m31_output) {
         const uint32_t P = 0x7FFFFFFF;
@@ -442,7 +556,7 @@ void blake2s_build_leaves_fused(
     Blake2sHash *result,
     bool is_m31_output
 ) {
-    int block_dim = 256;
+    int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (size + block_dim - 1) / block_dim;
     blake2s_build_leaves_fused_kernel<<<num_blocks, block_dim>>>(
         size, number_of_columns, device_columns, result, is_m31_output

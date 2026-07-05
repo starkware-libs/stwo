@@ -46,7 +46,6 @@
 //! `!cpu_fallback_forced()` and leave this delegate reachable via `CUDA_CONSTRAINT_CPU_FALLBACK=1`.
 
 use std::borrow::Cow;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use num_traits::Zero;
 use stwo::core::air::Component;
@@ -83,34 +82,51 @@ fn cpu_fallback_forced() -> bool {
     )
 }
 
-/// Fires at most once per process for the loud host-delegate warning below.
-static HOST_DELEGATE_WARNING_FIRED: AtomicBool = AtomicBool::new(false);
-
-/// Loudly warn ONCE per process when the big gate_air MAIN component falls to the host-delegate
-/// constraint path, since that path runs composition_eval ~60x slower than the GPU kernel and is
-/// almost always an unintended regression (kernel declined / disabled / mismatched layout).
+/// PANIC (no silent fallback) when the big gate_air MAIN component falls to the host-delegate
+/// constraint path on `CudaBackend`. That path runs composition_eval ~60x slower than the GPU
+/// kernel, so silently taking it turns a GPU prove into a benchmark of the WRONG (slow) code — the
+/// exact regression that let a stale kernel be measured undetected. On the GPU/CudaBackend path the
+/// gate_air kernel is REQUIRED, so reaching the host delegate for the MAIN component is a hard error.
 ///
-/// DIAGNOSTIC ONLY: no behavior change, no control-flow change. The warning is gated on a
-/// STRUCTURAL FINGERPRINT so it fires for the gate_air MAIN component ONLY, never for the small
-/// fixed-size table components (qdecode / rc_lo / rc_hi / program), whose host-delegation is normal
-/// and silent. The MAIN component is the only one that is BOTH large (~2^23 rows) AND has many
-/// constraints (151 algebraic + 6 LogUp = 157); every table eval emits a single `finalize_logup`
-/// constraint over a small fixed domain (qdecode 2^9, rc 2^16, program ~2^4). The thresholds
-/// `n_constraints > 50` and `log_n_rows >= 18` sit far above any table component and far below the
-/// MAIN component, so the classification is unambiguous and not benchmark-size-specific.
-fn warn_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
-    let is_gate_air_main = n_constraints > 50 && log_n_rows >= 18;
+/// STRUCTURAL FINGERPRINT: fires for the gate_air MAIN component ONLY (large AND many constraints),
+/// never for the small fixed-size table components (rc / program / boundary), whose host-delegation
+/// is normal (they have no GPU kernel). A table is EITHER small (rc 2^16, program ~2^4) OR — if
+/// sample-scaled (boundary = n_shots*512) — carries only a handful of constraints (booleanity +
+/// finalize_logup). The gate_air MAIN component is the only one that is BOTH large (>= 2^18 rows;
+/// ~2^22-2^25 in the benchmark) AND carries many constraints (the 22-col chain-lookup AIR: 15
+/// algebraic + 7 LogUp = 22). Requiring BOTH `n_constraints >= 15` AND `log_n_rows >= 18` separates
+/// MAIN from every table with wide margin (tables have <= ~3 constraints), and neither bound is tied
+/// to the exact column count, so it survives AIR-shape churn. NOTE the old `n_constraints > 50`
+/// warning threshold was a stale relic of the 188-col AIR (157 constraints); the 26->22-col
+/// reduction dropped MAIN to 22 constraints, so `22 > 50` went false and the warning silently died,
+/// which is exactly how the slow host-delegate run went unnoticed. `>= 15` sits below the 22-col
+/// AIR and far above any table.
+///
+/// ESCAPE HATCH: honored ONLY when the operator has EXPLICITLY forced the host path via
+/// `CUDA_CONSTRAINT_CPU_FALLBACK=1` (the intentional CPU-vs-GPU composition byte-identity diff), in
+/// which case the host delegate is the deliberate path and must not panic. This function is only
+/// reachable from `ComponentProver<CudaBackend>`, so the CPU/SimdBackend build never calls it.
+fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
+    let is_gate_air_main = n_constraints >= 15 && log_n_rows >= 18;
     if !is_gate_air_main {
         return;
     }
-    if HOST_DELEGATE_WARNING_FIRED.swap(true, Ordering::Relaxed) {
+    // Deliberate host-delegate — the operator explicitly asked for it, either by forcing the CPU
+    // fallback (CUDA_CONSTRAINT_CPU_FALLBACK=1, the CPU-vs-GPU byte-identity diff) or by opting out
+    // of the GPU constraint path entirely (CUDA_GPU_CONSTRAINTS=0). Both are sanctioned host runs.
+    if cpu_fallback_forced() || !gpu_constraints_opt_in() {
         return;
     }
-    eprintln!(
-        "[WARN] gate_air MAIN component fell to HOST-DELEGATE constraints \
-         (GPU kernel declined/disabled) — composition_eval will be ~60x slower; \
-         expected the GPU kernel. Set CUDA_GPU_CONSTRAINTS or fix the kernel. \
-         (n_constraints={n_constraints}, log_n_rows={log_n_rows})"
+    panic!(
+        "gate_air MAIN component fell to the audited HOST-DELEGATE constraint path on CudaBackend \
+         (the fast gate_air GPU constraint kernel did NOT engage) — composition_eval would run \
+         ~60x slower, benchmarking the WRONG path. The kernel either was not registered \
+         (gate_air_cuda_kernel::register), declined on a structural mismatch (is_gate_air_main \
+         decline-guard constants stale vs the AIR), or its drawn relation was not installed \
+         (set_gate_air_relation). Refusing to silently fall back. \
+         (n_constraints={n_constraints}, log_n_rows={log_n_rows}). \
+         To intentionally run the host delegate (e.g. the CPU-vs-GPU byte-identity diff), set \
+         CUDA_CONSTRAINT_CPU_FALLBACK=1."
     );
 }
 
@@ -353,7 +369,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
                 // `preprocessed_column_indices`) back to the device (H2D from the
                 // stash), build a resident device trace, and dispatch the SAME GPU
                 // kernel on it — composition stays on GPU (no host-delegate),
-                // and the `warn_if_main_host_delegate` path is NOT reached for staged shards. The
+                // and the `panic_if_main_host_delegate` path is NOT reached for staged shards. The
                 // rehydrated columns are OWNED by `resident_polys` and freed when it drops at the
                 // end of this block, so device residency during composition is
                 // bounded to this component's read set (transient), then released.
@@ -394,10 +410,12 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             }
         }
 
-        // Reaching here means this component takes the audited host-delegate constraint path.
-        // Loudly warn ONCE if it's the big gate_air MAIN component (where host-delegate is a ~60x
-        // regression vs the GPU kernel); silent for the small table components. Diagnostic only.
-        warn_if_main_host_delegate(self.n_constraints(), self.eval.log_size());
+        // Reaching here means this component takes the audited host-delegate constraint path. That
+        // is normal for the small table components, but a hard error for the big gate_air MAIN
+        // component on CudaBackend: the GPU kernel is REQUIRED there, so silently running the ~60x
+        // slower host delegate would benchmark the wrong path. PANIC (no silent fallback) unless the
+        // operator explicitly forced the host path (CUDA_CONSTRAINT_CPU_FALLBACK=1).
+        panic_if_main_host_delegate(self.n_constraints(), self.eval.log_size());
 
         // Move ONLY this component's committed trace polynomials to host. The audited host eval
         // (`get_constraint_quotient_inputs`) reads exactly the columns in `trace_locations` plus
