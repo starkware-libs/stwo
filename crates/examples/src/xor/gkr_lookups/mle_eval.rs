@@ -1024,6 +1024,25 @@ mod tests {
     }
 
     #[test]
+    fn mle_eval_two_mixed_height_components_tall_first() -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components(8, 6)
+    }
+
+    #[test]
+    fn mle_eval_same_height_false_claim_rejected() {
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            6,
+            SecureField::one(),
+            SecureField::zero(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on same-height component was ACCEPTED (unsound)"
+        );
+    }
+
+    #[test]
     fn mle_eval_mixed_height_false_claim_short_rejected() {
         // Tamper the SHORTER component (n=6, repeated_double by 3 in the fix).
         let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
