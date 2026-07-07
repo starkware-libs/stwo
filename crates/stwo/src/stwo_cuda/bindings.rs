@@ -176,6 +176,19 @@ extern "C" {
 
     pub fn cuda_destroy_stream(stream: *mut c_void);
 
+    // MULTI-GPU ("option A"): bind the calling host thread to CUDA device `ordinal` (per-thread
+    // runtime current-device). Returns 0 on success, -1 on error. See utils.cu.
+    pub fn cuda_set_device(ordinal: i32) -> i32;
+
+    // MULTI-GPU: the calling host thread's current CUDA device ordinal (companion read to
+    // `cuda_set_device`; per-thread runtime current-device). Used to index the per-device
+    // streaming-globals tables in fused_commit.rs, mirroring the C-side
+    // `cuda_mem_pool_current_device()`. Returns 0 on error. See utils.cu.
+    pub fn cuda_get_device() -> i32;
+
+    // MULTI-GPU: number of visible CUDA devices (0 on error). See utils.cu.
+    pub fn cuda_device_count() -> i32;
+
     pub fn cuda_stream_synchronize(stream: *mut c_void);
 
     pub fn cuda_create_event() -> *mut c_void;

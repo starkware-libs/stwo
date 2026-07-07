@@ -29,6 +29,36 @@ use crate::core::fields::m31::BaseField;
 use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 use crate::stwo_cuda::bindings;
 
+/// Max CUDA devices for in-process multi-GPU base proving ("option A"). MUST match the C-side
+/// `MAX_CUDA_DEVICES` in `cuda/cuda_mem_pool.cuh` (16), which sizes `g_mem_pool_table`. The
+/// per-device streaming-globals tables below (`PINNED_POOL_TABLE`, `STASH_COPIES_PENDING`,
+/// `DEFERRED_FREE`, `FREE_EVENT_RING`) are all sized by this and indexed by the caller's current
+/// device ordinal (`cur_device()`), exactly like the mem pool. A device ordinal >= this const would
+/// index out of bounds, but the C mem pool clamps to 0 on such a device, so `cur_device()` clamps
+/// identically (they must agree so a thread's pool slot and its streaming-globals slot are the same
+/// device).
+const MAX_CUDA_DEVICES: usize = 16;
+
+/// The calling thread's current CUDA device ordinal, clamped to `[0, MAX_CUDA_DEVICES)`. This is the
+/// per-device table index for every streaming global below. It mirrors the C-side
+/// `cuda_mem_pool_current_device()`: a producer thread has already bound its device via
+/// `set_base_gpu(gpu)` (thread-local cudarc ordinal + `cudaSetDevice`), so `cuda_get_device()`
+/// returns that ordinal with no extra plumbing. Clamps to 0 on error / out-of-range so it can never
+/// index out of bounds and so the single-device path always lands on slot 0 (byte-identical).
+///
+/// BYTE-IDENTITY (N=1): one producer on device 0 => `cuda_get_device()` returns 0 => every table
+/// access indexes slot [0], which holds the exact same lazily-created stream/pool/ring/flag the old
+/// single global held. Pure "which device slot" plumbing; never changes WHAT is committed.
+fn cur_device() -> usize {
+    // SAFETY: FFI; `cuda_get_device` is a thin `cudaGetDevice` wrapper returning 0 on error.
+    let ord = unsafe { bindings::cuda_get_device() };
+    if ord < 0 || ord as usize >= MAX_CUDA_DEVICES {
+        0
+    } else {
+        ord as usize
+    }
+}
+
 /// PART B0: a stash entry's host bytes, either PAGEABLE (`Vec<u32>`, the default) or PINNED
 /// (page-locked `cudaHostAlloc` buffer, behind `GATE_AIR_PIN_STASH`). Pinned host memory lets the
 /// D2H (dehydrate) and H2D (rehydrate) copies run at PCIe DMA speed (~12 GB/s) instead of the
@@ -93,7 +123,9 @@ impl Drop for StashEntry {
             StashEntry::Pooled { ptr, cap, .. } => {
                 // B1: return the page-locked buffer to the pool free-list (do NOT cudaFreeHost) so
                 // the next run reuses it. Recycling, not freeing — zero steady-state page-lock.
-                PINNED_POOL.lock().unwrap().give(*ptr, *cap);
+                // Per-device: return to the CURRENT DEVICE's pool (Drop runs on the same device-bound
+                // thread that took the buffer, so the ordinal matches the `take`).
+                with_pool(|p| p.give(*ptr, *cap));
             }
             StashEntry::Pageable(_) => {}
         }
@@ -224,16 +256,40 @@ impl PinnedPool {
     }
 }
 
-static PINNED_POOL: LazyLock<Mutex<PinnedPool>> = LazyLock::new(|| {
-    Mutex::new(PinnedPool {
+/// PER-DEVICE pinned-pool table (multi-GPU "option A"). Each slot is an independently mutex-guarded,
+/// lazily-created `PinnedPool` for one device, keyed by `cur_device()` — mirroring the C-side
+/// `g_mem_pool_table[cudaGetDevice()]`. A slot's `copy_stream` is created (in `stream()`) while the
+/// caller is bound to device N, so the stream lands on device N; that slot's recycled pinned host
+/// buffers likewise serve only device-N D2H/H2D. Process-lifetime, exactly as the single global was.
+///
+/// Table type (mechanical choice): a fixed-size `[Mutex<Option<PinnedPool>>; MAX_CUDA_DEVICES]`
+/// lazily filling each slot on first use — the direct analogue of the mem pool's fixed-size
+/// `g_mem_pool_table` + `g_mem_pool_initialized_table`, and cheaper than a `Mutex<HashMap>` on the
+/// hot per-column path (one array index + one mutex lock, no hashing). Const-initialized so it needs
+/// no `LazyLock`.
+///
+/// BYTE-IDENTITY (N=1): device 0 => slot [0], created on first use exactly like the old single
+/// `PINNED_POOL` (same `PinnedPool { free: empty, copy_stream: null }`), so `pool(0)` behaves
+/// identically to the old global.
+static PINNED_POOL_TABLE: [Mutex<Option<PinnedPool>>; MAX_CUDA_DEVICES] =
+    [const { Mutex::new(None) }; MAX_CUDA_DEVICES];
+
+/// Run `f` with a mutable borrow of the CURRENT DEVICE's `PinnedPool`, lazily creating it on first
+/// use (empty free-list + null copy stream, identical to the old global's initial state). One array
+/// index + one mutex lock, matching the mem pool's per-device lazy create.
+fn with_pool<R>(f: impl FnOnce(&mut PinnedPool) -> R) -> R {
+    let mut guard = PINNED_POOL_TABLE[cur_device()].lock().unwrap();
+    let pool = guard.get_or_insert_with(|| PinnedPool {
         free: HashMap::new(),
         copy_stream: std::ptr::null_mut(),
-    })
-});
+    });
+    f(pool)
+}
 
-/// The dedicated copy stream handle (create-on-first-use). Cheap: one mutex lock + a null check.
+/// The current device's dedicated copy stream handle (create-on-first-use, on THIS device because
+/// the caller is bound to it). Cheap: one array index + one mutex lock + a null check.
 fn copy_stream() -> *mut std::ffi::c_void {
-    PINNED_POOL.lock().unwrap().stream()
+    with_pool(|p| p.stream())
 }
 
 // ============================================================================
@@ -294,7 +350,13 @@ static DEHYDRATE_STASHED: AtomicUsize = AtomicUsize::new(0);
 /// every reader acquires the lock, so a reader arriving WHILE the sync is in flight BLOCKS on the
 /// mutex until the sync completes, then observes `false` and proceeds — it can never read a
 /// not-yet-arrived buffer. Uncontended fast path after the first sync is one lock + a bool check.
-static STASH_COPIES_PENDING: Mutex<bool> = Mutex::new(false);
+///
+/// PER-DEVICE (multi-GPU): one flag per device, keyed by `cur_device()`. A dehydrate D2H on device N
+/// runs on device N's copy stream; its pending flag and the reader-head sync that drains device N's
+/// copy stream must be device N's, so a device-M reader never spuriously drains (or skips draining)
+/// device N. Byte-identity (N=1): device 0 => slot [0], the exact old single flag.
+static STASH_COPIES_PENDING: [Mutex<bool>; MAX_CUDA_DEVICES] =
+    [const { Mutex::new(false) }; MAX_CUDA_DEVICES];
 
 /// PART B2 deferred-free ring (single slot): the async producer defers each staged column's
 /// device-buffer free behind its D2H event so the D2H overlaps the NEXT column's NTT. Holds
@@ -304,13 +366,18 @@ static STASH_COPIES_PENDING: Mutex<bool> = Mutex::new(false);
 /// path. The trailing slot is flushed by `flush_deferred_free` (first reader / commit boundary).
 // Device pointer and CUDA event handle both stored as `usize` so the static `Mutex` is `Sync`
 // (raw pointers aren't `Send`). Both are only ever used through the CUDA runtime.
-static DEFERRED_FREE: Mutex<Option<(usize, usize)>> = Mutex::new(None);
+//
+// PER-DEVICE (multi-GPU): one deferred-free slot per device, keyed by `cur_device()`. A column's
+// device buffer + its D2H event belong to the device it was produced on; freeing it must happen
+// while bound to that device. Byte-identity (N=1): device 0 => slot [0], the old single slot.
+static DEFERRED_FREE: [Mutex<Option<(usize, usize)>>; MAX_CUDA_DEVICES] =
+    [const { Mutex::new(None) }; MAX_CUDA_DEVICES];
 
 /// Flush any pending deferred free: host-wait its D2H event, free the device buffer, reclaim,
 /// destroy the event. No-op if nothing pending. Called before installing the next deferred slot,
 /// and by the first reader / `clear_stash`.
 fn flush_deferred_free() {
-    let taken = DEFERRED_FREE.lock().unwrap().take();
+    let taken = DEFERRED_FREE[cur_device()].lock().unwrap().take();
     if let Some((ptr, event)) = taken {
         // SAFETY: FFI. Host-wait the D2H completes (so the bytes are captured) before freeing the
         // device buffer, then reclaim (bounds memory) and destroy the event.
@@ -328,7 +395,7 @@ fn flush_deferred_free() {
 /// next column's NTT compute — the B2 double-buffer.
 fn defer_free_after_event(device_ptr: *const std::ffi::c_void, e_d2h: *mut std::ffi::c_void) {
     flush_deferred_free();
-    *DEFERRED_FREE.lock().unwrap() = Some((device_ptr as usize, e_d2h as usize));
+    *DEFERRED_FREE[cur_device()].lock().unwrap() = Some((device_ptr as usize, e_d2h as usize));
 }
 
 /// PART B3 (GATE_AIR_ASYNC_STASH_BATCHED) device-side residency bound. The bug in the B2 one-behind
@@ -345,7 +412,14 @@ fn defer_free_after_event(device_ptr: *const std::ffi::c_void, e_d2h: *mut std::
 ///
 /// Events stored as `usize` so the static `Mutex` is `Sync` (raw pointers aren't `Send`); only ever
 /// used through the CUDA runtime, on the single producer thread that runs the dehydrate loop.
-static FREE_EVENT_RING: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+///
+/// PER-DEVICE (multi-GPU): one ring per device, keyed by `cur_device()`. The ring's events are
+/// recorded on device N's copy stream / stream 0 and bound device N's stream-0 run-ahead; a
+/// device-M producer must not see device N's events (cross-device event waits are illegal). Each
+/// producer thread runs its own device's dehydrate loop, so it only ever touches its own ring.
+/// Byte-identity (N=1): device 0 => slot [0], the old single ring.
+static FREE_EVENT_RING: [Mutex<Vec<usize>>; MAX_CUDA_DEVICES] =
+    [const { Mutex::new(Vec::new()) }; MAX_CUDA_DEVICES];
 
 /// Depth of the device-side free-event ring (max eval buffers allowed live on the device at once).
 /// 3 keeps a healthy copy/compute pipeline (copy N overlaps NTT N+1 while N+2 is queued) while
@@ -360,7 +434,7 @@ const FREE_RING_DEPTH: usize = 3;
 /// 0 (`GATE_AIR_FREE_ON_STREAM0` path — where the wait below is a same-stream, trivially-satisfied
 /// order; residency is then bounded even tighter because alloc/free are serialized on stream 0).
 fn ring_push_and_bound(event: *mut std::ffi::c_void) {
-    let mut ring = FREE_EVENT_RING.lock().unwrap();
+    let mut ring = FREE_EVENT_RING[cur_device()].lock().unwrap();
     if ring.len() >= FREE_RING_DEPTH {
         let old = ring.remove(0);
         // SAFETY: FFI. Order STREAM 0 (the alloc/NTT stream) after the ring-old column's
@@ -385,7 +459,7 @@ fn ring_push_and_bound(event: *mut std::ffi::c_void) {
 /// buffers return to the pool stream-ordered on stream 0, and the NEXT stream-0 allocation is naturally
 /// ordered after them, so no reuse hazard. No host wait here. No-op when the ring is empty (B2 / off).
 fn drain_free_event_ring() {
-    let mut ring = FREE_EVENT_RING.lock().unwrap();
+    let mut ring = FREE_EVENT_RING[cur_device()].lock().unwrap();
     for event in ring.drain(..) {
         // SAFETY: FFI. The copy stream was host-synced by the caller (all D2Hs done). Copy-stream-free
         // path: the event completed too. Stream-0-free path: destroying a still-pending event is safe
@@ -403,7 +477,10 @@ fn drain_free_event_ring() {
 /// D2H is part of the same copy stream we just drained). Cheap after the first call (lock + `false`
 /// check).
 fn sync_stash_copies_if_pending() {
-    let mut pending = STASH_COPIES_PENDING.lock().unwrap();
+    // Per-device: the caller's device flag + its own copy stream / deferred-free slot / ring. A
+    // reader on device N drains device N's copy stream; a device-M dehydrate's pending state is
+    // independent (its own slot), so this never over- or under-syncs across devices.
+    let mut pending = STASH_COPIES_PENDING[cur_device()].lock().unwrap();
     if *pending {
         let stream = copy_stream();
         // Attribute the batched pipeline's FINAL host wait to the [T1] dehydrate_d2h accumulator so
@@ -474,11 +551,56 @@ pub(crate) fn clear_stash() {
     // Drain any still-in-flight async D2H before dropping the entries: an entry's Drop recycles its
     // pooled pinned buffer back to the free-list, and reusing that buffer for the next run's D2H
     // before the previous run's copy finished would corrupt it. This host-blocks only if a copy is
-    // genuinely outstanding (normally already synced by the readers). Then clear + reset the flag.
-    sync_stash_copies_if_pending();
-    flush_deferred_free(); // defensively drain any trailing deferred free before recycling buffers
+    // genuinely outstanding (normally already synced by the readers).
+    //
+    // MULTI-GPU: `HOST_STASH` is process-global (one shared map, unique-sentinel keys), but each
+    // staged column's async D2H, deferred free, and free-event ring live on the DEVICE it was
+    // produced on — in that device's per-device slot. A single caller-device drain would leave
+    // OTHER devices' copies in flight and their trailing frees/rings unreclaimed; then dropping the
+    // shared entries could recycle a pinned buffer whose device-N D2H hasn't landed. So bind each
+    // device in turn and drain ITS copy stream + flush ITS deferred free + reset ITS pending flag,
+    // THEN clear the shared host map. `sync_stash_copies_if_pending` is a cheap no-op on a device
+    // whose flag is false (every device untouched this proof), so N=1 pays only the device-0 pass
+    // (identical work to the old single drain) plus a per-device flag check.
+    //
+    // A device needs draining iff its pending flag is set: the flag is set whenever an async D2H is
+    // issued on that device and cleared ONLY by a drain (`sync_stash_copies_if_pending`) or here, and
+    // that drain also flushes the deferred-free slot and the ring. So a false flag means that
+    // device's ring/deferred slot are already empty — nothing to do, and (crucially) NO
+    // `cuda_set_device` on an absent/other device (which would print an error on a single-GPU box).
+    //
+    // BYTE-IDENTITY (N=1): only device 0 was ever touched, so only slot [0] has a set flag. We bind
+    // device 0 (a no-op — it is already current) and run the exact old single drain; every other
+    // slot's flag is false and is skipped. On the batched/async path where the readers already
+    // synced, even slot [0]'s flag is false and the whole loop is a no-op, identical to before.
+    //
+    // The current device is saved and restored so `clear_stash` is transparent to the caller's
+    // device binding (it is called at a commit boundary on the producer thread).
+    let saved = cur_device();
+    let mut rebound = false;
+    for dev in 0..MAX_CUDA_DEVICES {
+        if !*STASH_COPIES_PENDING[dev].lock().unwrap() {
+            continue; // untouched (or already-synced) device — no in-flight copy, ring, or deferred
+        }
+        // SAFETY: FFI; bind this device so `sync_stash_copies_if_pending`/`flush_deferred_free`
+        // (which index `cur_device()`) act on device `dev`'s slot and its stream sync targets
+        // device `dev`. This device is known-touched, so the ordinal is valid.
+        unsafe {
+            bindings::cuda_set_device(dev as i32);
+        }
+        rebound = rebound || dev != saved;
+        sync_stash_copies_if_pending(); // drains dev's copy stream + deferred + ring, clears flag
+    }
+    // SAFETY: FFI; restore the caller's original device (only if we actually rebound elsewhere).
+    if rebound {
+        unsafe {
+            bindings::cuda_set_device(saved as i32);
+        }
+    }
+    // All touched devices' copies have landed and their buffers freed; now drop the shared entries
+    // (each entry's Drop recycles its pinned buffer to whatever device is current — safe: pinned host
+    // memory is process-wide, not device-affine, and the D2H that filled it has completed).
     HOST_STASH.lock().unwrap().clear();
-    *STASH_COPIES_PENDING.lock().unwrap() = false;
 }
 
 /// D2H-copy `col`'s bytes into the stash keyed by a UNIQUE monotonic sentinel, free the device
@@ -514,7 +636,7 @@ pub(crate) fn dehydrate_column(col: &mut BaseFieldVec) {
     // the pageable path otherwise.
     let host: StashEntry = if async_stash_enabled() {
         let len = col.size;
-        let ptr = PINNED_POOL.lock().unwrap().take(len);
+        let ptr = with_pool(|p| p.take(len));
         let stream = copy_stream();
         // SAFETY: FFI. `col.device_ptr` is the live just-produced eval column; `ptr` is a `len`-u32
         // pinned buffer. Ordering: the copy stream waits the default stream's current work (the NTT
@@ -533,7 +655,7 @@ pub(crate) fn dehydrate_column(col: &mut BaseFieldVec) {
             bindings::cuda_destroy_event(e_prod);
             e_d2h
         };
-        *STASH_COPIES_PENDING.lock().unwrap() = true;
+        *STASH_COPIES_PENDING[cur_device()].lock().unwrap() = true;
         if async_stash_batched_enabled() {
             // PART B3 (batched): NO host block. Free `col`'s device buffer STREAM-ORDERED on the
             // copy stream (after its D2H), re-record `e_d2h` so it now marks "D2H done AND free

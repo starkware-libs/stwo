@@ -5,8 +5,10 @@
 #include "eval_at_row.cuh"
 #include "utils.cuh"
 
-// Global variable for accumulation strategy (defined in evaluate_constraints.cu)
-extern bool g_should_accumulate_host;
+// Accumulation strategy flag (defined in evaluate_constraints.cu). thread_local so concurrent
+// per-GPU commit threads ("option A" multi-GPU) don't race the shared set-then-read; single-thread
+// behavior is byte-identical. The declaration must match the definition's thread_local storage.
+extern thread_local bool g_should_accumulate_host;
 
 struct Claim {
     unsigned int log_size;

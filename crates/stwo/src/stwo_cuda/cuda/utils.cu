@@ -555,6 +555,45 @@ extern "C" void cuda_destroy_stream(cudaStream_t stream) {
     }
 }
 
+// MULTI-GPU ("option A"): bind the CALLING host thread to CUDA device `ordinal`. The CUDA runtime
+// current-device is per-host-thread; a producer thread proving base shards on GPU n calls this ONCE
+// at startup so every subsequent runtime-API alloc/kernel/commit on that thread targets device n
+// (the per-device mem pool then indexes slot n). The default/single-GPU path never calls this, so
+// the current device stays 0 => byte-identical. Returns the number of devices seen so the caller can
+// validate the requested count against the box.
+extern "C" int cuda_set_device(int ordinal) {
+    cudaError_t err = cudaSetDevice(ordinal);
+    if (err != cudaSuccess) {
+        printf("cuda_set_device(%d) failed: %s\n", ordinal, cudaGetErrorString(err));
+        return -1;
+    }
+    return 0;
+}
+
+// MULTI-GPU: the calling host thread's current CUDA device ordinal (per-thread runtime
+// current-device, the companion read to `cuda_set_device`). Used from Rust to index the per-device
+// streaming-globals tables in fused_commit.rs, mirroring `cuda_mem_pool_current_device()`. Returns 0
+// on error (matches the single-device / default behavior). See fused_commit.rs.
+extern "C" int cuda_get_device() {
+    int device_id = 0;
+    cudaError_t err = cudaGetDevice(&device_id);
+    if (err != cudaSuccess) {
+        return 0;
+    }
+    return device_id;
+}
+
+// MULTI-GPU: number of visible CUDA devices (respecting CUDA_VISIBLE_DEVICES). The harness uses this
+// to clamp/validate the GATE_AIR_BASE_GPUS knob. Returns 0 on error.
+extern "C" int cuda_device_count() {
+    int count = 0;
+    cudaError_t err = cudaGetDeviceCount(&count);
+    if (err != cudaSuccess) {
+        return 0;
+    }
+    return count;
+}
+
 extern "C" void cuda_stream_synchronize(cudaStream_t stream) {
     cudaStreamSynchronize(stream);
 }
