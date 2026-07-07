@@ -5,9 +5,25 @@
 #include <cstdint>
 #include <cstdio>
 
-// Global memory pool handle
-extern cudaMemPool_t g_mem_pool;
-extern bool g_mem_pool_initialized;
+// Max CUDA devices supported for in-process multi-GPU base proving ("option A"). GPUs 0..7 on the
+// target box; sized generously.
+#ifndef MAX_CUDA_DEVICES
+#define MAX_CUDA_DEVICES 16
+#endif
+
+// PER-DEVICE memory pool table (see cuda_mem_pool.cu). Keyed by the runtime current device ordinal.
+extern cudaMemPool_t g_mem_pool_table[MAX_CUDA_DEVICES];
+extern bool g_mem_pool_initialized_table[MAX_CUDA_DEVICES];
+
+// Current-device ordinal (clamped to [0, MAX_CUDA_DEVICES); returns 0 on error).
+int cuda_mem_pool_current_device();
+
+// Alias the historical single-pool names to the CURRENT DEVICE's table slot so every existing
+// reference (`g_mem_pool` / `g_mem_pool_initialized`, read or written, in this header's templates
+// and in utils.cu) resolves to the calling thread's device with NO call-site changes. For one
+// thread on device 0 this is `[0]` => byte-identical to the previous single-pool behavior.
+#define g_mem_pool             (g_mem_pool_table[cuda_mem_pool_current_device()])
+#define g_mem_pool_initialized (g_mem_pool_initialized_table[cuda_mem_pool_current_device()])
 
 // Initialize the CUDA memory pool
 extern "C" cudaError_t cuda_mem_pool_init();

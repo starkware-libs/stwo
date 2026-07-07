@@ -104,7 +104,15 @@
 #include "evaluate_generic_opcode.cuh"
 #include "evaluate_qm_31_add_mul_opcode.cuh"
 
-bool g_should_accumulate_host = true;
+// THREAD_LOCAL for in-process multi-GPU base proving ("option A"). This flag is SET
+// (evaluate_constraints.cu, in dispatch_single_eval) then READ inside the launched evaluator, all
+// on the SAME host commit thread. With one commit thread per GPU proving concurrently, a single
+// process-global would be a genuine data race (thread A's overwrite-vs-accumulate mode clobbering
+// thread B's) => a WRONG composition polynomial. thread_local gives each commit thread its own
+// value; the set-then-read pair stays same-thread, so single-GPU behavior is byte-identical (one
+// thread sees only its own value) and the 8-way race is removed. Smallest correct fix (vs. threading
+// it as an explicit kernel arg through ~35 evaluators).
+thread_local bool g_should_accumulate_host = true;
 
 // Internal dispatch: evaluates a single component, writing to the given quotient buffers
 // on the given stream. The should_accumulate flag controls overwrite vs accumulate.
