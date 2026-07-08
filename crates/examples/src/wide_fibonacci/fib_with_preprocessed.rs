@@ -265,8 +265,7 @@ mod tests {
             let mut config = PcsConfig::default();
             let log_size_unused_pp = log_n_instances + 3;
             // Set lifting log size to the largest preprocessed column (after LDE).
-            config.lifting_log_size =
-                Some(log_size_unused_pp + config.fri_config.log_blowup_factor);
+            config.min_lifting_log_size = log_size_unused_pp + config.fri_config.log_blowup_factor;
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
                 CanonicCoset::new(log_size_unused_pp + 1 + config.fri_config.log_blowup_factor)

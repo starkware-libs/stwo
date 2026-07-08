@@ -6,7 +6,6 @@ use std_shims::{vec, BTreeSet, Vec};
 use thiserror::Error;
 
 use super::TreeSubspan;
-use crate::core::pcs::PcsConfig;
 use crate::core::ColumnVec;
 
 /// A container that holds an element for each commitment tree.
@@ -218,19 +217,4 @@ pub fn prepare_preprocessed_query_positions(
 pub struct InvalidLiftingLogSizeError {
     pub lifting_log_size: u32,
     pub min_log_size: u32,
-}
-
-pub fn try_get_lifting_log_size(
-    config: &PcsConfig,
-    log_trace_size: u32,
-) -> Result<u32, InvalidLiftingLogSizeError> {
-    let lifting_log_size = config.lifting_log_size.unwrap_or(log_trace_size);
-    if lifting_log_size < log_trace_size {
-        return Err(InvalidLiftingLogSizeError {
-            lifting_log_size,
-            min_log_size: log_trace_size,
-        });
-    }
-
-    Ok(lifting_log_size)
 }

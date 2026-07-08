@@ -482,7 +482,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 self.column_commitment_domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
-            None,
+            0,
         );
 
         merkle_verifier
@@ -567,7 +567,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
                 self.domain.log_size() - leaf_log_size;
                 SECURE_EXTENSION_DEGREE * (1 << leaf_log_size)
             ],
-            None,
+            0,
         );
 
         merkle_verifier

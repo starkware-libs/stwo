@@ -81,7 +81,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.config.fri_config.log_blowup_factor,
             self.twiddles,
             self.store_polynomials_coefficients,
-            self.config.lifting_log_size,
+            self.config.min_lifting_log_size,
             &self.base_column_pool,
         );
         MC::mix_root(channel, tree.commitment.root());
@@ -362,7 +362,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<B>,
         store_polynomials_coefficients: bool,
-        lifting_log_size: Option<u32>,
+        min_lifting_log_size: u32,
         base_column_pool: &BaseColumnPool<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
@@ -381,7 +381,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             .map(|poly| poly.evals.domain.log_size())
             .max()
             .unwrap_or_default();
-        let lifting_log_size = lifting_log_size.unwrap_or(max_log_domain_size);
+        let lifting_log_size = min_lifting_log_size.max(max_log_domain_size);
         let tree = MerkleProverLifted::commit(
             polynomials
                 .iter()
