@@ -59,13 +59,9 @@ pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
-    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, lifting_log_size: Option<u32>) -> Self {
+    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, min_lifting_log_size: u32) -> Self {
         let max_column_log_size = column_log_sizes.iter().copied().max().unwrap_or_default();
-        let height = lifting_log_size.unwrap_or(max_column_log_size);
-        assert!(
-            max_column_log_size <= height,
-            "The lifting log size is smaller than the largest column."
-        );
+        let height = min_lifting_log_size.max(max_column_log_size);
         Self {
             root,
             column_log_sizes,
@@ -315,7 +311,7 @@ mod tests {
         // Queries given out of order with a duplicate.
         let queries = vec![13, 3, 7, 3, 1];
         let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
-        let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, None);
+        let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, 0);
         verifier
             .verify(&queries, values, decommitment.decommitment)
             .unwrap();

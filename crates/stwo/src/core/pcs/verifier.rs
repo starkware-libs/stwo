@@ -51,8 +51,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .iter()
             .map(|&log_size| log_size + self.config.fri_config.log_blowup_factor)
             .collect();
-        let verifier =
-            MerkleVerifierLifted::new(commitment, extended_log_sizes, self.config.lifting_log_size);
+        let verifier = MerkleVerifierLifted::new(
+            commitment,
+            extended_log_sizes,
+            self.config.min_lifting_log_size,
+        );
         self.trees.push(verifier);
     }
 

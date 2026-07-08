@@ -6,7 +6,6 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
-use crate::core::pcs::utils::try_get_lifting_log_size;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs_lifted::verifier::MerkleVerificationError;
@@ -54,24 +53,25 @@ pub fn verify_ex<MC: MerkleChannel>(
         split_composition_log_degree_bound
     );
 
-    // If `self.config.lifting_log_size` is None, the lifting size is the length of the split
-    // composition polynomials' domain.
-    let lifting_log_size = try_get_lifting_log_size(
-        &commitment_scheme.config,
-        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
-    )?;
+    let min_lifting_log_size = commitment_scheme.config.min_lifting_log_size;
     if include_all_preprocessed_columns {
-        let preprocessed_trace_height = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height;
-        if lifting_log_size < preprocessed_trace_height {
-            Err(crate::core::pcs::utils::InvalidLiftingLogSizeError {
-                lifting_log_size,
-                min_log_size: preprocessed_trace_height,
+        let preprocessed_log_size = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].height;
+        if min_lifting_log_size < preprocessed_log_size {
+            Err(crate::core::pcs::utils::InvalidMinLiftingLogSizeError {
+                min_lifting_log_size,
+                preprocessed_log_size,
             })?;
         }
     }
+    // The effective lifting size is at least the length of the split composition polynomials'
+    // domain (in particular, a `min_lifting_log_size` of 0 lifts each tree to its largest column).
+    let lifting_log_size = min_lifting_log_size.max(
+        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
+    );
 
-    // The max degree of a committed polynomial. If `lifting_log_size` is not set,
-    // the largest degree is attained by the splits of the composition polynomial.
+    // The max degree of a committed polynomial. If `min_lifting_log_size` is 0 and
+    // `include_all_preprocessed_columns` is false, the largest degree is attained by the splits
+    // of the composition polynomial.
     let max_log_degree_bound =
         lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
 
@@ -137,7 +137,7 @@ pub enum VerificationError {
     #[error("Proof of work verification failed.")]
     ProofOfWork,
     #[error(transparent)]
-    InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidLiftingLogSizeError),
+    InvalidLiftingLogSize(#[from] crate::core::pcs::utils::InvalidMinLiftingLogSizeError),
     #[error(transparent)]
     InvalidCanonicCosetLogSize(#[from] crate::core::poly::circle::InvalidCanonicCosetLogSize),
 }
