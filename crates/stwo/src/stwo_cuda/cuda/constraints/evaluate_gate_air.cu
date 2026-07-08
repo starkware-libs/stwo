@@ -48,6 +48,38 @@
 #define GATE_AIR_THREAD_COUNT_MAX 256
 
 // ----------------------------------------------------------------------------
+// interaction_shift_neg1 (F2-b / Option B): materialize the shifted `prev_row_cumsum`
+// as its OWN aligned column so the composition post_kernel reads it at offset 0.
+//
+// The composition post_kernel's last LogUp batch reads prev_row_cumsum at the `-1`
+// offset via offset_bit_reversed_circle_domain_index(row, dom, eval, -1) — a fixed,
+// DATA-INDEPENDENT permutation of the eval domain (utils.cuh:120). For each of the 4
+// last-LogUp QM31 coord columns we precompute, once per proof, a shifted copy:
+//     shifted[row] = src[ offset_bit_reversed_circle_domain_index(row, dom, eval, -1) ].
+// This is a pure gather (one thread per row) in the SAME style as the K4 prefix-sum
+// index kernels. After the shift, BOTH `cur_cumsum` (src[row]) and `prev_row_cumsum`
+// (shifted[row]) are offset-0 pointwise reads, so tree2 tiles row-by-row exactly like
+// tree0/tree1 (the scattered `-1` no longer forces all 28 interaction cols resident).
+//
+// Byte-identical by construction: shifted[row] holds exactly the value the current
+// scattered read produces, including the coset-boundary wrap (obr_index computes the
+// correct wrapped target for every row). The scalar `cumsum_shift` correction in the
+// post_kernel is orthogonal and UNCHANGED.
+__global__ void interaction_shift_neg1_kernel(
+    const m31 *src,
+    m31 *shifted,
+    unsigned int domain_log_size,
+    unsigned int eval_domain_log_size,
+    unsigned int eval_domain_size
+) {
+    const unsigned row = threadIdx.x + blockDim.x * blockIdx.x;
+    if (row >= eval_domain_size) return;
+    const unsigned int target_row = offset_bit_reversed_circle_domain_index(
+        row, domain_log_size, eval_domain_log_size, -1);
+    shifted[row] = src[target_row];
+}
+
+// ----------------------------------------------------------------------------
 // Relation slicing helper.
 //
 // gate_air draws ONE width-6 relation (`relation!(GateRel, 6)`, main.rs) shared by all three
@@ -383,7 +415,13 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
     unsigned int last_batch,
     qm31 cumsum_shift,
     unsigned row_offset,
-    unsigned tile_rows
+    unsigned tile_rows,
+    // F2-b / Option B: when true, the 4 shifted last-LogUp cumsum coords are appended
+    // to trace2_evaluations at indices [logup_cols*4 .. logup_cols*4 + 4) and the last
+    // batch reads prev_row_cumsum from them at OFFSET 0 (both tileable) instead of via
+    // the scattered {0,-1} mask on the source coords. When false, the byte-for-byte
+    // legacy resident path (scattered -1 read on the source coords) runs unchanged.
+    bool tree2_shifted
 ) {
     const unsigned local = threadIdx.x + blockDim.x * blockIdx.x;
     if (local >= tile_rows) return;
@@ -427,12 +465,34 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
         unsigned remaining_fractions = logup_counts - last_batch * 2;
         const Fraction frac_sum = Fraction::sum(&intermediate_fractions[last_batch * 2 + row * logup_counts], remaining_fractions);
 
-        int offsets2[2] = { 0, -1 };
-        qm31 cumsum2[2] = { { {0, 0}, {0, 0} }, { {0, 0}, {0, 0} } };
-        evaluator.next_extension_interaction_mask(logup_interaction, offsets2, 2, cumsum2);
+        qm31 cur_cumsum;
+        qm31 prev_row_cumsum;
+        if (tree2_shifted) {
+            // F2-b / Option B: cur_cumsum from the source coords (cols [24..28)) at
+            // offset 0, prev_row_cumsum from the appended shifted coords (cols [28..32))
+            // at offset 0. Both offset-0 pointwise reads over the row-tiled trace2
+            // pointer table — no scattered `-1`, so the tile slice is self-contained.
+            // The two consecutive next_extension_interaction_mask calls advance
+            // col_index[2]: 24->28 (source) then 28->32 (shifted). BYTE-IDENTICAL to
+            // the scattered read below because shifted[row] == src[obr_index(row,-1)].
+            int off0[1] = { 0 };
+            qm31 cur_arr[1] = { { {0, 0}, {0, 0} } };
+            evaluator.next_extension_interaction_mask(logup_interaction, off0, 1, cur_arr);
+            cur_cumsum = cur_arr[0];
 
-        const qm31 prev_row_cumsum = cumsum2[1];
-        const qm31 cur_cumsum = cumsum2[0];
+            qm31 prev_arr[1] = { { {0, 0}, {0, 0} } };
+            evaluator.next_extension_interaction_mask(logup_interaction, off0, 1, prev_arr);
+            prev_row_cumsum = prev_arr[0];
+        } else {
+            // Legacy resident path: scattered `-1` read on the source coords (cols
+            // [24..28)) — BYTE-FOR-BYTE the pre-tiling behavior.
+            int offsets2[2] = { 0, -1 };
+            qm31 cumsum2[2] = { { {0, 0}, {0, 0} }, { {0, 0}, {0, 0} } };
+            evaluator.next_extension_interaction_mask(logup_interaction, offsets2, 2, cumsum2);
+            cur_cumsum = cumsum2[0];
+            prev_row_cumsum = cumsum2[1];
+        }
+
         const qm31 diff = sub(sub(cur_cumsum, prev_row_cumsum), prev_col_cumsum);
         const qm31 fixed_diff = add(diff, cumsum_shift);
 
@@ -487,6 +547,15 @@ void evaluate_gate_air(
     // supply here; post_kernel + generic_constraint_post_kernel are unchanged.
     const uint32_t * const *host_trace0,
     const uint32_t * const *host_trace1,
+    // F2-b / Option B: per-column host-tile-source table for tree2 (interaction),
+    // mirroring host_trace0/1. Entry c = the column's committed host stash bytes if
+    // STAGED (row-tiled H2D per block), or NULL if RESIDENT (kernel uses the live
+    // trace2_evaluations[c] pointer whole). A wholly-null table => tree2 fully
+    // resident; the kernel then keeps tree2 resident AND takes the scattered `-1`
+    // legacy read (byte-for-byte). When non-null, tree2 is row-tiled like tree0/1 and
+    // the 4 shifted last-LogUp coords are precomputed (interaction_shift_neg1) so the
+    // last batch reads prev_row_cumsum at offset 0. MUST match the Rust FFI + entry.cu.
+    const uint32_t * const *host_trace2,
     qm31 *random_coeff_powers,
     m31 *denominator_inverses,
     unsigned int domain_log_size,
@@ -528,6 +597,17 @@ void evaluate_gate_air(
     // the quotient Site-1 fix). No H2D, no re-staging for resident columns.
     const bool tiled_input = (host_trace0 != nullptr) || (host_trace1 != nullptr);
 
+    // F2-b / Option B: tree2 (interaction) is row-tiled iff a host_trace2 table is
+    // supplied. Then the scattered `-1` composition read is replaced by an offset-0
+    // read on 4 precomputed shifted columns (interaction_shift_neg1), so tree2 no
+    // longer needs to be held whole (~14 GiB @2^26). When host_trace2 is null, tree2
+    // stays fully resident and the post_kernel takes the legacy scattered `-1` read
+    // (byte-for-byte unchanged). The 4 shifted coords are the LAST 4 tree2 columns
+    // (the last LogUp batch's 4 QM31 coords, indices [len2-4, len2)); the shifted
+    // copies are appended at indices [len2, len2+4) in the tiled tree2 pointer table.
+    const bool tree2_tiled = (host_trace2 != nullptr);
+    const unsigned N_SHIFT = 4;  // SECURE_EXTENSION_DEGREE coords of the last LogUp col
+
     // Resident device pointer tables. Under tiled_input, tree0/tree1 tables are
     // REBUILT per block into d_tile{0,1}_ptrs (staged cols -> biased tile buffer,
     // resident cols -> biased live buffer), so we do not clone the whole
@@ -537,7 +617,12 @@ void evaluate_gate_air(
         : clone_to_device<m31 *>(trace0_evaluations, trace0_evaluations_len);
     m31 **d_trace1 = tiled_input ? nullptr
         : clone_to_device<m31 *>(trace1_evaluations, trace1_evaluations_len);
-    m31 **d_trace2 = clone_to_device<m31 *>(trace2_evaluations, trace2_evaluations_len);
+    // tree2 resident pointer table: only cloned whole when tree2 is NOT tiled (the
+    // legacy scattered `-1` path reads all 28 columns resident). Under tree2_tiled the
+    // per-block pointer table (d_tile2_ptrs) is rebuilt each iteration and this whole
+    // clone is skipped.
+    m31 **d_trace2 = tree2_tiled ? nullptr
+        : clone_to_device<m31 *>(trace2_evaluations, trace2_evaluations_len);
 
     qm31 *numerators =
         (qm31 *) cuda_alloc_zeroes_uint32_t(sizeof(qm31) * eval_domain_size);
@@ -589,6 +674,65 @@ void evaluate_gate_air(
                 ? (m31 *)cuda_malloc_uint32_t(tile_rows) : nullptr;
         d_tile0_ptrs = cuda_malloc<m31 *>(trace0_evaluations_len);
         d_tile1_ptrs = cuda_malloc<m31 *>(trace1_evaluations_len);
+    }
+
+    // ----- F2-b / Option B: tree2 tiling + shifted-column build. -----
+    // Under tree2_tiled we (1) build the 4 shifted last-LogUp cumsum columns ONCE (a
+    // data-independent gather, interaction_shift_neg1) and stash their bytes on the
+    // host, and (2) allocate reused per-block tile buffers for all 28 tree2 columns
+    // plus the 4 shifted columns, and a device pointer table of length
+    // trace2_evaluations_len + N_SHIFT rebuilt each block. Device residency for tree2
+    // at composition drops from all 28 resident (~14 GiB @2^26) to
+    // (28 + 4) * tile_rows * 4B tile buffers (~a few hundred MiB at tile_rows=2^20).
+    // The shifted columns are prover-internal (NOT committed / not in the Merkle
+    // tree) — a pure recomputation of committed cumsum values.
+    m31 **tile2_bufs = nullptr;      // reused device tile buffers, (len2 + N_SHIFT) entries
+    m31 **d_tile2_ptrs = nullptr;    // device pointer table (biased), len2 + N_SHIFT
+    // Host stash for the 4 shifted columns (full eval domain). Owned here; freed at end.
+    uint32_t *shift_host[4] = { nullptr, nullptr, nullptr, nullptr };
+    const unsigned len2 = trace2_evaluations_len;
+    if (tree2_tiled) {
+        // The 4 shifted coords are the LAST N_SHIFT tree2 columns.
+        const unsigned shift_first = (len2 >= N_SHIFT) ? (len2 - N_SHIFT) : 0;
+
+        // --- Build the 4 shifted columns once (whole-column device gather). ---
+        for (unsigned k = 0; k < N_SHIFT; ++k) {
+            const unsigned c = shift_first + k;
+            // Obtain the whole SOURCE column on device: H2D from the host stash if
+            // staged, else D2D-copy the resident live buffer. Transient (freed below).
+            m31 *d_src = cuda_malloc_uint32_t(eval_domain_size);
+            if (host_trace2[c] != nullptr) {
+                cuda_mem_copy_host_to_device<uint32_t>(
+                    (uint32_t *)host_trace2[c], (uint32_t *)d_src, eval_domain_size);
+            } else {
+                // Resident source column: D2D copy from its live full-domain buffer.
+                cuda_mem_copy_device_to_device<m31>(
+                    trace2_evaluations[c], d_src, eval_domain_size);
+            }
+            m31 *d_shift = cuda_malloc_uint32_t(eval_domain_size);
+            int sblock = eval_domain_size < GATE_AIR_THREAD_COUNT_MAX
+                ? (int)eval_domain_size : GATE_AIR_THREAD_COUNT_MAX;
+            int snblocks = (eval_domain_size + sblock - 1) / sblock;
+            interaction_shift_neg1_kernel<<<snblocks, sblock, 0, stream>>>(
+                d_src, d_shift, domain_log_size, eval_domain_log_size, eval_domain_size);
+            ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+            ASSERT_CUDA_SUCCESS(cudaGetLastError());
+            // D2H the shifted column into an owned host buffer, then free both device
+            // transients so the shifted build does NOT add resident footprint into the
+            // composition plateau (only the reused tile buffers survive).
+            shift_host[k] = (uint32_t *)std::malloc(sizeof(uint32_t) * eval_domain_size);
+            copy_uint32_t_vec_from_device_to_host(
+                (uint32_t *)d_shift, shift_host[k], (int)eval_domain_size);
+            ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+            cuda_free_memory(d_src);
+            cuda_free_memory(d_shift);
+        }
+
+        // --- Tile buffers: 28 source cols + 4 shifted cols, all reused per block. ---
+        tile2_bufs = (m31 **)std::malloc(sizeof(m31 *) * (len2 + N_SHIFT));
+        for (unsigned c = 0; c < len2 + N_SHIFT; ++c)
+            tile2_bufs[c] = (m31 *)cuda_malloc_uint32_t(tile_rows);
+        d_tile2_ptrs = cuda_malloc<m31 *>(len2 + N_SHIFT);
     }
 
     timer global_timer;
@@ -707,20 +851,59 @@ void evaluate_gate_air(
         ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
 
+        // ----- Under tree2_tiled: H2D this block's slice of every tree2 column (28
+        // source + 4 shifted) into the reused tile buffers, then build the biased
+        // pointer table. Same convention as tree0/1: a STAGED source col H2Ds from
+        // host_trace2[c]; a RESIDENT source col H2Ds from its live device buffer via
+        // D2D (kept contiguous so the tile slice is the row-block). The 4 shifted cols
+        // always H2D from their host stash (shift_host). Every column read here is a
+        // pure offset-0 [row] read, so the physical slice [tile_start, +this_tile) is
+        // exactly the logical row-block and biasing by -tile_start is correct. -----
+        m31 **post_trace2 = d_trace2;
+        if (tree2_tiled) {
+            std::vector<m31 *> biased2(len2 + N_SHIFT);
+            const unsigned shift_first = (len2 >= N_SHIFT) ? (len2 - N_SHIFT) : 0;
+            for (unsigned c = 0; c < len2; ++c) {
+                if (host_trace2[c] != nullptr) {
+                    cuda_mem_copy_host_to_device<uint32_t>(
+                        (uint32_t *)host_trace2[c] + tile_start,
+                        (uint32_t *)tile2_bufs[c], this_tile);
+                } else {
+                    // Resident source col: copy this block's slice from the live buffer.
+                    cuda_mem_copy_device_to_device<m31>(
+                        trace2_evaluations[c] + tile_start, tile2_bufs[c], this_tile);
+                }
+                biased2[c] = tile2_bufs[c] - (size_t)tile_start;
+            }
+            // 4 shifted cols appended at [len2, len2+N_SHIFT); source coords are
+            // [shift_first, len2). shift_host[k] is the whole shifted column k.
+            (void)shift_first;
+            for (unsigned k = 0; k < N_SHIFT; ++k) {
+                cuda_mem_copy_host_to_device<uint32_t>(
+                    shift_host[k] + tile_start,
+                    (uint32_t *)tile2_bufs[len2 + k], this_tile);
+                biased2[len2 + k] = tile2_bufs[len2 + k] - (size_t)tile_start;
+            }
+            cuda_mem_copy_host_to_device<m31 *>(biased2.data(), d_tile2_ptrs, len2 + N_SHIFT);
+            post_trace2 = d_tile2_ptrs;
+        }
+
         // ----- post_kernel (PHASE 2 SOUNDNESS GATE: LogUp pair-batches) -----
-        // tree2 (d_trace2) is FULLY RESIDENT in both paths — byte-unchanged.
+        // Under tree2_tiled the post_kernel reads prev_row_cumsum from the appended
+        // shifted coords at offset 0 (tree2_shifted=true); else tree2 is resident and
+        // the scattered `-1` read runs (tree2_shifted=false) — byte-for-byte unchanged.
         if (use_assert_evaluator) {
             evaluate_gate_air_post_kernel_tiled<CudaAssertEvaluator><<<num_blocks, block_dim, 0, stream>>>(
-                numerators, frac_biased, constraint_index_array, d_trace2,
+                numerators, frac_biased, constraint_index_array, post_trace2,
                 random_coeff_powers, domain_log_size, eval_domain_log_size,
                 logup_counts, last_batch, cumsum_shift,
-                tile_start, this_tile);
+                tile_start, this_tile, tree2_tiled);
         } else {
             evaluate_gate_air_post_kernel_tiled<CudaEvaluator><<<num_blocks, block_dim, 0, stream>>>(
-                numerators, frac_biased, constraint_index_array, d_trace2,
+                numerators, frac_biased, constraint_index_array, post_trace2,
                 random_coeff_powers, domain_log_size, eval_domain_log_size,
                 logup_counts, last_batch, cumsum_shift,
-                tile_start, this_tile);
+                tile_start, this_tile, tree2_tiled);
         }
         ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
@@ -768,7 +951,16 @@ void evaluate_gate_air(
         cuda_free_memory(d_trace0);
         cuda_free_memory(d_trace1);
     }
-    cuda_free_memory(d_trace2);
+    if (tree2_tiled) {
+        for (unsigned c = 0; c < len2 + N_SHIFT; ++c)
+            if (tile2_bufs[c] != nullptr) cuda_free_memory(tile2_bufs[c]);
+        std::free(tile2_bufs);
+        cuda_free_memory(d_tile2_ptrs);
+        for (unsigned k = 0; k < N_SHIFT; ++k)
+            if (shift_host[k] != nullptr) std::free(shift_host[k]);
+    } else {
+        cuda_free_memory(d_trace2);
+    }
     cuda_free_memory(numerators);
     cuda_free_memory(d_gate_eval);
     cuda_free_memory(d_fractions);

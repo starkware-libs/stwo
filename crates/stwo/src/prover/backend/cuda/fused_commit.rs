@@ -195,6 +195,26 @@ fn free_on_stream0_enabled() -> bool {
     std::env::var("GATE_AIR_FREE_ON_STREAM0").is_ok()
 }
 
+/// Reads `GATE_AIR_EVICT_TREE0` (tree0-eviction memory fix, opt-in, DEFAULT OFF). When set, the
+/// gate_air leaf prover host-stages (`dehydrate_column`: D2H + device free + re-key by sentinel)
+/// tree0's FULL-DOMAIN preprocessed eval columns (enabler / shot_id / pc / pc_in_prog, ~4×512 MiB at
+/// 2^26) right AFTER the tree0 commit returns, freeing ~2 GiB of device memory that would otherwise
+/// sit resident and unread from the tree0 commit through the tree2 (interaction) commit. tree0's
+/// columns are not read again until composition/quotient + OODS in `prove_ex`, and those readers are
+/// already per-column `is_staged`-guarded (they rehydrate a staged column transparently — same path
+/// tree1/tree2 staged columns use), so no new rehydrate wiring is needed. The tiny program/boundary/
+/// rc TABLE columns (smaller eval domain) are NOT evicted. Byte-identical: only the byte SOURCE of
+/// the four columns moves (device -> host stash); the committed values and Merkle root are unchanged.
+/// Default OFF ⇒ tree0 stays fully resident (byte-for-byte the previous path, no eviction).
+///
+/// CAVEAT (not for default-OFF; documented at the call sites): eviction is UNSAFE in combination with
+/// `GATE_AIR_STREAM_COMMIT` (stream_tree1), because the tree1 commit calls `clear_stash()` at its head
+/// (poly.rs) and would WIPE tree0's just-staged entries before `prove_ex` reads them. See the leaf
+/// prover's evict hooks for the guard + reasoning.
+pub fn evict_tree0_enabled() -> bool {
+    std::env::var("GATE_AIR_EVICT_TREE0").is_ok()
+}
+
 // ============================================================================
 // PART B1: persistent, recycled PINNED host-buffer pool.
 //
@@ -994,6 +1014,53 @@ pub fn boundary_trim_if_enabled() {
     }
 }
 
+/// Under `GATE_AIR_EVICT_TREE0` (default OFF), host-stage tree0's FULL-DOMAIN preprocessed eval
+/// columns via `dehydrate_column` (D2H + device free + sentinel re-key), freeing ~2 GiB that would
+/// otherwise sit resident and unread from the tree0 commit through the tree2 commit. Called by the
+/// gate_air leaf prover with tree0's committed `evals.values` columns immediately AFTER the tree0
+/// commit returns.
+///
+/// SELECTS the full-domain columns by eval-domain log_size: the four preprocessed positional columns
+/// (enabler / shot_id / pc / pc_in_prog) are LDE'd to the MAX tree0 eval domain (main_log_size +
+/// blowup, ~2^26→2^27), whereas the program / boundary / rc TABLE columns have strictly smaller eval
+/// domains (~50 MiB total). We compute the max `col.size` across the passed columns and dehydrate
+/// ONLY the columns at that max — so the tiny table columns are never staged (not worth the D2H/H2D).
+/// If several columns tie at the max (the four positional columns do), all are staged; that is
+/// exactly the intended set. `col.size` is the eval-domain length (== 1 << eval_log_size), a robust,
+/// config-independent discriminator.
+///
+/// BYTE-IDENTITY: `dehydrate_column` moves only the byte SOURCE (device -> host stash) and re-keys by
+/// a unique sentinel; the committed values and the already-computed Merkle root are untouched. Flag
+/// OFF ⇒ this is a no-op and tree0 stays fully resident (byte-for-byte the previous path).
+///
+/// CAVEAT — see `evict_tree0_enabled`: unsafe together with `GATE_AIR_STREAM_COMMIT` (the tree1
+/// commit's `clear_stash()` would wipe these entries before `prove_ex` reads them). The caller
+/// guards on that; this helper only performs the staging it is asked to.
+pub fn evict_tree0_columns_at_size<'a, I>(cols: I, max_size: usize)
+where
+    I: IntoIterator<Item = &'a mut BaseFieldVec>,
+{
+    if !evict_tree0_enabled() {
+        // Consume nothing meaningful; leave columns untouched (byte-identical no-op).
+        return;
+    }
+    let mut staged = 0usize;
+    for col in cols {
+        // Stage ONLY the full-domain columns (eval length == max over tree0's columns). The four
+        // positional preprocessed columns (enabler/shot_id/pc/pc_in_prog) all tie at this max; the
+        // program/boundary/rc table columns have strictly smaller eval domains and stay resident.
+        if col.size == max_size {
+            dehydrate_column(col);
+            staged += 1;
+        }
+    }
+    eprintln!(
+        "gate-air: GATE_AIR_EVICT_TREE0 — staged {staged} tree0 full-domain column(s) at eval size \
+         {max_size} (2^{}); tiny table columns kept resident",
+        max_size.trailing_zeros()
+    );
+}
+
 /// The streamed-path reclaim after a `cuda_free_memory`: PART A no-trim by default (sync only),
 /// legacy sync+trim under `GATE_AIR_RECLAIM_TRIM`. Times itself into the T1 dehydrate-reclaim
 /// accumulator when timers are on. Shared by `dehydrate_column` and `build_leaves`.
@@ -1054,4 +1121,77 @@ pub(crate) fn stream_commit_enabled() -> bool {
 /// it).
 pub(crate) fn interpolate_in_commit_enabled() -> bool {
     std::env::var("GATE_AIR_FUSED_INTERP").is_ok()
+}
+
+// ============================================================================
+// INTERACTION (tree2) STAGING — Option (a). A DEDICATED staging trigger for the
+// interaction (tree2) commit, analogous to the tree1 `stream_tree1` trigger but
+// keyed on `GATE_AIR_STREAM_INTERACTION` and scoped to the OWNED interaction eval
+// columns.
+//
+// WHY A SEPARATE TRIGGER (and why an env flag ALONE is NOT enough): tree1's
+// staging fires on the BORROWED-column structural signature (its un-interpolated
+// `d_cols` main views under GATE_AIR_FUSED_INTERP have `owns_memory == false`).
+// The interaction columns are produced OWNED (by `gpu_gen_interaction_device` +
+// `interpolate_columns`), so they never match that signature. But a bare env flag
+// keyed on "owns an owned column" would ALSO fire for (i) tree0's preprocessed
+// columns in the non-precompute `extend_evals` fallback and (ii) tree1's small
+// (multiplicity/witness/program) OWNED columns, which share tree1's
+// `evaluate_polynomials` call and MUST stay resident (FULL (A)). tree0's
+// preprocessed columns are full-size (`log_n_rows`), so there is no size
+// signature distinguishing them from tree2 either. So — exactly like the
+// byte-identity-safety scoping the tree1 interpolate uses — the interaction
+// staging is scoped to the actual interaction commit by a call-site ARM flag that
+// gate_air-leaf sets right before the tree2 `commit()` (and clears right after),
+// mirroring the `boundary_trim_if_enabled()` call-site poke. So the staging fires
+// iff (env flag set) AND (the arm flag is up) — i.e. ONLY the tree2 interaction
+// commit, never tree0/tree1.
+//
+// CLEAR_STASH: unlike `stream_tree1`, the interaction staging MUST NOT
+// `clear_stash()` — the tree1 staged columns are still live in the stash (they
+// must survive commit-through-decommit; see `clear_stash`'s doc), and tree2's
+// columns are keyed by fresh unique sentinels (no pointer aliasing), so both trees'
+// stash entries coexist safely until the NEXT proof's tree1 commit clears them.
+//
+// BYTE-IDENTITY: `dehydrate_column` D2H-copies the exact committed bytes; every
+// reader (`build_leaves` rehydrate, OODS `barycentric_eval_at_point`, quotient
+// `rehydrate_block`, decommit `host_batch_get`, and the composition kernel's
+// tree2 row-tiler via `host_trace2`) rehydrates those identical bytes, so the proof
+// is unchanged — only the interaction eval buffers' RESIDENCY changes.
+// ============================================================================
+
+/// Reads `GATE_AIR_STREAM_INTERACTION` (Option (a), opt-in, DEFAULT OFF). When set
+/// (AND the interaction-commit arm flag is up — see `interaction_commit_armed`), the
+/// interaction (tree2) commit host-stages its OWNED eval columns via
+/// `dehydrate_column`, freeing their device buffers so the composition kernel holds
+/// tree2 row-tiled instead of whole-resident. OFF (default) => the interaction
+/// columns stay fully resident, byte-for-byte the current path.
+pub(crate) fn stream_interaction_enabled() -> bool {
+    std::env::var("GATE_AIR_STREAM_INTERACTION").is_ok()
+}
+
+thread_local! {
+    /// Call-site ARM flag for the interaction (tree2) commit. Set by
+    /// `arm_interaction_commit(true)` on the producer thread immediately before the
+    /// tree2 `tree_builder.commit()` and cleared with `arm_interaction_commit(false)`
+    /// immediately after, so `evaluate_polynomials` stages ONLY the interaction commit
+    /// (never tree0's fallback commit or tree1's small owned columns). Thread-local
+    /// because the commit runs on the producer thread; the shared HOST_STASH (read by
+    /// rayon worker readers) is process-global and unaffected by this arm flag.
+    static INTERACTION_COMMIT_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Arm / disarm the interaction-commit staging scope on THIS (producer) thread. The
+/// gate_air leaf prover calls `arm_interaction_commit(true)` right before the tree2
+/// `commit()` and `arm_interaction_commit(false)` right after. No-op semantics off the
+/// flag: even when armed, staging only happens if `GATE_AIR_STREAM_INTERACTION` is set,
+/// so leaving this armed with the flag OFF changes nothing.
+pub fn arm_interaction_commit(armed: bool) {
+    INTERACTION_COMMIT_ARMED.with(|c| c.set(armed));
+}
+
+/// True iff the current `evaluate_polynomials` call is the armed interaction (tree2)
+/// commit. Read by `evaluate_polynomials` to scope the staging.
+pub(crate) fn interaction_commit_armed() -> bool {
+    INTERACTION_COMMIT_ARMED.with(|c| c.get())
 }

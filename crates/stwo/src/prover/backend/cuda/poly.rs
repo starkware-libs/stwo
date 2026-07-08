@@ -534,6 +534,51 @@ impl PolyOps for CudaBackend {
                 .iter()
                 .any(|(_, _, _, poly)| !poly.coeffs.owns_memory);
 
+        // Option (a) — interaction (tree2) staging scope. True ONLY when
+        // GATE_AIR_STREAM_INTERACTION is set AND the interaction-commit arm flag is up (set by
+        // the gate_air leaf prover immediately before the tree2 `commit()`; see
+        // `fused_commit::arm_interaction_commit`). The interaction eval columns are OWNED (never
+        // borrowed), so they never match the `stream_tree1` borrowed-column signature — hence the
+        // dedicated trigger. The arm flag is what makes this byte-identity-safe: it fires ONLY for
+        // the tree2 interaction commit, never for tree0's preprocessed `extend_evals` fallback
+        // (also all-owned, same full size) or tree1's small OWNED columns (which share tree1's
+        // call and must stay resident). When true, the OWNED interaction eval columns are
+        // host-staged (dehydrated) in the chunked branch below, freeing their device buffers so
+        // the composition kernel row-tiles tree2 (`host_trace2` non-null -> `tree2_tiled`) instead
+        // of holding it whole-resident. Only the byte SOURCE moves (device -> host stash);
+        // committed values are unchanged. `stream_tree1` and `stream_tree2` are mutually exclusive
+        // per call (tree1's call has a borrowed column, so its arm flag is down; tree2's call is
+        // all-owned).
+        let stream_tree2 = fused_commit::stream_interaction_enabled()
+            && fused_commit::interaction_commit_armed()
+            && indexed.iter().all(|(_, _, _, poly)| poly.coeffs.owns_memory);
+
+        // DIAG (GATE_AIR_NTT_DEBUG): observe, per commit, whether the tree2 interaction streaming
+        // actually engages — prints the stream_tree2 decision + its three sub-conditions. The tree2
+        // interaction commit is the one with ~28 owned same-size columns; if stream_tree2 is false
+        // there, the dehydrate never runs and the whole eval set stays resident (chunk size is then
+        // irrelevant — explaining why arm-wiring and NTT_SUBBATCH had no effect).
+        let ntt_dbg = std::env::var("GATE_AIR_NTT_DEBUG").is_ok();
+        if ntt_dbg {
+            eprintln!(
+                "[ntt_dbg] evaluate_polynomials: n_cols={} stream_tree1={} stream_tree2={} \
+                 si_enabled={} armed={} all_owned={}",
+                indexed.len(),
+                stream_tree1,
+                stream_tree2,
+                fused_commit::stream_interaction_enabled(),
+                fused_commit::interaction_commit_armed(),
+                indexed.iter().all(|(_, _, _, poly)| poly.coeffs.owns_memory),
+            );
+            // stderr is fully buffered under `>> logfile` redirect and its tail is LOST on abort —
+            // flush so this line survives an OOM crash in the same commit (the whole point of it).
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+        }
+
+        // Unlike `stream_tree1`, tree2 does NOT `clear_stash()`: the tree1 staged columns are
+        // still live in the stash (they must survive commit-through-decommit), and tree2's columns
+        // are keyed by fresh unique sentinels, so both trees' entries coexist until the next
+        // proof's tree1 commit clears them.
         if stream_tree1 {
             // Evict any stale stash entries from a PRIOR streamed commit before staging THIS tree's
             // columns, so a freed pointer key can never alias a fresh live column (which would
@@ -777,7 +822,7 @@ impl PolyOps for CudaBackend {
                         }
 
                         // FULL (A): the small (multiplicity/witness/program) tree1 columns and the
-                        // preprocessed tree0 / interaction tree2 columns stay RESIDENT (owned) — they
+                        // preprocessed tree0 columns stay RESIDENT (owned) — they
                         // are NOT dehydrated. Only the 188 LARGE main columns (the interp branch
                         // above) are host-staged. The downstream row-tilers (quotient/composition)
                         // read a resident column directly from its live device buffer (its
@@ -785,8 +830,39 @@ impl PolyOps for CudaBackend {
                         // handled per-column — no uniform all-staged assumption. This is the memory
                         // win (the large columns are the ~47 GB) without paying D2H/H2D for the small
                         // columns.
-                        values_list.append(&mut chunk_values);
+                        //
+                        // Option (a) — interaction (tree2) staging: under `stream_tree2`
+                        // (GATE_AIR_STREAM_INTERACTION + the armed interaction commit) host-stage
+                        // (D2H + free) each OWNED interaction eval column right after its NTT, the
+                        // same `dehydrate_column` mechanism tree1's large columns use. This frees
+                        // the interaction device buffers so the composition kernel row-tiles tree2.
+                        // Columns are still pushed to `values_list` (tree shape / indexing
+                        // unchanged) with a sentinel device_ptr; `build_leaves` / OODS / quotient /
+                        // decommit rehydrate from the stash on demand, and the composition kernel
+                        // supplies them via `host_trace2`. Byte-identical (only the byte SOURCE
+                        // moves). NOTE: unlike the tree1 large-column staging, the NTT here is the
+                        // BATCHED multi-column launch above (interaction columns are all owned and
+                        // same-size, so they never take the borrowed interp branch); the dehydrate
+                        // runs per-column after that batched NTT, which is byte-identical to the
+                        // per-column NTT+dehydrate (the NTT output is independent per column).
+                        if stream_tree2 {
+                            for mut col in chunk_values.drain(..) {
+                                fused_commit::dehydrate_column(&mut col);
+                                values_list.push(col);
+                            }
+                        } else {
+                            values_list.append(&mut chunk_values);
+                        }
                         chunk_off = chunk_end;
+                        // DIAG (GATE_AIR_NTT_DEBUG): free/pool after each chunk's NTT (+dehydrate if
+                        // stream_tree2) — shows whether the per-chunk peak is CAPPED (streaming frees
+                        // between chunks) or CLIMBING (eval set accumulating). log_size identifies the
+                        // group (interaction group = eval-domain size, ~28 same-size cols).
+                        if ntt_dbg {
+                            crate::stwo_cuda::cuda_mem_probe(&format!(
+                                "ntt_chunk_log{log_size}_off{chunk_off}"
+                            ));
+                        }
                     }
                 }
 

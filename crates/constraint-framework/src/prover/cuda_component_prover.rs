@@ -66,7 +66,10 @@ use super::component_prover::{
 use super::cuda_constraint_kernel::{
     gpu_constraints_opt_in, registered_gpu_constraint_kernel, GpuConstraintDispatch,
 };
-use crate::{FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX};
+use crate::{
+    FrameworkComponent, FrameworkEval, INTERACTION_TRACE_IDX, ORIGINAL_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
+};
 
 /// Whether the operator has forced the audited CPU-delegate constraint path via
 /// `CUDA_CONSTRAINT_CPU_FALLBACK=1`. Read fresh on each call (cheap; once per component per prove).
@@ -230,15 +233,19 @@ fn build_scoped_device_trace<E: FrameworkEval>(
                         // never dereferenced. `owns_memory` is false, so
                         // Drop never double-frees the already-freed committed buffer.
                         //
-                        // tree2 (interaction) MUST stay fully resident (its post_kernel `-1` LogUp-
-                        // cumsum offset is a bit-reversed scattered index — a row-block halo would
-                        // read wrong bytes, scope §1.3/§1.4), so staged
-                        // tree2 columns are rehydrated WHOLE here exactly
-                        // as before. Non-staged needed columns are device-cloned so the
-                        // owned trace fully owns its buffers (legacy path, byte-for-byte
-                        // unchanged).
+                        // F2-b / Option B (tree2 COMPOSITION streaming): tree2 (interaction) is now
+                        // ALSO passed through as a NON-OWNING stash-key column, exactly like
+                        // tree0/tree1. The downstream gate_air kernel row-tiles tree2 and replaces
+                        // the scattered `-1` composition read with an offset-0 read on 4 precomputed
+                        // shifted columns (interaction_shift_neg1), so tree2 no longer needs to be
+                        // held whole (~14 GiB @2^26). The kernel resolves the staged bytes via
+                        // `staged_host_ptr` and H2Ds per block. Previously tree2 was rehydrated WHOLE
+                        // here (the H1 residency wall); that whole-rehydrate is now gone.
+                        // Non-staged needed columns are still device-cloned so the owned trace fully
+                        // owns its buffers (legacy path, byte-for-byte unchanged).
                         let is_input_tree = tree_index == PREPROCESSED_TRACE_IDX
-                            || tree_index == ORIGINAL_TRACE_IDX;
+                            || tree_index == ORIGINAL_TRACE_IDX
+                            || tree_index == INTERACTION_TRACE_IDX;
                         let staged = fused_commit::is_staged(&poly.evals.values);
                         let evals_values = if staged && is_input_tree {
                             // Non-owning passthrough of the stash-key pointer (row-tiled

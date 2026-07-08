@@ -111,6 +111,12 @@ void evaluate_gate_air(
     // always resident (its post_kernel `-1` offset is a scattered index — no tile).
     const uint32_t * const *host_trace0,
     const uint32_t * const *host_trace1,
+    // F2-b / Option B: per-column host-tile-source table for tree2 (interaction).
+    // Non-null => row-tile tree2 like tree0/1 AND precompute the 4 shifted last-LogUp
+    // cumsum coords (interaction_shift_neg1) so the composition post_kernel reads
+    // prev_row_cumsum at offset 0 (no scattered `-1`, tree2 no longer held whole).
+    // Null => tree2 resident + legacy scattered `-1` read (BYTE-FOR-BYTE).
+    const uint32_t * const *host_trace2,
     qm31 *random_coeff_powers,
     m31 *denominator_inverses,
     unsigned int domain_log_size,
