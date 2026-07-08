@@ -32,7 +32,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         LOG_BLOWUP_FACTOR,
         twiddles,
         false,
-        None,
+        0,
         &BaseColumnPool::new(),
     );
 }
