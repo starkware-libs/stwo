@@ -98,6 +98,11 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             let chunk_max_log_size: u32 = columns[end - 1].data.len().ilog2();
             let next_layer_state_slice = &mut next_layer_states[0..1 << chunk_max_log_size];
             let log_ratio = chunk_max_log_size - prev_chunk_max_log_size;
+            // Log-ratios of the first chunk `columns[start..start + 16]` w.r.t.
+            // `chunk_max_log_size`. Depends only on `j`, so it is computed once per chunk rather
+            // than once per lane inside the hot loop below.
+            let msg_log_ratios: [u32; N_FELTS_IN_BLAKE_MESSAGE] =
+                std::array::from_fn(|j| chunk_max_log_size - columns[start + j].data.len().ilog2());
             // Compute the new states of the current layer.
             #[cfg(not(feature = "parallel"))]
             let iter_states = next_layer_state_slice.iter_mut();
@@ -112,10 +117,12 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                     to_lifted_simd(prev_state_limb, log_ratio, i)
                 });
                 let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = std::array::from_fn(|j| {
-                    let column = columns[start + j];
-                    let log_size = column.data.len().ilog2();
-                    let log_ratio = chunk_max_log_size - log_size;
-                    to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i)
+                    let log_ratio = msg_log_ratios[j];
+                    to_lifted_simd(
+                        columns[start + j].data[i >> log_ratio].into_simd(),
+                        log_ratio,
+                        i,
+                    )
                 });
 
                 *state = compress_unfinalized(prev_state, msgs, local_byte_count);
@@ -148,6 +155,13 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         #[cfg(feature = "parallel")]
         let iter_states = next_layer_state_slice.par_iter_mut();
 
+        // Log-ratios of the tail columns w.r.t. `chunk_max_log_size`. Depends only on the column
+        // index, so it is computed once for the whole tail rather than once per lane below.
+        let tail_log_ratios: Vec<u32> = columns[last_chunk_index..]
+            .iter()
+            .map(|column| chunk_max_log_size - column.data.len().ilog2())
+            .collect();
+
         byte_count += ((columns.len() - last_chunk_index) * N_BYTES_FELT) as u64;
         iter_states.enumerate().for_each(|(i, state)| {
             let prev_state = std::array::from_fn(|j| {
@@ -156,8 +170,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             });
             let mut msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = unsafe { std::mem::zeroed() };
             for (j, column) in columns[last_chunk_index..].iter().enumerate() {
-                let log_size = column.data.len().ilog2();
-                let log_ratio = chunk_max_log_size - log_size;
+                let log_ratio = tail_log_ratios[j];
                 msgs[j] = to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i);
             }
             *state = compress_finalize(prev_state, msgs, byte_count);
