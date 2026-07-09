@@ -174,7 +174,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             unsafe { uninit_vec(1 << (lifting_log_size_packed + LOG_N_HASHES_PER_SIMD_STATE)) };
 
         // Lift the next_layer_states if needed.
-        let mut trasposed_states = if lifting_log_size_packed == max_log_size {
+        let mut transposed_states = if lifting_log_size_packed == max_log_size {
             next_layer_states
         } else {
             let mut buf: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
@@ -198,11 +198,11 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         // Untranspose the states.
         #[cfg(not(feature = "parallel"))]
-        let iter_states = trasposed_states
+        let iter_states = transposed_states
             .iter_mut()
             .zip(res.chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
         #[cfg(feature = "parallel")]
-        let iter_states = trasposed_states
+        let iter_states = transposed_states
             .par_iter_mut()
             .zip(res.par_chunks_exact_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
 

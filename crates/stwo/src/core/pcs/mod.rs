@@ -27,7 +27,7 @@ pub struct TreeSubspan {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-/// Configuration parameters for the committment scheme prover.
+/// Configuration parameters for the commitment scheme prover.
 pub struct PcsConfig {
     /// The number of proof of work bits before the FRI queries.
     pub pow_bits: u32,
