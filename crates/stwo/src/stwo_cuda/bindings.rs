@@ -102,7 +102,7 @@ extern "C" {
         offset: u32,
     );
 
-    pub fn cuda_malloc_uint32_t(size: u32) -> *const u32;
+    pub fn cuda_malloc_uint32_t(size: usize) -> *const u32;
 
     pub fn cuda_set_uint32_t(device_ptr: *const c_void, index: usize, val: u32);
 
@@ -122,7 +122,7 @@ extern "C" {
 
     pub fn cuda_malloc_blake_2s_hash(size: usize) -> *const Blake2sHash;
 
-    pub fn cuda_alloc_zeroes_uint32_t(size: u32) -> *const u32;
+    pub fn cuda_alloc_zeroes_uint32_t(size: usize) -> *const u32;
 
     pub fn cuda_alloc_zeroes_blake_2s_hash(size: usize) -> *const Blake2sHash;
 

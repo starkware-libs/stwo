@@ -30,7 +30,7 @@ void copy_uint32_t_vec_from_device_to_device_offset(uint32_t *from, uint32_t *ds
     cuda_mem_copy_device_to_device<uint32_t>(from, dst + offset, size);
 }
 
-uint32_t* cuda_malloc_uint32_t(int size) {
+uint32_t* cuda_malloc_uint32_t(size_t size) {
 #if USE_CUDA_MEM_POOL
     uint32_t* device_ptr = cuda_mem_pool_allocate<uint32_t>(size);
     if (device_ptr != nullptr) {
@@ -57,7 +57,7 @@ __global__ void print_array(uint32_t *array, int size) {
     }
 }
 
-uint32_t* cuda_alloc_zeroes_uint32_t(int size) {
+uint32_t* cuda_alloc_zeroes_uint32_t(size_t size) {
 #if USE_CUDA_MEM_POOL
     return cuda_mem_pool_allocate_zeroes<uint32_t>(size);
 #else

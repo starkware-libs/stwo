@@ -111,7 +111,7 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
 
     unsafe fn uninitialized(len: usize) -> Self {
         Self {
-            device_ptr: bindings::cuda_malloc_uint32_t(len as u32),
+            device_ptr: bindings::cuda_malloc_uint32_t(len),
             size: len,
             owns_memory: true,
         }
@@ -192,7 +192,7 @@ impl Column<SecureField> for SecureFieldVec {
 
     unsafe fn uninitialized(len: usize) -> Self {
         Self {
-            device_ptr: bindings::cuda_malloc_uint32_t(4 * len as u32),
+            device_ptr: bindings::cuda_malloc_uint32_t(4 * len),
             size: len,
         }
     }

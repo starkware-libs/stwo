@@ -40,12 +40,12 @@ impl SecureFieldVec {
     }
 
     pub fn new_uninitialized(size: usize) -> Self {
-        let device_ptr = unsafe { bindings::cuda_malloc_uint32_t((4 * size) as u32) };
+        let device_ptr = unsafe { bindings::cuda_malloc_uint32_t(4 * size) };
         Self::new(device_ptr, size)
     }
 
     pub fn new_zeroes(size: usize) -> Self {
-        let device_ptr = unsafe { bindings::cuda_alloc_zeroes_uint32_t((4 * size) as u32) };
+        let device_ptr = unsafe { bindings::cuda_alloc_zeroes_uint32_t(4 * size) };
         Self::new(device_ptr, size)
     }
 

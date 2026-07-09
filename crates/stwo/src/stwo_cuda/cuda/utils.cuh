@@ -170,13 +170,13 @@ extern "C"
 void copy_uint32_t_vec_from_device_to_device_offset(uint32_t *from, uint32_t *dst, int size, int offset);
 
 extern "C"
-uint32_t* cuda_malloc_uint32_t(int);
+uint32_t* cuda_malloc_uint32_t(size_t);
 
 extern "C"
 Blake2sHash* cuda_malloc_blake_2s_hash(int);
 
 extern "C"
-uint32_t* cuda_alloc_zeroes_uint32_t(int);
+uint32_t* cuda_alloc_zeroes_uint32_t(size_t);
 
 #include "cuda_mem_pool.cuh"
 

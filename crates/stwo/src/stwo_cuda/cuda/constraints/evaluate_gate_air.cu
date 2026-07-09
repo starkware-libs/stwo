@@ -3,12 +3,12 @@
 //
 // !!! BOX-UNVALIDATED CUDA — cannot be compiled on the laptop (no nvcc). !!!
 // Transcribed line-for-line from `impl FrameworkEval for GateEval`
-// (gate-air-leaf/src/main.rs, QUBIT-MEMORY + ts=pc+1 (inlined) + rc-table encoding).
+// (gate-air-leaf/src/main.rs, QUBIT-MEMORY + ts=pc+1 (inlined) + single-`d` rc-table encoding).
 // Build + validate on the GPU box.
 //
-// QUBIT-MEMORY LAYOUT (main.rs, 22 cols, ACCESS_BLOCK=5): the main (witness) trace is:
-//   [0..4) opcode one-hots; [4..9) target addr/prev_ts/v/rc_lo/rc_hi;
-//   [9..14) ctrl_a access; [14..19) ctrl_b access; [19..22) ab/fire/delta.
+// QUBIT-MEMORY LAYOUT (main.rs, 19 cols, ACCESS_BLOCK=4): the main (witness) trace is:
+//   [0..4) opcode one-hots; [4..8) target addr/prev_ts/v/d;
+//   [8..12) ctrl_a access; [12..16) ctrl_b access; [16..19) ab/fire/delta.
 // ts (= pc+1) and the target's v_after (= v_before+delta) are INLINED, NOT columns.
 // `enabler`, `shot_id`, `pc`, `pc_in_prog` live in the PREPROCESSED tree (tree0), read via
 // eval0.get_preprocessed_column() in that call order (GATE_AIR_N_PREPROCESSED = 4). `pc` feeds
@@ -16,15 +16,15 @@
 //
 // Pipeline (mirror of evaluate_memory_address_to_id.cu):
 //   1. pre_kernel  : per eval-domain row, run the 15 ALGEBRAIC add_constraints
-//                    (-> numerators[row] = row_res) and emit the 13 LogUp
+//                    (-> numerators[row] = row_res) and emit the 10 LogUp
 //                    relation entries (-> intermediate_fractions). PHASE 1.
-//                    (ts=pc+1 inlined + rc-table: per active access 1 ts algebraic
-//                    constraint (RANGE recon only; PIN dropped) + 2 rc-limb LOOKUPs;
+//                    (ts=pc+1 inlined + single-`d` rc-table: per active access 1 ts algebraic
+//                    constraint (RANGE recon only; PIN dropped) + 1 rc LOOKUP (TAG_RC, d);
 //                    the v_after equality is dropped (inlined). Algebraic 19->15,
-//                    LogUp entries stay 13 (only ts/v_after tuple VALUES change).)
+//                    LogUp entries 10 (3 qubitmem pairs + 3 rc-d + 1 program).)
 //   2. post_kernel : generic_constraint_post_kernel (evaluate_common.cuh) folds
-//                    the 13 fractions into 7 batches (6 pairs + 1 singleton tail)
-//                    and adds the 7 LogUp cumsum constraints. PHASE 2 SOUNDNESS
+//                    the 10 fractions into 5 batches (all pairs)
+//                    and adds the 5 LogUp cumsum constraints. PHASE 2 SOUNDNESS
 //                    GATE — wired here but NOT trusted until box accumulator-diff
 //                    is zero.
 //   3. finalize    : generic_constraint_quotients_finalize_kernel — quotient =
@@ -59,7 +59,7 @@
 // This is a pure gather (one thread per row) in the SAME style as the K4 prefix-sum
 // index kernels. After the shift, BOTH `cur_cumsum` (src[row]) and `prev_row_cumsum`
 // (shifted[row]) are offset-0 pointwise reads, so tree2 tiles row-by-row exactly like
-// tree0/tree1 (the scattered `-1` no longer forces all 28 interaction cols resident).
+// tree0/tree1 (the scattered `-1` no longer forces all 20 interaction cols resident).
 //
 // Byte-identical by construction: shifted[row] holds exactly the value the current
 // scattered read produces, including the coset-boundary wrap (obr_index computes the
@@ -108,27 +108,25 @@ DEVICE_FORCEINLINE LookupElementsBasic<N> gate_relation_slice(
 
 // ----------------------------------------------------------------------------
 // Per-access masks (qubit-memory), in the EXACT order `access_masks` (main.rs) consumes columns
-// from the main trace: addr, prev_ts, v, rc_lo, rc_hi. 5 columns per access (ACCESS_BLOCK).
+// from the main trace: addr, prev_ts, v, d. 4 columns per access (ACCESS_BLOCK).
 // ts is NOT a column — it is the inlined `pc + 1`.
 // ----------------------------------------------------------------------------
 struct GateAccessMasks {
     m31 addr;
     m31 prev_ts;
     m31 v;
-    m31 rc_lo;    // low limb of d = ts - prev_ts - 1 = pc - prev_ts
-    m31 rc_hi;    // high limb of d
+    m31 d;        // ts-ordering diff d = ts - prev_ts - 1 = pc - prev_ts (range-checked into [0,2^rc_log))
 };
 
-// Mirror of `access_masks` (main.rs): pull 5 consecutive main-trace masks (addr,prev_ts,v then
-// rc_lo,rc_hi — matching cell_at's per-access column order).
+// Mirror of `access_masks` (main.rs): pull 4 consecutive main-trace masks (addr,prev_ts,v then
+// d — matching cell_at's per-access column order).
 template<typename EvaluatorT>
 DEVICE_FORCEINLINE GateAccessMasks gate_access_masks(EvaluatorT &eval) {
     GateAccessMasks a;
     a.addr    = eval.next_trace_mask();
     a.prev_ts = eval.next_trace_mask();
     a.v       = eval.next_trace_mask();
-    a.rc_lo   = eval.next_trace_mask();
-    a.rc_hi   = eval.next_trace_mask();
+    a.d       = eval.next_trace_mask();
     return a;
 }
 
@@ -160,9 +158,9 @@ DEVICE_FORCEINLINE void gate_add_qubitmem_pair(
     eval.template add_to_relation<5>(yield_entry);
 }
 
-// Mirror of `add_rc_lookup` (main.rs): emit the two rc-table range-check LOOKUPs for one access,
-// gated by `active`. Each limb is looked up as (TAG_RC, pos, limb); the rc supply table supplies
-// each in-range (pos, value). Emitted lo then hi (consecutive => one finalize-in-pairs batch).
+// Mirror of `add_rc_lookup` (main.rs): emit the SINGLE rc-table range-check LOOKUP for one access,
+// gated by `active`. `d` is looked up as (TAG_RC, d); the rc supply table supplies each in-range
+// value. One term/access (mirrored by gen_main_interaction and the in-circuit MainGate).
 template<typename EvaluatorT>
 DEVICE_FORCEINLINE void gate_add_rc_lookup(
     EvaluatorT &eval,
@@ -171,19 +169,15 @@ DEVICE_FORCEINLINE void gate_add_rc_lookup(
     m31 active
 ) {
     qm31 mult = { { active, 0 }, { 0, 0 } };            // E::EF::from(active)
-    m31 lo_values[3] = { m31(GATE_AIR_TAG_RC), m31(GATE_AIR_RC_POS_LO), a.rc_lo };
-    RelationEntry<3> lo_entry(gate_relation_slice<3>(relation), mult, lo_values);
-    eval.template add_to_relation<3>(lo_entry);
-
-    m31 hi_values[3] = { m31(GATE_AIR_TAG_RC), m31(GATE_AIR_RC_POS_HI), a.rc_hi };
-    RelationEntry<3> hi_entry(gate_relation_slice<3>(relation), mult, hi_values);
-    eval.template add_to_relation<3>(hi_entry);
+    m31 d_values[2] = { m31(GATE_AIR_TAG_RC), a.d };
+    RelationEntry<2> d_entry(gate_relation_slice<2>(relation), mult, d_values);
+    eval.template add_to_relation<2>(d_entry);
 }
 
 // Mirror of `add_ts_range` (main.rs): emit the ONE flag-gated degree-1 ts-ordering ALGEBRAIC
 // constraint for one access:
-//   RANGE: active * (d - rc_lo - 2^RC_LO_BITS*rc_hi) = 0 with d = ts - prev_ts - 1 = pc - prev_ts —
-//          reconstructs d from its two limbs (the limbs are range-checked by gate_add_rc_lookup, not
+//   RANGE: active * ((pc+1) - prev_ts - 1 - d) = 0 with d = ts - prev_ts - 1 = pc - prev_ts —
+//          pins the witness `d` column to the diff (d is range-checked by gate_add_rc_lookup, not
 //          here). `ts` is the inlined `pc + 1`. The old PIN constraint is GONE (ts is structurally
 //          pc+1, so the pin is vacuous).
 template<typename EvaluatorT>
@@ -193,10 +187,9 @@ DEVICE_FORCEINLINE void gate_add_ts_range(
     const GateAccessMasks &a,
     m31 active
 ) {
-    // RANGE recon: active * (d - (rc_lo + 2^RC_LO_BITS * rc_hi)), d = ts - prev_ts - 1 = pc - prev_ts.
-    m31 recon = add(a.rc_lo, mul(a.rc_hi, m31(1u << GATE_AIR_RC_LO_BITS)));
-    m31 d = sub(sub(ts, a.prev_ts), m31(1));
-    eval.add_constraint(mul(active, sub(d, recon)));
+    // RANGE recon: active * ((ts - prev_ts - 1) - d), d = ts - prev_ts - 1 = pc - prev_ts.
+    m31 recon = sub(sub(ts, a.prev_ts), m31(1));
+    eval.add_constraint(mul(active, sub(recon, a.d)));
 }
 
 // ----------------------------------------------------------------------------
@@ -251,7 +244,7 @@ __global__ void evaluate_gate_air_pre_kernel(
     // prover gathers `trace0_evaluations` in precisely that index order — see
     // constraint-framework component.rs / component_prover.rs). eval0 therefore
     // reads them sequentially via col_index[0] in the SAME order. The main trace is
-    // the 22-column qubit-memory layout (4 opcode masks + target(5) + 2*ctrl(5) + 3;
+    // the 19-column qubit-memory layout (4 opcode masks + target(4) + 2*ctrl(4) + 3;
     // ts = pc+1 and v_after = v_before+delta are inlined, not columns).
 
     EvaluatorT eval0(
@@ -274,22 +267,22 @@ __global__ void evaluate_gate_air_pre_kernel(
         intermediate_fractions, logup_counts
     );
 
-    // --- Main-trace masks (22 cols), in declaration order (main.rs GateEval::evaluate). ---
+    // --- Main-trace masks (19 cols), in declaration order (main.rs GateEval::evaluate). ---
     // Header is ONLY the 4 opcode masks (enabler/shot_id/pc/pc_in_prog are tree0).
     m31 is_nop     = eval.next_trace_mask();   // col 0
     m31 is_not     = eval.next_trace_mask();   // col 1
     m31 is_cnot    = eval.next_trace_mask();   // col 2
     m31 is_toffoli = eval.next_trace_mask();   // col 3
 
-    // target access (addr,prev_ts,v,rc_lo,rc_hi) cols 4..9. ts (=pc+1) and v_after (=v_before+delta)
+    // target access (addr,prev_ts,v,d) cols 4..8. ts (=pc+1) and v_after (=v_before+delta)
     // are NOT columns — inlined below.
-    GateAccessMasks target = gate_access_masks(eval);   // cols 4..9
-    GateAccessMasks ctrl_a = gate_access_masks(eval);   // cols 9..14
-    GateAccessMasks ctrl_b = gate_access_masks(eval);   // cols 14..19
+    GateAccessMasks target = gate_access_masks(eval);   // cols 4..8
+    GateAccessMasks ctrl_a = gate_access_masks(eval);   // cols 8..12
+    GateAccessMasks ctrl_b = gate_access_masks(eval);   // cols 12..16
 
-    m31 ab    = eval.next_trace_mask();   // col 19
-    m31 fire  = eval.next_trace_mask();   // col 20
-    m31 delta = eval.next_trace_mask();   // col 21
+    m31 ab    = eval.next_trace_mask();   // col 16
+    m31 fire  = eval.next_trace_mask();   // col 17
+    m31 delta = eval.next_trace_mask();   // col 18
 
     // ts = pc + 1 (inlined affine of the preprocessed pc, shared by all accesses of the step).
     m31 ts = add(pc, m31(1));
@@ -339,10 +332,12 @@ __global__ void evaluate_gate_air_pre_kernel(
         add(sub(delta, fire), mul(mul(t_bit, fire), m31(2)))
     );
 
-    // ===================== LOGUP RELATION ENTRIES (13) =====================
-    // PHASE 1 emits the 13 entries (the post_kernel turns them into 7 LogUp batch constraints in
-    // PHASE 2: 6 pairs + 1 singleton). Order MUST match `evaluate()` / gen_main_interaction exactly:
-    //   qubitmem target/ctrl_a/ctrl_b Use/Yield (6), rc target/ctrl_a/ctrl_b lo/hi (6), program (1).
+    // ===================== LOGUP RELATION ENTRIES (10) =====================
+    // PHASE 1 emits the 10 entries (the post_kernel turns them into 5 LogUp batch constraints in
+    // PHASE 2: all pairs). Order MUST match `evaluate()` / gen_main_interaction exactly:
+    //   qubitmem target/ctrl_a/ctrl_b Use/Yield (6), rc target/ctrl_a/ctrl_b d (3), program (1).
+    // The 10-entry stream folds into 5 pairs: (t_use,t_yield)(a_use,a_yield)(b_use,b_yield)
+    //   (rc_t, rc_a)(rc_b, program).
     // The ts-ordering RANGE recon is a degree-1 algebraic add_constraint (gate_add_ts_range), NOT a
     // relation entry; it is emitted AFTER the rc LOOKUPs and BEFORE the program emit (the same
     // interleave as main.rs `evaluate()`), so the relation-batch order stays qubitmem, rc, program.
@@ -355,7 +350,7 @@ __global__ void evaluate_gate_air_pre_kernel(
     // 5,6. qubitmem ctrl_b: Use(+b_active)/Yield(-b_active); ts = pc+1.
     gate_add_qubitmem_pair(eval, rel, shot_id, ctrl_b, ts, ctrl_b.v, b_active);
 
-    // 7,8 / 9,10 / 11,12. rc range-check LOOKUPs (lo then hi) for target / ctrl_a / ctrl_b — emitted
+    // 7 / 8 / 9. rc range-check LOOKUPs (single `d`) for target / ctrl_a / ctrl_b — emitted
     // as a group AFTER the qubitmem pairs (mirrors main.rs `add_rc_lookup` × 3 order).
     gate_add_rc_lookup(eval, rel, target, enabler);
     gate_add_rc_lookup(eval, rel, ctrl_a, a_active);
@@ -367,7 +362,7 @@ __global__ void evaluate_gate_air_pre_kernel(
     gate_add_ts_range(eval, ts, ctrl_a, a_active);
     gate_add_ts_range(eval, ts, ctrl_b, b_active);
 
-    // 13. program (+enabler).
+    // 10. program (+enabler).
     //   opcode_scalar = is_not*1 + is_cnot*2 + is_toffoli*3.
     //   [TAG_PROGRAM, pc_in_prog, opcode_scalar, target.addr, ctrl_a.addr, ctrl_b.addr]
     {
@@ -468,12 +463,12 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
         qm31 cur_cumsum;
         qm31 prev_row_cumsum;
         if (tree2_shifted) {
-            // F2-b / Option B: cur_cumsum from the source coords (cols [24..28)) at
-            // offset 0, prev_row_cumsum from the appended shifted coords (cols [28..32))
+            // F2-b / Option B: cur_cumsum from the source coords (cols [16..20)) at
+            // offset 0, prev_row_cumsum from the appended shifted coords (cols [20..24))
             // at offset 0. Both offset-0 pointwise reads over the row-tiled trace2
             // pointer table — no scattered `-1`, so the tile slice is self-contained.
             // The two consecutive next_extension_interaction_mask calls advance
-            // col_index[2]: 24->28 (source) then 28->32 (shifted). BYTE-IDENTICAL to
+            // col_index[2]: 16->20 (source) then 20->24 (shifted). BYTE-IDENTICAL to
             // the scattered read below because shifted[row] == src[obr_index(row,-1)].
             int off0[1] = { 0 };
             qm31 cur_arr[1] = { { {0, 0}, {0, 0} } };
@@ -485,7 +480,7 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
             prev_row_cumsum = prev_arr[0];
         } else {
             // Legacy resident path: scattered `-1` read on the source coords (cols
-            // [24..28)) — BYTE-FOR-BYTE the pre-tiling behavior.
+            // [16..20)) — BYTE-FOR-BYTE the pre-tiling behavior.
             int offsets2[2] = { 0, -1 };
             qm31 cumsum2[2] = { { {0, 0}, {0, 0} }, { {0, 0}, {0, 0} } };
             evaluator.next_extension_interaction_mask(logup_interaction, offsets2, 2, cumsum2);
@@ -574,7 +569,7 @@ void evaluate_gate_air(
     const unsigned eval_domain_size = 1u << eval_domain_log_size;
 
     // FULL (A) per-column mixed supply: the input columns are a MIX of host-staged
-    // (the 22 tree1 eval columns, dehydrated by GATE_AIR_STREAM_COMMIT — their
+    // (the 19 tree1 eval columns, dehydrated by GATE_AIR_STREAM_COMMIT — their
     // trace{0,1}_evaluations device pointers are FREED stash keys, must not be
     // dereferenced) and RESIDENT (the 4 tree0 preprocessed + the small tree1
     // multiplicity/witness/program columns, kept live on device — their
@@ -618,14 +613,22 @@ void evaluate_gate_air(
     m31 **d_trace1 = tiled_input ? nullptr
         : clone_to_device<m31 *>(trace1_evaluations, trace1_evaluations_len);
     // tree2 resident pointer table: only cloned whole when tree2 is NOT tiled (the
-    // legacy scattered `-1` path reads all 28 columns resident). Under tree2_tiled the
+    // legacy scattered `-1` path reads all 20 columns resident). Under tree2_tiled the
     // per-block pointer table (d_tile2_ptrs) is rebuilt each iteration and this whole
     // clone is skipped.
     m31 **d_trace2 = tree2_tiled ? nullptr
         : clone_to_device<m31 *>(trace2_evaluations, trace2_evaluations_len);
 
+    // NOTE: cuda_alloc_zeroes_uint32_t's argument is a COUNT OF uint32_t, not a
+    // byte count. A qm31 is 4 uint32_t, so `eval_domain_size` qm31 accumulators
+    // need `4 * eval_domain_size` u32 (2.0 GiB at 2^26). The previous
+    // `sizeof(qm31) * eval_domain_size` passed 16 * eval_domain_size — a 4x
+    // over-allocation (8.0 GiB at 2^26) whose 32-bit value (2^31) additionally
+    // truncated in the old `int` helper param. Both are fixed here: correct u32
+    // count + 64-bit clean multiply into the now-size_t helper. Byte-identical:
+    // numerators[row] is only ever indexed for row < eval_domain_size.
     qm31 *numerators =
-        (qm31 *) cuda_alloc_zeroes_uint32_t(sizeof(qm31) * eval_domain_size);
+        (qm31 *) cuda_alloc_zeroes_uint32_t((size_t)4 * eval_domain_size);
 
     GateAirEval *d_gate_eval = cuda_malloc<GateAirEval>(1);
     cuda_mem_copy_host_to_device<GateAirEval>(gate_eval, d_gate_eval, 1);
@@ -635,7 +638,7 @@ void evaluate_gate_air(
     // transient) with the same tile_start/this_tile passed to the kernels; the
     // kernels index every trace read by GLOBAL row and only the fraction pointer
     // was biased. This completes route (c): under tiled_input we ALSO row-tile the
-    // 22 main + 4 preprocessed INPUT columns so their residency is
+    // 19 main + 4 preprocessed INPUT columns so their residency is
     // O(this_tile * (trace0_len + trace1_len)) instead of the full ~47 GB eval set.
     // The eval is pure pointwise for tree0/tree1 (offset 0, no next-row mask), so a
     // row-block is a contiguous committed-byte slice and biased-pointer indexing is
@@ -679,11 +682,11 @@ void evaluate_gate_air(
     // ----- F2-b / Option B: tree2 tiling + shifted-column build. -----
     // Under tree2_tiled we (1) build the 4 shifted last-LogUp cumsum columns ONCE (a
     // data-independent gather, interaction_shift_neg1) and stash their bytes on the
-    // host, and (2) allocate reused per-block tile buffers for all 28 tree2 columns
+    // host, and (2) allocate reused per-block tile buffers for all 20 tree2 columns
     // plus the 4 shifted columns, and a device pointer table of length
     // trace2_evaluations_len + N_SHIFT rebuilt each block. Device residency for tree2
-    // at composition drops from all 28 resident (~14 GiB @2^26) to
-    // (28 + 4) * tile_rows * 4B tile buffers (~a few hundred MiB at tile_rows=2^20).
+    // at composition drops from all 20 resident to
+    // (20 + 4) * tile_rows * 4B tile buffers (~a few hundred MiB at tile_rows=2^20).
     // The shifted columns are prover-internal (NOT committed / not in the Merkle
     // tree) — a pure recomputation of committed cumsum values.
     m31 **tile2_bufs = nullptr;      // reused device tile buffers, (len2 + N_SHIFT) entries
@@ -728,7 +731,7 @@ void evaluate_gate_air(
             cuda_free_memory(d_shift);
         }
 
-        // --- Tile buffers: 28 source cols + 4 shifted cols, all reused per block. ---
+        // --- Tile buffers: 20 source cols + 4 shifted cols, all reused per block. ---
         tile2_bufs = (m31 **)std::malloc(sizeof(m31 *) * (len2 + N_SHIFT));
         for (unsigned c = 0; c < len2 + N_SHIFT; ++c)
             tile2_bufs[c] = (m31 *)cuda_malloc_uint32_t(tile_rows);
@@ -738,8 +741,8 @@ void evaluate_gate_air(
     timer global_timer;
     global_timer.start("evaluate_gate_air");
 
-    // gate_air uses `finalize_logup_in_pairs` => batching[i] = i/2. For logup_counts=13 that is
-    // 6 full pairs (batches 0..5) + 1 singleton tail (entry 12) = 7 batches.
+    // gate_air uses `finalize_logup_in_pairs` => batching[i] = i/2. For logup_counts=10 that is
+    // 5 full pairs (batches 0..4) = 5 batches (no singleton tail).
     // The post_kernel folds each pair, reads the interaction cumsum mask (offset
     // 0 for full batches; offsets {0,-1} + cumsum_shift for the last), and adds
     // `diff*denom - num`. This is EXACTLY finalize_logup_in_pairs (lib.rs:185-221).
@@ -851,7 +854,7 @@ void evaluate_gate_air(
         ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
 
-        // ----- Under tree2_tiled: H2D this block's slice of every tree2 column (28
+        // ----- Under tree2_tiled: H2D this block's slice of every tree2 column (20
         // source + 4 shifted) into the reused tile buffers, then build the biased
         // pointer table. Same convention as tree0/1: a STAGED source col H2Ds from
         // host_trace2[c]; a RESIDENT source col H2Ds from its live device buffer via
