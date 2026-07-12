@@ -506,8 +506,19 @@ __global__ void evaluate_gate_air_post_kernel_tiled(
 // knob (COMPOSITION_TILING_SCOPE §3, default in [2^20, 2^22]); GATE_AIR_COMP_TILE
 // is kept as a back-compat alias for the fraction-only tiling that shipped in
 // steps 1-2. Default 2^20. Clamped to eval_domain_size by the caller.
-static unsigned gate_air_resolve_tile_rows() {
-    unsigned tile_rows = 1u << 20;  // 2^20 default
+static unsigned gate_air_resolve_tile_rows(bool resident) {
+    // Improvement 3 (secondary): on the RESIDENT path the tiling only bounds the
+    // d_fractions transient (numerators is full-domain regardless), and removing the
+    // per-tile syncs means fewer/larger tiles are strictly better (fewer launch waves,
+    // longer kernels to pipeline). Raise the default to 2^22 so a 2^27 eval domain runs
+    // ~32 tiles instead of ~128; this only enlarges d_fractions
+    // (tile_rows*logup_counts*sizeof(Fraction) = 2^22*10*32B ~= 1.34 GiB vs ~320 MiB at
+    // 2^20, a ~1 GiB transient the resident shard has VRAM headroom for). The STAGED
+    // path keeps the 2^20 default because a bigger tile_rows also grows every staged
+    // per-column tile buffer + per-block H2D slice (the residency ceiling the staging
+    // path exists to hold down). An explicit GATE_AIR_TILE_ROWS / GATE_AIR_COMP_TILE
+    // env override wins on BOTH paths and is unchanged.
+    unsigned tile_rows = resident ? (1u << 22) : (1u << 20);
     if (const char *env = std::getenv("GATE_AIR_TILE_ROWS")) {
         unsigned long parsed = std::strtoul(env, nullptr, 10);
         if (parsed > 0) tile_rows = (unsigned)parsed;
@@ -603,6 +614,23 @@ void evaluate_gate_air(
     const bool tree2_tiled = (host_trace2 != nullptr);
     const unsigned N_SHIFT = 4;  // SECURE_EXTENSION_DEGREE coords of the last LogUp col
 
+    // Improvement 3: on the RESIDENT base path (no host-staged tree0/1 columns and no
+    // tiled tree2) the per-tile double-buffer H2D never runs, so there is nothing to
+    // overlap-hide and the two per-tile cudaStreamSynchronize (after pre_kernel and
+    // after post_kernel) are pure host<->device stalls that also serialize consecutive
+    // tiles' kernels. Because every kernel of every tile is enqueued on the SAME
+    // `stream`, stream ordering already guarantees tile b's pre precedes its post and
+    // precedes tile b+1's kernels — the only shared per-tile scratch (d_fractions,
+    // reused via frac_biased) is written by tile b's pre, read by tile b's post, then
+    // overwritten by tile b+1's pre, all serialized on `stream`. So on the resident
+    // path we drop the two mid-loop syncs (keeping a non-blocking cudaGetLastError()
+    // launch-error check per tile) and issue ONE cudaStreamSynchronize after the loop
+    // and finalize, before any host read of results. The STAGED path
+    // (tiled_input || tree2_tiled) keeps its per-tile syncs EXACTLY as before: its
+    // async ping-pong H2D reuses the tile buffers across blocks and depends on those
+    // syncs for correctness. tile kernels / numerators layout / finalize are unchanged.
+    const bool resident_path = !tiled_input && !tree2_tiled;
+
     // Resident device pointer tables. Under tiled_input, tree0/tree1 tables are
     // REBUILT per block into d_tile{0,1}_ptrs (staged cols -> biased tile buffer,
     // resident cols -> biased live buffer), so we do not clone the whole
@@ -643,7 +671,7 @@ void evaluate_gate_air(
     // The eval is pure pointwise for tree0/tree1 (offset 0, no next-row mask), so a
     // row-block is a contiguous committed-byte slice and biased-pointer indexing is
     // byte-trivially correct.
-    unsigned tile_rows = gate_air_resolve_tile_rows();
+    unsigned tile_rows = gate_air_resolve_tile_rows(resident_path);
     if (tile_rows > eval_domain_size) tile_rows = eval_domain_size;
 
     Fraction *d_fractions =
@@ -851,7 +879,12 @@ void evaluate_gate_air(
                 frac_biased, logup_counts, constraint_index_array,
                 tile_start, this_tile);
         }
-        ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+        // STAGED path keeps the per-tile sync (its ping-pong H2D depends on it).
+        // RESIDENT path drops the sync (same-stream ordering suffices) but keeps the
+        // non-blocking launch-error check.
+        if (!resident_path) {
+            ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+        }
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
 
         // ----- Under tree2_tiled: H2D this block's slice of every tree2 column (20
@@ -908,7 +941,14 @@ void evaluate_gate_air(
                 logup_counts, last_batch, cumsum_shift,
                 tile_start, this_tile, tree2_tiled);
         }
-        ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+        // STAGED path keeps the per-tile sync (its ping-pong H2D depends on it).
+        // RESIDENT path drops the sync (same-stream ordering serializes this tile's
+        // post before the next tile's pre / d_fractions reuse) but keeps the
+        // non-blocking launch-error check. The single post-loop sync below covers all
+        // resident-path kernels before any host read.
+        if (!resident_path) {
+            ASSERT_CUDA_SUCCESS(cudaStreamSynchronize(stream));
+        }
         ASSERT_CUDA_SUCCESS(cudaGetLastError());
     }
 
