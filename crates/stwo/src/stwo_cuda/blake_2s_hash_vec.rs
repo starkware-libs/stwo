@@ -16,7 +16,7 @@ unsafe impl Send for Blake2sHashVec {}
 unsafe impl Sync for Blake2sHashVec {}
 
 impl Blake2sHashVec {
-    pub fn new(device_ptr: *const Blake2sHash, size: usize) -> Self {
+    pub const fn new(device_ptr: *const Blake2sHash, size: usize) -> Self {
         Self { device_ptr, size }
     }
 

@@ -13,7 +13,7 @@ unsafe impl Send for BaseFieldVec {}
 unsafe impl Sync for BaseFieldVec {}
 
 impl BaseFieldVec {
-    pub fn new(device_ptr: *const u32, size: usize) -> Self {
+    pub const fn new(device_ptr: *const u32, size: usize) -> Self {
         Self {
             device_ptr,
             size,
@@ -24,7 +24,7 @@ impl BaseFieldVec {
     /// Create a BaseFieldVec that references existing device memory without owning it.
     /// The caller is responsible for ensuring the memory outlives this BaseFieldVec.
     /// Drop will NOT free the memory. Clone will produce an owned copy.
-    pub fn from_borrowed_ptr(device_ptr: *const u32, size: usize) -> Self {
+    pub const fn from_borrowed_ptr(device_ptr: *const u32, size: usize) -> Self {
         Self {
             device_ptr,
             size,
@@ -299,14 +299,14 @@ unsafe impl Sync for Uint32Vec {}
 
 #[allow(unused_variables)]
 impl Uint32Vec {
-    pub fn new(device_ptr: *const u32, size: usize) -> Self {
+    pub const fn new(device_ptr: *const u32, size: usize) -> Self {
         Self { device_ptr, size }
     }
 
     pub fn from_vec(host_array: Vec<u32>) -> Self {
         let device_ptr = unsafe {
             bindings::copy_uint32_t_vec_from_host_to_device(
-                host_array.as_ptr() as *const u32,
+                host_array.as_ptr(),
                 host_array.len() as u32,
             )
         };
@@ -326,8 +326,7 @@ impl Uint32Vec {
     }
 
     pub fn get_data(&self, index: usize) -> u32 {
-        let value = unsafe { bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index) };
-        value
+        unsafe { bindings::cuda_get_uint32_t(self.device_ptr as *const c_void, index) }
     }
 
     pub fn set_data(&mut self, index: usize, value: u32) {
@@ -466,7 +465,7 @@ unsafe impl Sync for Uint128Vec {}
 
 #[allow(unused_variables)]
 impl Uint128Vec {
-    pub fn new(device_ptr: *const u32, size: usize) -> Self {
+    pub const fn new(device_ptr: *const u32, size: usize) -> Self {
         Self { device_ptr, size }
     }
 

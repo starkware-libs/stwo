@@ -20,7 +20,7 @@ impl CudaSecureColumn {
         }
     }
 
-    pub fn device_ptr(&self) -> *const *const u32 {
+    pub const fn device_ptr(&self) -> *const *const u32 {
         self.columns.as_ptr()
     }
 }

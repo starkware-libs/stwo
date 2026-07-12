@@ -147,7 +147,7 @@ pub fn cuda_batch_eval_at_point(
     // Upload only the pointer array to device (num_polys * 8 bytes, not the data)
     let device_ptrs = unsafe {
         interface::bindings::copy_device_pointer_vec_from_host_to_device(
-            host_ptrs.as_ptr() as *const *const u32,
+            host_ptrs.as_ptr(),
             num_polys,
         )
     };
@@ -202,8 +202,9 @@ impl PolyOps for CudaBackend {
         if eval.domain.log_size() <= 3 {
             let cpu_eval = CpuCircleEvaluation::new(eval.domain, eval.values.to_cpu());
 
-            let cpu_circle_poly =
-                CpuBackend::interpolate(cpu_eval, unsafe { transmute(twiddle_tree) });
+            let cpu_circle_poly = CpuBackend::interpolate(cpu_eval, unsafe {
+                transmute::<&TwiddleTree<CudaBackend>, &TwiddleTree<CpuBackend>>(twiddle_tree)
+            });
 
             let cuda_coeffs = BaseFieldVec::from_vec(cpu_circle_poly.coeffs.to_vec());
 
@@ -215,7 +216,7 @@ impl PolyOps for CudaBackend {
             interface::bindings::ntt_b2n_column(
                 values.device_ptr.as_ptr() as *mut *mut u32,
                 values.len().ilog2(),
-                1 as u32,
+                1_u32,
                 twiddle_tree.itwiddles.device_ptr,
                 twiddle_tree.itwiddles.len() as u32,
                 eval.domain.half_coset.size() as u32,
@@ -264,8 +265,9 @@ impl PolyOps for CudaBackend {
                 for item in group.iter_mut() {
                     let values = std::mem::replace(&mut item.2, BaseFieldVec::new_uninitialized(0));
                     let cpu_eval = CpuCircleEvaluation::new(item.3, values.to_cpu());
-                    let cpu_poly =
-                        CpuBackend::interpolate(cpu_eval, unsafe { transmute(twiddles) });
+                    let cpu_poly = CpuBackend::interpolate(cpu_eval, unsafe {
+                        transmute::<&TwiddleTree<CudaBackend>, &TwiddleTree<CpuBackend>>(twiddles)
+                    });
                     let cuda_coeffs = BaseFieldVec::from_vec(cpu_poly.coeffs.to_vec());
                     results.push((item.0, CircleCoefficients::<Self>::new(cuda_coeffs)));
                 }
@@ -281,7 +283,7 @@ impl PolyOps for CudaBackend {
 
                 unsafe {
                     interface::bindings::ntt_b2n_column(
-                        ptrs.as_mut_ptr() as *mut *mut u32,
+                        ptrs.as_mut_ptr(),
                         log_size,
                         num_poly as u32,
                         twiddles.itwiddles.device_ptr,
@@ -371,7 +373,7 @@ impl PolyOps for CudaBackend {
         // Compute exp_val = 4^(log_size-1) mod P on CPU
         let mut exp_val = BaseField::from(1u32);
         for _ in 1..log_size {
-            exp_val = exp_val * BaseField::from(4u32);
+            exp_val *= BaseField::from(4u32);
         }
 
         // Allocate result on GPU
@@ -466,8 +468,9 @@ impl PolyOps for CudaBackend {
         if domain_log_size <= 3 {
             let cpu_poly = CpuCirclePoly::new(poly.coeffs.to_cpu());
 
-            let cpu_circle_eval =
-                CpuBackend::evaluate(&cpu_poly, domain, unsafe { transmute(twiddle_tree) });
+            let cpu_circle_eval = CpuBackend::evaluate(&cpu_poly, domain, unsafe {
+                transmute::<&TwiddleTree<CudaBackend>, &TwiddleTree<CpuBackend>>(twiddle_tree)
+            });
 
             let cuda_eval_values = BaseFieldVec::from_vec(cpu_circle_eval.values.to_vec());
             return CudaCircleEvaluation::new(cpu_circle_eval.domain, cuda_eval_values);
@@ -612,8 +615,9 @@ impl PolyOps for CudaBackend {
                 group_end = group_start;
                 for (orig_idx, _, domain, poly) in group {
                     let cpu_poly = CpuCirclePoly::new(poly.coeffs.to_cpu());
-                    let cpu_eval =
-                        CpuBackend::evaluate(&cpu_poly, domain, unsafe { transmute(twiddles) });
+                    let cpu_eval = CpuBackend::evaluate(&cpu_poly, domain, unsafe {
+                        transmute::<&TwiddleTree<CudaBackend>, &TwiddleTree<CpuBackend>>(twiddles)
+                    });
                     let cuda_values = BaseFieldVec::from_vec(cpu_eval.values.to_vec());
                     let eval = CircleEvaluation::new(domain, cuda_values);
                     results.push((
@@ -812,7 +816,7 @@ impl PolyOps for CudaBackend {
 
                         unsafe {
                             interface::bindings::ntt_n2b_columns(
-                                ptrs.as_mut_ptr() as *mut *mut u32,
+                                ptrs.as_mut_ptr(),
                                 log_size,
                                 (chunk_end - chunk_off) as u32,
                                 twiddles.twiddles.device_ptr,

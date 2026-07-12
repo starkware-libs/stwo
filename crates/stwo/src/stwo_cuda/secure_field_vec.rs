@@ -17,7 +17,7 @@ unsafe impl Send for SecureFieldVec {}
 unsafe impl Sync for SecureFieldVec {}
 
 impl SecureFieldVec {
-    pub fn new(device_ptr: *const u32, size: usize) -> Self {
+    pub const fn new(device_ptr: *const u32, size: usize) -> Self {
         Self { device_ptr, size }
     }
     pub fn from_vec(host_array: Vec<SecureField>) -> Self {

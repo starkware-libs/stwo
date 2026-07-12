@@ -598,8 +598,8 @@ pub(crate) fn clear_stash() {
     // device binding (it is called at a commit boundary on the producer thread).
     let saved = cur_device();
     let mut rebound = false;
-    for dev in 0..MAX_CUDA_DEVICES {
-        if !*STASH_COPIES_PENDING[dev].lock().unwrap() {
+    for (dev, pending) in STASH_COPIES_PENDING.iter().enumerate() {
+        if !*pending.lock().unwrap() {
             continue; // untouched (or already-synced) device — no in-flight copy, ring, or deferred
         }
         // SAFETY: FFI; bind this device so `sync_stash_copies_if_pending`/`flush_deferred_free`
@@ -621,6 +621,116 @@ pub(crate) fn clear_stash() {
     // (each entry's Drop recycles its pinned buffer to whatever device is current — safe: pinned host
     // memory is process-wide, not device-affine, and the D2H that filled it has completed).
     HOST_STASH.lock().unwrap().clear();
+}
+
+/// Release the process-lifetime PINNED HOST free-list back to the OS (`cudaFreeHost` every recycled
+/// buffer), for every device, and optionally trim the device pool. Call ONCE at the base→recursion
+/// boundary AFTER all GPU base proving is complete.
+///
+/// WHY: `PinnedPool.give` recycles freed page-locked buffers into a per-device process-lifetime
+/// free-list and deliberately does NOT `cudaFreeHost` them (so the next run/shard reuses the pages
+/// without re-page-locking). `clear_stash` returns a proof's buffers to that free-list but never
+/// releases it to the OS. Across many base shards the pinned high-water accumulates as resident host
+/// RAM that is never freed; at the base→recursion boundary the CPU/SimdBackend recursion then adds
+/// its own footprint on top, driving the host past its RAM limit and OOM-killing the process. The
+/// recursion does NOT use the GPU pinned pool, so releasing the free-list here is pure reclaim.
+///
+/// SAFETY / BYTE-IDENTITY: this frees ONLY buffers that are already on the free-list — i.e. recycled,
+/// dead, not held by any live `StashEntry` and with no copy in flight. It does NOT touch any committed
+/// proof value (those bytes were long since absorbed into the Merkle tree), so the proof is
+/// byte-identical. Buffers still owned by a live stash entry are never on the free-list (an entry only
+/// `give`s its buffer back in `Drop`), so they cannot be freed here. In-flight async D2H/H2D are drained
+/// FIRST (same per-device drain `clear_stash` uses) so no buffer with a pending copy is freed. It is a
+/// no-op on any device whose pool slot is `None` (never used) or whose free-list is empty.
+///
+/// MULTI-GPU: like `clear_stash`, each pinned buffer belongs to the device it was produced on, in that
+/// device's `PINNED_POOL_TABLE` slot. We first drain every touched device's copy stream / deferred free
+/// / ring (reusing the `clear_stash` per-device pending-flag walk), then `cudaFreeHost` each device's
+/// free-list buffers, then clear the free-list map and (optionally) trim that device's memory pool.
+/// The caller's device binding is saved and restored.
+#[allow(dead_code)]
+pub fn free_pinned_host_pools() {
+    // (i) DRAIN any in-flight async D2H/H2D first — identical logic to `clear_stash`'s per-device
+    // drain: bind each device whose pending flag is set and sync its copy stream (also flushes that
+    // device's deferred free + ring), so no buffer that still has a copy in flight is freed below.
+    // A device with a false flag has no in-flight copy / deferred slot / ring — nothing to drain and
+    // no `cuda_set_device` on an absent device (which would error on a single-GPU box).
+    let saved = cur_device();
+    let mut rebound = false;
+    for (dev, pending) in STASH_COPIES_PENDING.iter().enumerate() {
+        if !*pending.lock().unwrap() {
+            continue; // untouched (or already-synced) device — no in-flight copy, ring, or deferred
+        }
+        // SAFETY: FFI; bind this known-touched device so the drain helpers (which index
+        // `cur_device()`) act on device `dev`'s slot and its stream sync targets device `dev`.
+        unsafe {
+            bindings::cuda_set_device(dev as i32);
+        }
+        rebound = rebound || dev != saved;
+        sync_stash_copies_if_pending();
+    }
+
+    // (ii) For each device's pool, `cudaFreeHost` every recycled free-list buffer, then clear the map.
+    // The free-list holds ONLY dead recycled buffers (a live buffer is off-list until its entry's Drop
+    // `give`s it back), and step (i) drained any in-flight copy, so every ptr here is safe to release.
+    let mut freed_bufs = 0usize;
+    let mut freed_devices = 0usize;
+    for slot in PINNED_POOL_TABLE.iter() {
+        let mut guard = slot.lock().unwrap();
+        let Some(pool) = guard.as_mut() else {
+            continue; // slot never used on this device — no-op
+        };
+        if pool.free.is_empty() {
+            continue;
+        }
+        let mut dev_bufs = 0usize;
+        for list in pool.free.values_mut() {
+            for ptr in list.drain(..) {
+                // SAFETY: FFI. `ptr` came from `cuda_alloc_pinned_host_uint32_t` (cudaHostAlloc) and
+                // is on the free-list, so it is recycled/dead (no live entry, no in-flight copy after
+                // the drain above). Freed exactly once here; the list is drained so it can't be freed
+                // again or handed back out.
+                unsafe {
+                    bindings::cuda_free_pinned_host(ptr as *const std::ffi::c_void);
+                }
+                dev_bufs += 1;
+            }
+        }
+        pool.free.clear();
+        freed_bufs += dev_bufs;
+        freed_devices += 1;
+    }
+
+    // (iii) Optionally also trim the DEVICE memory pool per touched device (reuses the existing
+    // one-shot `cudaMemPoolTrimTo(0)`), releasing already-freed device segments to the OS. Gated on
+    // the existing `GATE_AIR_BOUNDARY_TRIM` flag so it stays A/B-able; live device buffers untouched.
+    if std::env::var("GATE_AIR_BOUNDARY_TRIM").is_ok() {
+        for (dev, slot) in PINNED_POOL_TABLE.iter().enumerate() {
+            if slot.lock().unwrap().is_none() {
+                continue; // device never used — skip (no cuda_set_device on an absent device)
+            }
+            // SAFETY: FFI; bind the touched device and trim its pool (already-freed segments only).
+            unsafe {
+                bindings::cuda_set_device(dev as i32);
+                bindings::cuda_pool_trim();
+            }
+            rebound = rebound || dev != saved;
+        }
+    }
+
+    // SAFETY: FFI; restore the caller's original device (only if we actually rebound elsewhere).
+    if rebound {
+        unsafe {
+            bindings::cuda_set_device(saved as i32);
+        }
+    }
+
+    if freed_bufs > 0 {
+        eprintln!(
+            "gate-air: free_pinned_host_pools — cudaFreeHost'd {freed_bufs} recycled pinned buffer(s) \
+             across {freed_devices} device pool(s) at the base->recursion boundary"
+        );
+    }
 }
 
 /// D2H-copy `col`'s bytes into the stash keyed by a UNIQUE monotonic sentinel, free the device
