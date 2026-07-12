@@ -15,51 +15,168 @@ use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::stwo_cuda as interface;
 
-/// Single fold step (NitrooZK's original `fold_line`, fold_step = 1): folds a degree-d line
-/// polynomial into degree d/2 using one `alpha`. The 74951f79 `FriOps::fold_line` (below) loops
-/// this over `alphas` — k sequential single-steps == its batched contract (the SIMD backend just
-/// fuses them for speed; the result is identical).
-fn fold_line_single(
-    eval: &LineEvaluation<CudaBackend>,
-    alpha: SecureField,
-    twiddles: &TwiddleTree<CudaBackend>,
-) -> LineEvaluation<CudaBackend> {
-    let n = eval.len();
-    assert!(n >= 2, "Evaluation too small");
-
-    let twiddles_size = twiddles.itwiddles.size;
-    let remaining_folds = n.ilog2();
-    let twiddle_offset: usize = twiddles_size - (1 << remaining_folds);
-
-    unsafe {
-        let gpu_domain = twiddles.itwiddles.device_ptr;
-        let folded_values = CudaSecureColumn::new_with_size(n >> 1);
-
-        bindings::fold_line(
-            gpu_domain,
-            twiddle_offset,
-            n,
-            CudaSecureColumn::from(&eval.values).device_ptr(),
-            CudaSecureField::from(alpha),
-            CudaSecureColumn::from(&folded_values).device_ptr(),
-        );
-
-        LineEvaluation::new(eval.domain().double(), folded_values)
-    }
-}
-
 impl FriOps for CudaBackend {
+    /// Folds a degree-d line polynomial down by one factor of 2 per `alpha`, applying all
+    /// k = `alphas.len()` folds for a FRI layer.
+    ///
+    /// # Fused batched path (improvement 1a)
+    /// The dominant `5_fri_commit` cost is the k full global read+write round-trips of the k
+    /// sequential single-step launches. Because output element `g` after k steps depends only on
+    /// the contiguous input block `[g<<k, (g+1)<<k)` (pairing is always adjacent 2i,2i+1), one
+    /// kernel block can load a contiguous input tile into shared memory, run all k reduction steps
+    /// block-resident, and write only the final outputs — turning k read+write round-trips into
+    /// 1 read + 1 write. `fold_line_batch` implements this; the math (fold formula, pairing, alpha
+    /// order, twiddle indexing) is byte-for-byte identical to the single-step kernel applied k
+    /// times. See `fold_line.cu` for the exact local->global-step-r twiddle-index derivation.
+    ///
+    /// The k per-step twiddle offsets are computed host-side exactly as the single-step loop does:
+    /// `offset_r = twiddles_size - (1 << (log_n0 - r))`, where `log_n0 = n0.ilog2()` and step r has
+    /// input length `n0 >> r` (so `(n0 >> r).ilog2() == log_n0 - r`).
+    ///
+    /// # Single-step fallback (1b)
+    /// If the layer is outside the fused path's tiling coverage (too small, not tile-aligned, or k
+    /// too large — e.g. tiny last FRI layers), `fold_line_batch` returns `false` and we fall back
+    /// to the k sequential single-step launches. That path is byte-identical to the previous
+    /// per-step implementation (same kernel, same k launches, same twiddle indexing, same math).
+    ///
+    /// ## Buffer reuse (fallback, 1b-i)
+    /// Folds strictly shrink, so instead of allocating a fresh output `SecureColumnByCoords` per
+    /// alpha-step, the fallback allocates ONE ping-pong pair sized to the first (largest) output
+    /// `n0 / 2` and reuses it across all steps, slicing the logical length down each step. Each
+    /// ping-pong buffer is 4 PHYSICALLY DISTINCT device allocations (via `uninitialized`, which
+    /// allocates each coord independently) — the 4 coords must never alias (soundness hazard in
+    /// the kernel's 4 stores).
+    ///
+    /// ## Pointer-array reuse (fallback, 1b-ii)
+    /// The kernel takes two device `m31*[4]` coordinate-pointer arrays. Since the eval input and
+    /// the two scratch buffers are fixed across the loop, we upload their pointer arrays ONCE
+    /// (`fold_line_alloc_coord_ptrs`) and reuse them across every step via `fold_line_launch`,
+    /// freeing all three at the end.
     fn fold_line(
         eval: &LineEvaluation<Self>,
         alphas: &[SecureField],
         twiddles: &TwiddleTree<Self>,
     ) -> LineEvaluation<Self> {
         assert!(!alphas.is_empty(), "fold_line: alphas must be non-empty");
-        let mut cur = fold_line_single(eval, alphas[0], twiddles);
-        for &alpha in &alphas[1..] {
-            cur = fold_line_single(&cur, alpha, twiddles);
+        let k = alphas.len();
+        let n0 = eval.len();
+        assert!(n0 >= 2, "Evaluation too small");
+        assert!(
+            n0 >> k >= 1,
+            "fold_line: {} alphas fold {} elements below length 1",
+            k,
+            n0
+        );
+
+        let twiddles_size = twiddles.itwiddles.size;
+        let gpu_domain = twiddles.itwiddles.device_ptr;
+
+        // The final logical length and domain are the same regardless of which path runs.
+        let final_len = n0 >> k; // == n0 >> alphas.len()
+        let mut final_domain = eval.domain();
+        for _ in 0..k {
+            final_domain = final_domain.double();
         }
-        cur
+
+        // Per-step twiddle offsets, identical to the single-step loop's `twiddles_size - (1 <<
+        // (n>>r).ilog2())` for the input length at step r. `log_n0 - r` == `(n0 >> r).ilog2()`.
+        let log_n0 = n0.ilog2();
+        let twiddle_offsets: Vec<u32> = (0..k as u32)
+            .map(|r| (twiddles_size - (1usize << (log_n0 - r))) as u32)
+            .collect();
+        let alphas_cuda: Vec<CudaSecureField> =
+            alphas.iter().map(|&a| CudaSecureField::from(a)).collect();
+
+        unsafe {
+            // ---- Fused batched path (improvement 1a) -------------------------------------------
+            // Writes the final `final_len` outputs directly into a fresh output buffer (4 distinct
+            // device allocations). If the layer is outside tiling coverage, `fold_line_batch`
+            // launches nothing and returns false; we then take the single-step fallback below.
+            let out_buf = SecureColumnByCoords::<Self>::uninitialized(final_len);
+            let eval_host = CudaSecureColumn::from(&eval.values);
+            let out_host = CudaSecureColumn::from(&out_buf);
+            let eval_ptrs = bindings::fold_line_alloc_coord_ptrs(eval_host.device_ptr());
+            let out_ptrs = bindings::fold_line_alloc_coord_ptrs(out_host.device_ptr());
+
+            let launched = bindings::fold_line_batch(
+                gpu_domain,
+                twiddle_offsets.as_ptr(),
+                n0 as u32,
+                k as u32,
+                alphas_cuda.as_ptr(),
+                eval_ptrs,
+                out_ptrs,
+            );
+
+            bindings::cuda_free_memory(eval_ptrs as *const std::ffi::c_void);
+            bindings::cuda_free_memory(out_ptrs as *const std::ffi::c_void);
+
+            if launched {
+                // `out_buf` already has logical length `final_len` (allocated at that size).
+                return LineEvaluation::new(final_domain, out_buf);
+            }
+            // else: `out_buf` is dropped here (frees its allocations); fall through to the fallback.
+        }
+
+        unsafe {
+            // ---- Single-step fallback (1b) -----------------------------------------------------
+            // Ping-pong scratch: two buffers sized to the largest output (n0 / 2), each 4 distinct
+            // device allocations. Step j reads from `input`, writes n_j/2 elements to `output`.
+            let buf_a = SecureColumnByCoords::<Self>::uninitialized(n0 >> 1);
+            let buf_b = SecureColumnByCoords::<Self>::uninitialized(n0 >> 1);
+
+            // Device 4-pointer arrays, built once and reused across all steps. The coordinate
+            // device pointers of `eval`, `buf_a`, `buf_b` are stable (same allocations reused), so
+            // these arrays stay valid for the whole loop. Keep the `CudaSecureColumn` host arrays
+            // alive until after upload (they own the host `[*const u32; 4]` we clone to device).
+            let eval_host = CudaSecureColumn::from(&eval.values);
+            let buf_a_host = CudaSecureColumn::from(&buf_a);
+            let buf_b_host = CudaSecureColumn::from(&buf_b);
+            let eval_ptrs = bindings::fold_line_alloc_coord_ptrs(eval_host.device_ptr());
+            let buf_a_ptrs = bindings::fold_line_alloc_coord_ptrs(buf_a_host.device_ptr());
+            let buf_b_ptrs = bindings::fold_line_alloc_coord_ptrs(buf_b_host.device_ptr());
+
+            // Step j: input is `eval` for j == 0, then alternates buf_a / buf_b. Output alternates
+            // buf_a / buf_b. `n` is the current input length (shrinks by 2 each step) and drives the
+            // twiddle offset exactly as before.
+            let mut n = n0;
+            let mut input_ptrs = eval_ptrs;
+            let mut output_is_a = true;
+            for &alpha in alphas {
+                let output_ptrs = if output_is_a { buf_a_ptrs } else { buf_b_ptrs };
+                let remaining_folds = n.ilog2();
+                let twiddle_offset: usize = twiddles_size - (1 << remaining_folds);
+
+                bindings::fold_line_launch(
+                    gpu_domain,
+                    twiddle_offset,
+                    n,
+                    CudaSecureField::from(alpha),
+                    input_ptrs,
+                    output_ptrs,
+                );
+
+                input_ptrs = output_ptrs;
+                output_is_a = !output_is_a;
+                n >>= 1;
+            }
+
+            bindings::cuda_free_memory(eval_ptrs as *const std::ffi::c_void);
+            bindings::cuda_free_memory(buf_a_ptrs as *const std::ffi::c_void);
+            bindings::cuda_free_memory(buf_b_ptrs as *const std::ffi::c_void);
+
+            // After the loop `input_ptrs` points at the buffer holding the final fold; `output_is_a`
+            // was flipped past it, so the final buffer is the one NOT selected as the next output.
+            let mut final_buf = if output_is_a { buf_b } else { buf_a };
+            // The buffer is physically sized n0/2; the final fold only wrote `final_len` elements at
+            // the front. Slice the logical length down so `len()`/`to_vec()` match the domain. Drop
+            // still frees the full owned allocation (free is pointer-based), exactly once per coord.
+            for col in final_buf.columns.iter_mut() {
+                col.size = final_len;
+            }
+
+            LineEvaluation::new(final_domain, final_buf)
+        }
     }
 
     fn fold_circle_into_line(

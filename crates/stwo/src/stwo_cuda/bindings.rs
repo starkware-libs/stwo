@@ -295,14 +295,39 @@ extern "C" {
         results: *mut CudaSecureField,
     );
 
-    pub fn fold_line(
+    /// Upload one host `[*const u32; 4]` coordinate-pointer array to the device, returning the
+    /// device pointer-array. Free with `cuda_free_memory`. Used by `CudaBackend::fold_line` to
+    /// build the eval/scratch pointer arrays once and reuse them across all alpha-steps.
+    pub fn fold_line_alloc_coord_ptrs(coord_ptrs: *const *const u32) -> *const *const u32;
+
+    /// Launch one `fold_line` step against device pointer-arrays built by
+    /// `fold_line_alloc_coord_ptrs`. No per-call clone/free — the caller owns both arrays.
+    pub fn fold_line_launch(
         gpu_domain: *const u32,
         twiddle_offset: usize,
         n: usize,
-        eval_values: *const *const u32,
         alpha: CudaSecureField,
-        folded_values: *const *const u32,
+        eval_values_device: *const *const u32,
+        folded_values_device: *const *const u32,
     );
+
+    /// Improvement 1a: fused batched line-fold. Runs all `k` (= alphas.len()) fold steps of one
+    /// FRI layer in a single kernel, block-resident in shared memory (1 global read + 1 global
+    /// write instead of `k` round-trips). `twiddle_offsets` / `alphas` are host arrays of length
+    /// `k` (offset_r = twiddles_size - (1 << (log_n0 - r)); alphas[0] applied first). `n0` is the
+    /// full layer length at entry. Returns `true` if the fused path launched; `false` if the layer
+    /// is outside the tiling coverage (too small / not tile-aligned / k too large), in which case
+    /// the caller must fall back to `k` single-step `fold_line_launch` calls. The two coord-ptr
+    /// arrays are device arrays built by `fold_line_alloc_coord_ptrs` (reused, not freed here).
+    pub fn fold_line_batch(
+        gpu_domain: *const u32,
+        twiddle_offsets: *const u32,
+        n0: u32,
+        k: u32,
+        alphas: *const CudaSecureField,
+        eval_values_device: *const *const u32,
+        folded_values_device: *const *const u32,
+    ) -> bool;
 
     pub fn fold_circle_into_line(
         gpu_domain: *const u32,
