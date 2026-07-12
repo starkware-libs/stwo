@@ -1,4 +1,8 @@
 #![feature(exact_size_is_empty, raw_slice_split, portable_simd)]
+// `unsafe fn` bodies here (e.g. `ComponentTrace::uninitialized`) are unsafe by
+// design; opt back into pre-2024 behavior instead of wrapping each op in an
+// `unsafe {}` block.
+#![allow(unsafe_op_in_unsafe_fn)]
 pub mod lookup_data;
 pub mod trace;
 

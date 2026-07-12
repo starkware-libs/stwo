@@ -1,5 +1,8 @@
 #![cfg_attr(feature = "prover", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
+// Some `unsafe fn` bodies here are unsafe by design; opt back into pre-2024
+// behavior instead of wrapping each op in an `unsafe {}` block.
+#![allow(unsafe_op_in_unsafe_fn)]
 
 /// ! This module contains helpers to express and use constraints for components.
 mod component;
