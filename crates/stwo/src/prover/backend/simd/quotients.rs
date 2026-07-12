@@ -316,10 +316,10 @@ mod tests {
         let columns =
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, values);
 
-        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
+        let mask_structure = (0..N_COLS).map(|_| rng.random_range(1..=2)).collect_vec();
         let points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
         ];
         let samples = (0..N_COLS)
             .zip(mask_structure.iter())
@@ -327,8 +327,8 @@ mod tests {
                 points
                     .into_iter()
                     .zip_eq([
-                        SecureField::from(rng.gen::<u32>()),
-                        SecureField::from(rng.gen::<u32>()),
+                        SecureField::from(rng.random::<u32>()),
+                        SecureField::from(rng.random::<u32>()),
                     ])
                     .take(*i)
                     .map(|(point, value)| PointSample { point, value })

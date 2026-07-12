@@ -113,10 +113,10 @@ mod tests {
         const LOG_SIZE_LONG: u32 = 8;
         let mut rng = SmallRng::seed_from_u64(0);
         let col_short = (0..1 << LOG_SIZE_SHORT)
-            .map(|_| M31::from(rng.gen::<u32>()))
+            .map(|_| M31::from(rng.random::<u32>()))
             .collect_vec();
         let col_long = (0..1 << LOG_SIZE_LONG)
-            .map(|_| M31::from(rng.gen::<u32>()))
+            .map(|_| M31::from(rng.random::<u32>()))
             .collect_vec();
 
         // Prepare CPU inputs.

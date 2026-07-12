@@ -99,7 +99,7 @@ mod tests {
             .map(|i| {
                 CpuCirclePoly::new(
                     (0..1 << (LOG_SIZE_MIN as usize + (i / SECURE_EXTENSION_DEGREE)))
-                        .map(|_| M31::from(rng.gen::<u32>()))
+                        .map(|_| M31::from(rng.random::<u32>()))
                         .collect(),
                 )
             })

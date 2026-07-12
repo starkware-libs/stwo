@@ -12,8 +12,8 @@ pub const N_STATE_ELEMENTS: usize = 8;
 
 pub fn m31_operations_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
-    let mut state: [M31; N_STATE_ELEMENTS] = rng.gen();
+    let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.random()).collect();
+    let mut state: [M31; N_STATE_ELEMENTS] = rng.random();
 
     c.bench_function("M31 mul", |b| {
         b.iter(|| {
@@ -42,8 +42,8 @@ pub fn m31_operations_bench(c: &mut Criterion) {
 
 pub fn cm31_operations_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let elements: Vec<CM31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
-    let mut state: [CM31; N_STATE_ELEMENTS] = rng.gen();
+    let elements: Vec<CM31> = (0..N_ELEMENTS).map(|_| rng.random()).collect();
+    let mut state: [CM31; N_STATE_ELEMENTS] = rng.random();
 
     c.bench_function("CM31 mul", |b| {
         b.iter(|| {
@@ -72,8 +72,8 @@ pub fn cm31_operations_bench(c: &mut Criterion) {
 
 pub fn qm31_operations_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let elements: Vec<SecureField> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
-    let mut state: [SecureField; N_STATE_ELEMENTS] = rng.gen();
+    let elements: Vec<SecureField> = (0..N_ELEMENTS).map(|_| rng.random()).collect();
+    let mut state: [SecureField; N_STATE_ELEMENTS] = rng.random();
 
     c.bench_function("SecureField mul", |b| {
         b.iter(|| {
@@ -102,7 +102,7 @@ pub fn qm31_operations_bench(c: &mut Criterion) {
 
 pub fn simd_m31_operations_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let elements: Vec<PackedBaseField> = (0..N_ELEMENTS / N_LANES).map(|_| rng.gen()).collect();
+    let elements: Vec<PackedBaseField> = (0..N_ELEMENTS / N_LANES).map(|_| rng.random()).collect();
     let mut states = vec![PackedBaseField::broadcast(BaseField::one()); N_STATE_ELEMENTS];
 
     c.bench_function("mul_simd", |b| {

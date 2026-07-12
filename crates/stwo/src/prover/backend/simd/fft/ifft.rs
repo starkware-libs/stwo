@@ -563,9 +563,9 @@ mod tests {
     #[test]
     fn test_ibutterfly() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let mut v0: [BaseField; N_LANES] = rng.gen();
-        let mut v1: [BaseField; N_LANES] = rng.gen();
-        let twiddle: [BaseField; N_LANES] = rng.gen();
+        let mut v0: [BaseField; N_LANES] = rng.random();
+        let mut v1: [BaseField; N_LANES] = rng.random();
+        let twiddle: [BaseField; N_LANES] = rng.random();
         let twiddle_dbl = twiddle.map(|v| v.0 * 2);
 
         let (r0, r1) = simd_ibutterfly(v0.into(), v1.into(), twiddle_dbl.into());
@@ -581,10 +581,12 @@ mod tests {
     #[test]
     fn test_ifft3() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng.gen::<[BaseField; 8]>().map(PackedBaseField::broadcast);
-        let twiddles0: [BaseField; 4] = rng.gen();
-        let twiddles1: [BaseField; 2] = rng.gen();
-        let twiddles2: [BaseField; 1] = rng.gen();
+        let values = rng
+            .random::<[BaseField; 8]>()
+            .map(PackedBaseField::broadcast);
+        let twiddles0: [BaseField; 4] = rng.random();
+        let twiddles1: [BaseField; 2] = rng.random();
+        let twiddles2: [BaseField; 1] = rng.random();
         let twiddles0_dbl = twiddles0.map(|v| v.0 * 2);
         let twiddles1_dbl = twiddles1.map(|v| v.0 * 2);
         let twiddles2_dbl = twiddles2.map(|v| v.0 * 2);
@@ -644,7 +646,7 @@ mod tests {
         let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
         assert_eq!(twiddle_dbls.len(), 4);
         let mut rng = SmallRng::seed_from_u64(0);
-        let values: [[BaseField; 16]; 2] = rng.gen();
+        let values: [[BaseField; 16]; 2] = rng.random();
 
         let res = {
             let (val0, val1) = vecwise_ibutterflies(
@@ -666,7 +668,7 @@ mod tests {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.random()).collect_vec();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
@@ -688,7 +690,7 @@ mod tests {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.random()).collect_vec();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();

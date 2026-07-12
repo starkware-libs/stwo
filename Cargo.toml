@@ -31,7 +31,7 @@ bytemuck = { version = "1.14.3", default-features = false }
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = { version = "0.3.18", default-features = false }
 rayon = { version = "1.10.0", optional = false }
-rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
+rand = { version = "0.9", default-features = false, features = ["small_rng"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 hashbrown = { version = ">=0.15.2", features = ["serde"] }
 

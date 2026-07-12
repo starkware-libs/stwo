@@ -134,14 +134,14 @@ mod tests {
         let mut regular_channel = Blake2sChannel::default();
 
         let felts = [
-            rng.gen::<SecureField>(),
-            rng.gen::<SecureField>(),
-            rng.gen::<SecureField>(),
+            rng.random::<SecureField>(),
+            rng.random::<SecureField>(),
+            rng.random::<SecureField>(),
         ];
         logging_channel.mix_felts(&felts);
         regular_channel.mix_felts(&felts);
 
-        let value = rng.gen::<u64>();
+        let value = rng.random::<u64>();
         logging_channel.mix_u64(value);
         regular_channel.mix_u64(value);
 
@@ -149,7 +149,7 @@ mod tests {
         let felt2 = regular_channel.draw_secure_felt();
         assert_eq!(felt1, felt2);
 
-        let n_felts = rng.gen_range(1..10);
+        let n_felts = rng.random_range(1..10);
         let felts1 = logging_channel.draw_secure_felts(n_felts);
         let felts2 = regular_channel.draw_secure_felts(n_felts);
         assert_eq!(felts1, felts2);

@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_construct_word() {
         let mut rng = SmallRng::seed_from_u64(1638);
-        let random_values = (0..8 * 1000 + 5).map(|_| rng.gen::<M31>()).collect_vec();
+        let random_values = (0..8 * 1000 + 5).map(|_| rng.random::<M31>()).collect_vec();
 
         let expected = random_values
             .chunks(ELEMENTS_IN_BLOCK)

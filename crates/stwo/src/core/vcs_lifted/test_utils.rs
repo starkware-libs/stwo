@@ -30,13 +30,13 @@ where
 
     let mut rng = SmallRng::seed_from_u64(0);
     let log_sizes = (0..N_COLS)
-        .map(|_| rng.gen_range(log_size_range.clone()))
+        .map(|_| rng.random_range(log_size_range.clone()))
         .collect_vec();
     let cols = log_sizes
         .iter()
         .map(|&log_size| {
             (0..(1 << log_size))
-                .map(|_| BaseField::from(rng.gen_range(0..(1 << 30))))
+                .map(|_| BaseField::from(rng.random_range(0..(1 << 30))))
                 .collect_vec()
         })
         .collect_vec();
@@ -45,7 +45,7 @@ where
         MerkleProverLifted::<CpuBackend, H>::commit(cols.iter().collect_vec(), max_log_size, 0);
 
     let queries = (0..N_QUERIES)
-        .map(|_| rng.gen_range(0..(1 << max_log_size)))
+        .map(|_| rng.random_range(0..(1 << max_log_size)))
         .sorted()
         .dedup()
         .collect_vec();

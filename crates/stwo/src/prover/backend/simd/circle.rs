@@ -753,8 +753,8 @@ mod tests {
                 (0..1 << log_size).map(BaseField::from).collect(),
             );
             let poly = evaluation.bit_reverse().interpolate();
-            let x = rng.gen();
-            let y = rng.gen();
+            let x = rng.random();
+            let y = rng.random();
             let p = CirclePoint { x, y };
 
             let eval = PolyOps::eval_at_point(&poly, p);

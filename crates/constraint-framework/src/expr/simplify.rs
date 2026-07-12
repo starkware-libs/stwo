@@ -175,9 +175,10 @@ mod tests {
 
         let mut rng = SmallRng::seed_from_u64(0);
         let columns: HashMap<(usize, usize, isize), BaseField> =
-            HashMap::from([((1, 0, 0), rng.gen()), ((1, 1, 0), rng.gen())]);
-        let vars: HashMap<String, BaseField> = HashMap::from([("a".to_string(), rng.gen())]);
-        let ext_vars: HashMap<String, SecureField> = HashMap::from([("b".to_string(), rng.gen())]);
+            HashMap::from([((1, 0, 0), rng.random()), ((1, 1, 0), rng.random())]);
+        let vars: HashMap<String, BaseField> = HashMap::from([("a".to_string(), rng.random())]);
+        let ext_vars: HashMap<String, SecureField> =
+            HashMap::from([("b".to_string(), rng.random())]);
 
         let base_expr = (((zero.clone() + c0.clone()) + (a.clone() + zero.clone()))
             * ((-c1.clone()) + (-c0.clone()))

@@ -852,7 +852,7 @@ mod tests {
     #[test]
     fn secure_field_vec_from_iter_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let values: [SecureField; 30] = rng.gen();
+        let values: [SecureField; 30] = rng.random();
 
         let res = values.into_iter().collect::<SecureColumn>();
 
@@ -885,8 +885,8 @@ mod tests {
         };
 
         let mut rng = SmallRng::seed_from_u64(0);
-        let rand0 = PackedQM31::from_array(rng.gen());
-        let rand1 = PackedQM31::from_array(rng.gen());
+        let rand0 = PackedQM31::from_array(rng.random());
+        let rand1 = PackedQM31::from_array(rng.random());
 
         const CHUNK_SIZE: usize = 4;
         let mut chunks: Vec<_> = col.chunks_mut(CHUNK_SIZE).collect();

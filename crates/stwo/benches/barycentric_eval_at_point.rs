@@ -16,8 +16,8 @@ fn bench_barycentric_eval_at_secure_point<B: PolyOps>(c: &mut Criterion, id: &st
     let coset = CanonicCoset::new(LOG_SIZE);
     let evals = poly.evaluate(coset.circle_domain());
     let mut rng = SmallRng::seed_from_u64(0);
-    let x = rng.gen();
-    let y = rng.gen();
+    let x = rng.random();
+    let y = rng.random();
     let point = CirclePoint { x, y };
     let weights =
         CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(coset, point);
@@ -34,8 +34,8 @@ fn bench_barycentric_eval_at_secure_point_weights_calculation<B: PolyOps>(
     id: &str,
 ) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let x = rng.gen();
-    let y = rng.gen();
+    let x = rng.random();
+    let y = rng.random();
     let point = CirclePoint { x, y };
     let coset = CanonicCoset::new(LOG_SIZE);
     c.bench_function(

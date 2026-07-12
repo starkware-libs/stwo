@@ -296,7 +296,7 @@ mod tests {
             .iter()
             .map(|&log_size| {
                 (0..(1 << log_size))
-                    .map(|_| BaseField::from(rng.gen_range(1..(1u32 << 30))))
+                    .map(|_| BaseField::from(rng.random_range(1..(1u32 << 30))))
                     .collect()
             })
             .collect();

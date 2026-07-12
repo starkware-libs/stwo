@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedM31, N_LANES};
@@ -308,9 +308,9 @@ impl Neg for PackedQM31 {
     }
 }
 
-impl Distribution<PackedQM31> for Standard {
+impl Distribution<PackedQM31> for StandardUniform {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedQM31 {
-        PackedQM31::from_array(rng.gen())
+        PackedQM31::from_array(rng.random())
     }
 }
 
@@ -343,8 +343,8 @@ mod tests {
     #[test]
     fn addition_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedQM31::from_array(lhs);
         let packed_rhs = PackedQM31::from_array(rhs);
 
@@ -356,8 +356,8 @@ mod tests {
     #[test]
     fn subtraction_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedQM31::from_array(lhs);
         let packed_rhs = PackedQM31::from_array(rhs);
 
@@ -369,8 +369,8 @@ mod tests {
     #[test]
     fn multiplication_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedQM31::from_array(lhs);
         let packed_rhs = PackedQM31::from_array(rhs);
 
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn negation_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng.gen();
+        let values = rng.random();
         let packed_values = PackedQM31::from_array(values);
 
         let res = -packed_values;

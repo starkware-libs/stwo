@@ -35,7 +35,11 @@ fn setup(
 
     let polys: Vec<CircleCoefficients<SimdBackend>> = (0..n_cols)
         .map(|_| {
-            CircleCoefficients::new((0..1 << trace_log_size).map(|_| rng.gen::<M31>()).collect())
+            CircleCoefficients::new(
+                (0..1 << trace_log_size)
+                    .map(|_| rng.random::<M31>())
+                    .collect(),
+            )
         })
         .collect();
 
@@ -60,7 +64,7 @@ fn setup(
         .collect();
 
     let random_coeff =
-        SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
+        SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.random::<u32>())));
 
     let sample_batches = ColumnSampleBatch::new_vec(
         &build_samples_with_randomness_and_periodicity(
@@ -121,7 +125,7 @@ fn bench_compute_quotients_and_combine(c: &mut Criterion) {
                 columns: std::array::from_fn(|_| {
                     BaseColumn::from_cpu(
                         &(0..(1 << trace_log_size))
-                            .map(|_| rng.gen::<M31>())
+                            .map(|_| rng.random::<M31>())
                             .collect::<Vec<_>>(),
                     )
                 }),

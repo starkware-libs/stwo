@@ -16,8 +16,8 @@ fn bench_eval_at_secure_point_by_folding<B: PolyOps>(c: &mut Criterion, id: &str
         B::precompute_twiddles(CanonicCoset::new(LOG_SIZE + 1).circle_domain().half_coset);
     let evals = poly.evaluate(CanonicCoset::new(LOG_SIZE).circle_domain());
     let mut rng = SmallRng::seed_from_u64(0);
-    let x = rng.gen();
-    let y = rng.gen();
+    let x = rng.random();
+    let y = rng.random();
     let point = CirclePoint { x, y };
     c.bench_function(
         &format!("{id} eval_at_secure_field_point_by_folding 2^{LOG_SIZE}"),

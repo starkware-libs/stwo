@@ -321,7 +321,7 @@ mod tests {
     fn test_fold_line() {
         const LOG_SIZE: u32 = 7;
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let values = (0..1 << LOG_SIZE).map(|_| rng.random()).collect_vec();
         let alpha = qm31!(1, 3, 5, 7);
         let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
         let cpu_fold = CpuBackend::fold_line(

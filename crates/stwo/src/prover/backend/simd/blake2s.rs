@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn hash_16_works() {
         let mut rng = SmallRng::seed_from_u64(1055);
-        let msgs: [[u32; 16]; 16] = array::from_fn(|_| rng.gen::<[u32; 16]>());
+        let msgs: [[u32; 16]; 16] = array::from_fn(|_| rng.random::<[u32; 16]>());
         let expected: [[u8; 32]; 16] = array::from_fn(|i| {
             let state = msgs[i];
             let mut hasher = Blake2sHasher::new();

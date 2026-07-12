@@ -793,9 +793,9 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let log_size = N_VARIABLES as u32;
         let size = 1 << log_size;
-        let mle_coeffs = (0..size).map(|_| rng.gen::<SecureField>()).collect();
+        let mle_coeffs = (0..size).map(|_| rng.random::<SecureField>()).collect();
         let mle = Mle::<SimdBackend, SecureField>::new(mle_coeffs);
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let claim = mle_eval_at_point(&mle, &eval_point);
         // Setup protocol.
         let twiddles = SimdBackend::precompute_twiddles(
@@ -869,9 +869,9 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let log_size = N_VARIABLES as u32;
         let size = 1 << log_size;
-        let mle_coeffs = (0..size).map(|_| rng.gen::<SecureField>()).collect();
+        let mle_coeffs = (0..size).map(|_| rng.random::<SecureField>()).collect();
         let mle = Mle::<SimdBackend, SecureField>::new(mle_coeffs);
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let claim = mle_eval_at_point(&mle, &eval_point);
         // Setup protocol.
         let twiddles = SimdBackend::precompute_twiddles(
@@ -958,9 +958,9 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let log_size = N_VARIABLES as u32;
         let size = 1 << log_size;
-        let mle_coeffs = (0..size).map(|_| rng.gen::<SecureField>()).collect();
+        let mle_coeffs = (0..size).map(|_| rng.random::<SecureField>()).collect();
         let mle = Mle::<SimdBackend, SecureField>::new(mle_coeffs);
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let claim = mle_eval_at_point(&mle, &eval_point);
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let mle_eval_trace = build_trace(&mle, &eval_point, claim);
@@ -1005,7 +1005,7 @@ mod tests {
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
         let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle_eval_at_point(&mle, &eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
@@ -1042,7 +1042,7 @@ mod tests {
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
         let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle_eval_at_point(&mle, &eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
@@ -1079,7 +1079,7 @@ mod tests {
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
         let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle_eval_at_point(&mle, &eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
@@ -1113,7 +1113,7 @@ mod tests {
     fn inclusive_prefix_sum_constraints_with_log_size_5() {
         const LOG_SIZE: u32 = 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let vals = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let vals = (0..1 << LOG_SIZE).map(|_| rng.random()).collect_vec();
         let cumulative_sum = vals.iter().sum::<SecureField>();
         let cumulative_sum_shift = cumulative_sum / BaseField::from(vals.len());
         let trace = TreeVec::new(vec![gen_prefix_sum_trace(vals)]);
@@ -1150,7 +1150,7 @@ mod tests {
     fn eval_carry_quotient_col_works() {
         const N_VARIABLES: usize = 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.random());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let col_eval = gen_carry_quotient_col(&eval_point);
         let twiddles = SimdBackend::precompute_twiddles(col_eval.domain.half_coset);

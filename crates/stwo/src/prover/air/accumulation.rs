@@ -249,7 +249,7 @@ mod tests {
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 10;
         let mut log_sizes = (0..100)
-            .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
+            .map(|_| rng.random_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
             .collect::<Vec<_>>();
         log_sizes.sort();
 
@@ -258,7 +258,7 @@ mod tests {
             .iter()
             .map(|log_size| {
                 (0..(1 << *log_size))
-                    .map(|_| M31::from(rng.gen::<u32>()))
+                    .map(|_| M31::from(rng.random::<u32>()))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();

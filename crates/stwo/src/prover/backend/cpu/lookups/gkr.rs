@@ -348,8 +348,8 @@ mod tests {
     fn logup_with_generic_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let numerator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
-        let denominator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let numerator_values = (0..N).map(|_| rng.random()).collect::<Vec<SecureField>>();
+        let denominator_values = (0..N).map(|_| rng.random()).collect::<Vec<SecureField>>();
         let sum = zip(&numerator_values, &denominator_values)
             .map(|(&n, &d)| Fraction::new(n, d))
             .sum::<Fraction<SecureField, SecureField>>();
@@ -387,7 +387,7 @@ mod tests {
     fn logup_with_singles_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let denominator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let denominator_values = (0..N).map(|_| rng.random()).collect::<Vec<SecureField>>();
         let sum = denominator_values
             .iter()
             .map(|&d| Fraction::new(SecureField::one(), d))
@@ -421,8 +421,8 @@ mod tests {
     fn logup_with_multiplicities_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let numerator_values = (0..N).map(|_| rng.gen()).collect::<Vec<BaseField>>();
-        let denominator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let numerator_values = (0..N).map(|_| rng.random()).collect::<Vec<BaseField>>();
+        let denominator_values = (0..N).map(|_| rng.random()).collect::<Vec<SecureField>>();
         let sum = zip(&numerator_values, &denominator_values)
             .map(|(&n, &d)| Fraction::new(n.into(), d))
             .sum::<Fraction<SecureField, SecureField>>();

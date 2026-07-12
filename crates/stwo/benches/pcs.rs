@@ -46,7 +46,7 @@ fn bench_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(c: &mut Criterion, id: 
     let evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> = iter::repeat_with(|| {
         CircleEvaluation::new(
             small_domain.circle_domain(),
-            (0..1 << LOG_COSET_SIZE).map(|_| rng.gen()).collect(),
+            (0..1 << LOG_COSET_SIZE).map(|_| rng.random()).collect(),
         )
     })
     .take(N_POLYS)

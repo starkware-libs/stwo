@@ -202,8 +202,8 @@ mod tests {
         let eval = polynomial.evaluate(eval_domain);
 
         let sample_points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
         ];
         let samples = sample_points
             .into_iter()
@@ -213,7 +213,7 @@ mod tests {
             })
             .collect_vec();
         let rand_coeff =
-            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
+            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.random::<u32>())));
         let quot_eval = compute_fri_quotients(
             &TreeVec(vec![vec![&eval]]),
             &TreeVec(vec![vec![samples]]),
@@ -241,7 +241,7 @@ mod tests {
         let mut polys: Vec<CircleCoefficients<B>> = (0..N_COLS - 1)
             .map(|_| {
                 CircleCoefficients::new(
-                    (0..1 << rng.gen_range(4..LIFTING_LOG_SIZE - 1))
+                    (0..1 << rng.random_range(4..LIFTING_LOG_SIZE - 1))
                         .map(M31::from)
                         .collect(),
                 )
@@ -279,10 +279,10 @@ mod tests {
         tree_builder.commit(&mut channel);
 
         let mut rng = SmallRng::seed_from_u64(0);
-        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
+        let mask_structure = (0..N_COLS).map(|_| rng.random_range(1..=2)).collect_vec();
         let samples = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
         ];
         let sampled_points = vec![(0..N_COLS)
             .zip(mask_structure.iter())
@@ -325,8 +325,8 @@ mod tests {
         let simd_eval = CircleEvaluation::new(eval_domain, BaseColumn::from_cpu(&cpu_eval.values));
 
         let sample_points = [
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
-            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
         ];
         let samples = sample_points
             .into_iter()
@@ -336,7 +336,7 @@ mod tests {
             })
             .collect_vec();
         let rand_coeff =
-            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
+            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.random::<u32>())));
         let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
         let quot_eval = compute_fri_quotients(
             &TreeVec(vec![vec![&simd_eval]]),

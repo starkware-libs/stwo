@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn batch_inverse_in_place_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let column = rng.gen::<[QM31; 16]>().to_vec();
+        let column = rng.random::<[QM31; 16]>().to_vec();
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
         let mut dst = Vec::zeros(column.len());
 
