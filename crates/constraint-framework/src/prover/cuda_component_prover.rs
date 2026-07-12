@@ -136,9 +136,20 @@ fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
 /// Copies a single committed `Poly<CudaBackend>` to a host `Poly<CpuBackend>` by moving its
 /// evaluations (and FFT-basis coefficients, when present) off the device via `to_cpu()`.
 fn poly_to_cpu(poly: &Poly<CudaBackend>) -> Poly<CpuBackend> {
+    use stwo::prover::backend::cuda::fused_commit;
+    // STREAM_COMMIT: a staged column's device buffer was freed and its `device_ptr` replaced by a
+    // stash sentinel; `to_cpu()` on it would D2H a fake address (SIGSEGV — the 2^27 streaming crash).
+    // Rehydrate the column into a transient owned device buffer, copy THAT to host, then drop it.
+    // The rehydrated bytes are the exact committed bytes, so this is byte-identical to the resident
+    // path (same primitive `build_scoped_device_trace` already uses for the GPU-kernel components).
+    let host_values = if fused_commit::is_staged(&poly.evals.values) {
+        fused_commit::rehydrate_owned(&poly.evals.values).to_cpu()
+    } else {
+        poly.evals.values.to_cpu()
+    };
     let evals = CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
         poly.evals.domain,
-        poly.evals.values.to_cpu(),
+        host_values,
     );
     let coeffs = poly
         .coeffs
