@@ -19,7 +19,7 @@ impl<T> Deref for MaybeOwned<'_, T> {
     fn deref(&self) -> &T {
         match self {
             MaybeOwned::Borrowed(r) => r,
-            MaybeOwned::Owned(ref v) => v,
+            MaybeOwned::Owned(v) => v,
         }
     }
 }

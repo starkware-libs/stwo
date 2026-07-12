@@ -31,7 +31,7 @@ impl IterableField {
             // Case that type is [Vec<T>; N].
             Type::Array(ref outer_array) => {
                 let inner_type = match outer_array.elem.as_ref() {
-                    Type::Path(ref type_path) => parse_inner_type(type_path)?,
+                    Type::Path(type_path) => parse_inner_type(type_path)?,
                     _ => Err(syn::Error::new_spanned(
                         outer_array.elem.clone(),
                         "Expected Vec<T> type",
