@@ -48,12 +48,18 @@
 use std::borrow::Cow;
 
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use stwo::core::air::Component;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::ColumnVec;
 use stwo::prover::backend::cuda::CudaBackend;
+use stwo::prover::backend::simd::column::{BaseColumn, VeryPackedSecureColumnByCoords};
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
+use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Column, CpuBackend};
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 use stwo::prover::poly::BitReversedOrder;
@@ -66,6 +72,7 @@ use super::component_prover::{
 use super::cuda_constraint_kernel::{
     gpu_constraints_opt_in, registered_gpu_constraint_kernel, GpuConstraintDispatch,
 };
+use super::SimdDomainEvaluator;
 use crate::{
     FrameworkComponent, FrameworkEval, INTERACTION_TRACE_IDX, ORIGINAL_TRACE_IDX,
     PREPROCESSED_TRACE_IDX,
@@ -89,7 +96,8 @@ fn cpu_fallback_forced() -> bool {
 /// constraint path on `CudaBackend`. That path runs composition_eval ~60x slower than the GPU
 /// kernel, so silently taking it turns a GPU prove into a benchmark of the WRONG (slow) code — the
 /// exact regression that let a stale kernel be measured undetected. On the GPU/CudaBackend path the
-/// gate_air kernel is REQUIRED, so reaching the host delegate for the MAIN component is a hard error.
+/// gate_air kernel is REQUIRED, so reaching the host delegate for the MAIN component is a hard
+/// error.
 ///
 /// STRUCTURAL FINGERPRINT: fires for the gate_air MAIN component ONLY (large AND many constraints),
 /// never for the small fixed-size table components (rc / program / boundary), whose host-delegation
@@ -98,9 +106,9 @@ fn cpu_fallback_forced() -> bool {
 /// finalize_logup). The gate_air MAIN component is the only one that is BOTH large (>= 2^18 rows;
 /// ~2^22-2^25 in the benchmark) AND carries many constraints (the 22-col chain-lookup AIR: 15
 /// algebraic + 7 LogUp = 22). Requiring BOTH `n_constraints >= 15` AND `log_n_rows >= 18` separates
-/// MAIN from every table with wide margin (tables have <= ~3 constraints), and neither bound is tied
-/// to the exact column count, so it survives AIR-shape churn. NOTE the old `n_constraints > 50`
-/// warning threshold was a stale relic of the 188-col AIR (157 constraints); the 26->22-col
+/// MAIN from every table with wide margin (tables have <= ~3 constraints), and neither bound is
+/// tied to the exact column count, so it survives AIR-shape churn. NOTE the old `n_constraints >
+/// 50` warning threshold was a stale relic of the 188-col AIR (157 constraints); the 26->22-col
 /// reduction dropped MAIN to 22 constraints, so `22 > 50` went false and the warning silently died,
 /// which is exactly how the slow host-delegate run went unnoticed. `>= 15` sits below the 22-col
 /// AIR and far above any table.
@@ -138,10 +146,11 @@ fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
 fn poly_to_cpu(poly: &Poly<CudaBackend>) -> Poly<CpuBackend> {
     use stwo::prover::backend::cuda::fused_commit;
     // STREAM_COMMIT: a staged column's device buffer was freed and its `device_ptr` replaced by a
-    // stash sentinel; `to_cpu()` on it would D2H a fake address (SIGSEGV — the 2^27 streaming crash).
-    // Rehydrate the column into a transient owned device buffer, copy THAT to host, then drop it.
-    // The rehydrated bytes are the exact committed bytes, so this is byte-identical to the resident
-    // path (same primitive `build_scoped_device_trace` already uses for the GPU-kernel components).
+    // stash sentinel; `to_cpu()` on it would D2H a fake address (SIGSEGV — the 2^27 streaming
+    // crash). Rehydrate the column into a transient owned device buffer, copy THAT to host,
+    // then drop it. The rehydrated bytes are the exact committed bytes, so this is
+    // byte-identical to the resident path (same primitive `build_scoped_device_trace` already
+    // uses for the GPU-kernel components).
     let host_values = if fused_commit::is_staged(&poly.evals.values) {
         fused_commit::rehydrate_owned(&poly.evals.values).to_cpu()
     } else {
@@ -247,12 +256,14 @@ fn build_scoped_device_trace<E: FrameworkEval>(
                         // F2-b / Option B (tree2 COMPOSITION streaming): tree2 (interaction) is now
                         // ALSO passed through as a NON-OWNING stash-key column, exactly like
                         // tree0/tree1. The downstream gate_air kernel row-tiles tree2 and replaces
-                        // the scattered `-1` composition read with an offset-0 read on 4 precomputed
-                        // shifted columns (interaction_shift_neg1), so tree2 no longer needs to be
+                        // the scattered `-1` composition read with an offset-0 read on 4
+                        // precomputed shifted columns
+                        // (interaction_shift_neg1), so tree2 no longer needs to be
                         // held whole (~14 GiB @2^26). The kernel resolves the staged bytes via
-                        // `staged_host_ptr` and H2Ds per block. Previously tree2 was rehydrated WHOLE
-                        // here (the H1 residency wall); that whole-rehydrate is now gone.
-                        // Non-staged needed columns are still device-cloned so the owned trace fully
+                        // `staged_host_ptr` and H2Ds per block. Previously tree2 was rehydrated
+                        // WHOLE here (the H1 residency wall); that
+                        // whole-rehydrate is now gone. Non-staged needed
+                        // columns are still device-cloned so the owned trace fully
                         // owns its buffers (legacy path, byte-for-byte unchanged).
                         let is_input_tree = tree_index == PREPROCESSED_TRACE_IDX
                             || tree_index == ORIGINAL_TRACE_IDX
@@ -431,8 +442,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         // Reaching here means this component takes the audited host-delegate constraint path. That
         // is normal for the small table components, but a hard error for the big gate_air MAIN
         // component on CudaBackend: the GPU kernel is REQUIRED there, so silently running the ~60x
-        // slower host delegate would benchmark the wrong path. PANIC (no silent fallback) unless the
-        // operator explicitly forced the host path (CUDA_CONSTRAINT_CPU_FALLBACK=1).
+        // slower host delegate would benchmark the wrong path. PANIC (no silent fallback) unless
+        // the operator explicitly forced the host path (CUDA_CONSTRAINT_CPU_FALLBACK=1).
         panic_if_main_host_delegate(self.n_constraints(), self.eval.log_size());
 
         // Move ONLY this component's committed trace polynomials to host. The audited host eval
@@ -449,7 +460,12 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         };
 
         // Build the constraint-quotient inputs on the host trace, using the Cuda accumulator's
-        // evaluation mode (the mode is backend-agnostic).
+        // evaluation mode (the mode is backend-agnostic). This is UNCHANGED: the eval-domain
+        // extension / subdomain borrow (`get_trace_columns` inside) stays on `CpuBackend`, so the
+        // prepared eval-domain trace columns are bit-for-bit the SAME
+        // `CircleEvaluation<CpuBackend>` the scalar path used. Only the pointwise
+        // evaluation over those columns is moved to the SIMD (packed + rayon-parallel)
+        // evaluator below.
         let ConstraintQuotientInputs {
             eval_domain,
             trace_domain,
@@ -467,23 +483,129 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
-        // Run the audited CPU constraint evaluation, seeded with the current (device) accumulator
-        // contents copied to host.
-        let trace_cols = cpu_trace_cols.as_cols_ref().map_cols(
-            |c: &Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>| c.as_ref(),
-        );
-        let host_result: SecureColumnByCoords<CpuBackend> = accumulate_pointwise_cpu(
-            self,
-            trace_cols,
-            eval_domain.log_size(),
-            trace_domain.log_size(),
-            denom_inv,
-            &accum.random_coeff_powers,
-            &accum.col.to_cpu(),
+        // Copy the current (device) accumulator contents to host once; used to seed BOTH the SIMD
+        // and the small-domain scalar fallback so the fold is `existing + new`, identical to the
+        // old scalar path.
+        let seed_cpu: SecureColumnByCoords<CpuBackend> = accum.col.to_cpu();
+
+        // ============================================================================
+        // SIMD (packed + rayon-parallel) pointwise constraint evaluation.
+        //
+        // This REPLACES the serial scalar `accumulate_pointwise_cpu` over the eval domain. It is a
+        // faithful transplant of the audited `ComponentProver<SimdBackend>` body
+        // (`component_prover.rs`): the SAME small-domain scalar fallback, the SAME
+        // `SimdDomainEvaluator` per packed row, and the SAME `chunk.packed_at() + row_res *
+        // row_denom_inv` fold — driven by the SAME `random_coeff_powers` slice already
+        // split off the Cuda accumulator above.
+        //
+        // We inline the body (rather than call `ComponentProver<SimdBackend>::…`) because that impl
+        // requires a `DomainEvaluationAccumulator<SimdBackend>`, whose only public constructor
+        // (`::new`) needs the base `random_coeff` — which is not available here (we hold only the
+        // already-derived, split powers). Reconstructing it would require a shared-crate API
+        // change, which we must not make. The inlined loop reuses the exact same audited
+        // building blocks.
+        //
+        // BYTE-IDENTITY: M31/QM31 are exact modular integer arithmetic, so the packed SIMD result
+        // equals the scalar result bit-for-bit, and rows are independent (per-row write, no
+        // reduction) so the rayon order is irrelevant. The host->SIMD repack
+        // (`BaseColumn::from_cpu` / `SecureColumnByCoords::<SimdBackend>::from_cpu`) is
+        // positional (logical index `i` -> packed `i / N_LANES`, lane `i % N_LANES`) and
+        // order-preserving, so the eval-domain trace columns and the seed carry the SAME
+        // logical bit-reversed order as the `CpuBackend` values.
+        // ============================================================================
+
+        // Repack the prepared eval-domain trace columns (still `CpuBackend`) into `SimdBackend`
+        // columns, preserving the global TreeVec shape. Owned storage; the SIMD evaluator borrows
+        // from it.
+        let simd_trace_cols: TreeVec<
+            Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        > = cpu_trace_cols.as_cols_ref().map_cols(
+            |c: &Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>| {
+                let c = c.as_ref();
+                CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
+                    c.domain,
+                    BaseColumn::from_cpu(&c.values),
+                )
+            },
         );
 
-        // Upload the host result back into the device accumulator column, coordinate by
-        // coordinate, via `FromIterator<BaseField> for BaseFieldVec`.
+        // Small-domain scalar fallback, mirroring `component_prover.rs`: below the packed threshold
+        // the SIMD impl itself drops to the SAME scalar `accumulate_pointwise_cpu`, so we do too.
+        // This keeps tiny components (program/boundary) on the exact scalar path as before.
+        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
+            let trace_cols = cpu_trace_cols.as_cols_ref().map_cols(
+                |c: &Cow<'_, CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>| c.as_ref(),
+            );
+            let host_result: SecureColumnByCoords<CpuBackend> = accumulate_pointwise_cpu(
+                self,
+                trace_cols,
+                eval_domain.log_size(),
+                trace_domain.log_size(),
+                denom_inv,
+                &accum.random_coeff_powers,
+                &seed_cpu,
+            );
+            // Upload the host result back into the device accumulator column, coordinate by
+            // coordinate, via `FromIterator<BaseField> for BaseFieldVec`.
+            *accum.col = SecureColumnByCoords {
+                columns: host_result.columns.map(|c| c.into_iter().collect()),
+            };
+            return;
+        }
+
+        // Seed a SIMD accumulator column with the current (device) accumulator contents. The SIMD
+        // loop folds `+= row_res * denom_inv` INTO this column, producing `existing + new` exactly
+        // like the scalar path (which seeds `accumulate_pointwise_cpu` with `accum.col.to_cpu()`).
+        let mut simd_col: SecureColumnByCoords<SimdBackend> =
+            SecureColumnByCoords::<SimdBackend>::from_cpu(seed_cpu);
+
+        {
+            let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(&mut simd_col) };
+
+            let range = 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS));
+
+            #[cfg(not(feature = "parallel"))]
+            let iter = range.zip(col.chunks_mut(1));
+
+            #[cfg(feature = "parallel")]
+            let iter = range.into_par_iter().zip(col.par_chunks_mut(1));
+
+            // Define any `self` values outside the loop to prevent the compiler thinking there is a
+            // `Sync` requirement on `Self`.
+            let self_eval = &self.eval;
+            let self_claimed_sum = self.claimed_sum();
+
+            iter.for_each(|(vec_row, mut chunk)| {
+                let trace_cols = simd_trace_cols.as_cols_ref();
+
+                // Evaluate constraints at row.
+                let eval = SimdDomainEvaluator::new(
+                    &trace_cols,
+                    vec_row,
+                    &accum.random_coeff_powers,
+                    trace_domain.log_size(),
+                    eval_domain.log_size(),
+                    self_eval.log_size(),
+                    self_claimed_sum,
+                );
+                let row_res = self_eval.evaluate(eval).row_res;
+
+                // Finalize row.
+                unsafe {
+                    let row_denom_inv = VeryPackedBaseField::broadcast(
+                        denom_inv[vec_row
+                            >> (trace_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)],
+                    );
+                    chunk.set_packed(0, chunk.packed_at(0) + row_res * row_denom_inv);
+                }
+            });
+        }
+
+        // Upload the SIMD result back into the device accumulator column. `simd_col.to_cpu()`
+        // recovers the flat per-coordinate `Vec<BaseField>` in the SAME logical order, then each is
+        // collected into a device `BaseFieldVec` via `FromIterator<BaseField>` — identical to the
+        // scalar path's upload.
+        let host_result = simd_col.to_cpu();
         *accum.col = SecureColumnByCoords {
             columns: host_result.columns.map(|c| c.into_iter().collect()),
         };
