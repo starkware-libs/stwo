@@ -1,11 +1,11 @@
 use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
+use crate::core::fields::FieldOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldOps;
-use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::twiddles::TwiddleTree;
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
@@ -110,9 +110,6 @@ mod tests {
         let extended = poly.clone().extend(8);
         let random_point = CirclePoint::get_point(21903);
 
-        assert_eq!(
-            poly.eval_at_point(random_point),
-            extended.eval_at_point(random_point)
-        );
+        assert_eq!(poly.eval_at_point(random_point), extended.eval_at_point(random_point));
     }
 }

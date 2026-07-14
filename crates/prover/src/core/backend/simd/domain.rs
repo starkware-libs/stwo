@@ -1,6 +1,6 @@
-use std::simd::{simd_swizzle, u32x2, Simd};
+use std::simd::{Simd, simd_swizzle, u32x2};
 
-use super::m31::{PackedM31, LOG_N_LANES};
+use super::m31::{LOG_N_LANES, PackedM31};
 use crate::core::circle::{CirclePoint, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::M31;
 use crate::core::poly::circle::CircleDomain;
@@ -34,12 +34,7 @@ impl CircleDomainBitRevIterator {
                 - domain.half_coset.step.mul(prev_mul as u128);
             flips[i as usize] = flip;
         }
-        Self {
-            domain,
-            i: 0,
-            current,
-            flips,
-        }
+        Self { domain, i: 0, current, flips }
     }
 }
 impl Iterator for CircleDomainBitRevIterator {
@@ -76,10 +71,7 @@ fn test_circle_domain_bit_rev_iterator() {
     crate::core::backend::cpu::bit_reverse(&mut expected);
     let actual = CircleDomainBitRevIterator::new(domain)
         .flat_map(|c| -> [_; 16] {
-            std::array::from_fn(|i| CirclePoint {
-                x: c.x.to_array()[i],
-                y: c.y.to_array()[i],
-            })
+            std::array::from_fn(|i| CirclePoint { x: c.x.to_array()[i], y: c.y.to_array()[i] })
         })
         .collect::<Vec<_>>();
     assert_eq!(actual, expected);

@@ -1,19 +1,19 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::components::{State, StateMachineElements, STATE_SIZE};
-use crate::constraint_framework::logup::LogupTraceGenerator;
+use super::components::{STATE_SIZE, State, StateMachineElements};
 use crate::constraint_framework::Relation;
-use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedM31, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedQM31;
+use crate::constraint_framework::logup::LogupTraceGenerator;
+use crate::core::ColumnVec;
 use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::column::BaseColumn;
+use crate::core::backend::simd::m31::{LOG_N_LANES, PackedM31};
+use crate::core::backend::simd::qm31::PackedQM31;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-use crate::core::ColumnVec;
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
 // `inc_index` dimension.
@@ -24,9 +24,7 @@ pub fn gen_trace(
     inc_index: usize,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>> {
     let domain = CanonicCoset::new(log_size).circle_domain();
-    let mut trace = (0..STATE_SIZE)
-        .map(|_| vec![M31::zero(); 1 << log_size])
-        .collect_vec();
+    let mut trace = (0..STATE_SIZE).map(|_| vec![M31::zero(); 1 << log_size]).collect_vec();
     let mut curr_state = initial_state;
 
     // Add the states in bit reversed circle domain order.
@@ -56,10 +54,7 @@ pub fn gen_interaction_trace(
     trace: &ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
     inc_index: usize,
     lookup_elements: &StateMachineElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
-    [QM31; 2],
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>, [QM31; 2]) {
     let log_size = trace[0].domain.log_size();
     assert!(n_rows <= 1 << log_size, "n_rows exceeds the trace size");
 
@@ -68,20 +63,12 @@ pub fn gen_interaction_trace(
     let mut col_gen = logup_gen.new_col();
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-        let mut packed_state: [PackedM31; STATE_SIZE] = trace
-            .iter()
-            .map(|col| col.data[vec_row])
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let mut packed_state: [PackedM31; STATE_SIZE] =
+            trace.iter().map(|col| col.data[vec_row]).collect_vec().try_into().unwrap();
         let input_denom: PackedQM31 = lookup_elements.combine(&packed_state);
         packed_state[inc_index] += ones;
         let output_denom: PackedQM31 = lookup_elements.combine(&packed_state);
-        col_gen.write_frac(
-            vec_row,
-            output_denom - input_denom,
-            input_denom * output_denom,
-        );
+        col_gen.write_frac(vec_row, output_denom - input_denom, input_denom * output_denom);
     }
     col_gen.finalize_col();
 
@@ -92,10 +79,10 @@ pub fn gen_interaction_trace(
 mod tests {
     use crate::constraint_framework::Relation;
     use crate::core::backend::Column;
+    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-    use crate::core::fields::FieldExpOps;
     use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
     use crate::examples::state_machine::components::StateMachineElements;
     use crate::examples::state_machine::gen::{gen_interaction_trace, gen_trace};
@@ -138,9 +125,6 @@ mod tests {
 
         assert_eq!(interaction_trace.len(), SECURE_EXTENSION_DEGREE); // One extension column.
         assert_eq!(claimed_sum, total_sum);
-        assert_eq!(
-            total_sum,
-            first_state_comb.inverse() - last_state_comb.inverse()
-        );
+        assert_eq!(total_sum, first_state_comb.inverse() - last_state_comb.inverse());
     }
 }

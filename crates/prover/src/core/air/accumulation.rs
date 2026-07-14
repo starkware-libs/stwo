@@ -5,15 +5,15 @@
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
 use itertools::Itertools;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::core::backend::{Backend, Col, Column, CpuBackend};
+use crate::core::fields::FieldOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldOps;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -28,10 +28,7 @@ impl PointEvaluationAccumulator {
     /// Creates a new accumulator.
     /// `random_coeff` should be a secure random field element, drawn from the channel.
     pub fn new(random_coeff: SecureField) -> Self {
-        Self {
-            random_coeff,
-            accumulation: SecureField::default(),
-        }
+        Self { random_coeff, accumulation: SecureField::default() }
     }
 
     /// Accumulates u_i(P0), a polynomial evaluation at a P0 in reverse order.
@@ -83,9 +80,8 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .into_iter()
             .zip(n_cols_per_size)
             .map(|(col, (log_size, n_cols))| {
-                let random_coeffs = self
-                    .random_coeff_powers
-                    .split_off(self.random_coeff_powers.len() - n_cols);
+                let random_coeffs =
+                    self.random_coeff_powers.split_off(self.random_coeff_powers.len() - n_cols);
                 ColumnAccumulator {
                     random_coeff_powers: random_coeffs,
                     col: col.get_or_insert_with(|| SecureColumnByCoords::zeros(1 << log_size)),
@@ -103,19 +99,12 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
-        assert_eq!(
-            self.random_coeff_powers.len(),
-            0,
-            "not all random coefficients were used"
-        );
+        assert_eq!(self.random_coeff_powers.len(), 0, "not all random coefficients were used");
         let log_size = self.log_size();
         let _span = span!(Level::INFO, "Constraints interpolation").entered();
         let mut cur_poly: Option<SecureCirclePoly<B>> = None;
-        let twiddles = B::precompute_twiddles(
-            CanonicCoset::new(self.log_size())
-                .circle_domain()
-                .half_coset,
-        );
+        let twiddles =
+            B::precompute_twiddles(CanonicCoset::new(self.log_size()).circle_domain().half_coset);
 
         for (log_size, values) in self.sub_accumulations.into_iter().enumerate().skip(1) {
             let Some(mut values) = values else {
@@ -190,9 +179,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         const MAX_LOG_SIZE: u32 = 10;
         const MASK: u32 = P;
-        let log_sizes = (0..100)
-            .map(|_| rng.gen_range(4..MAX_LOG_SIZE))
-            .collect::<Vec<_>>();
+        let log_sizes = (0..100).map(|_| rng.gen_range(4..MAX_LOG_SIZE)).collect::<Vec<_>>();
 
         // Generate random evaluations.
         let evaluations = log_sizes
@@ -224,9 +211,8 @@ mod tests {
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 10;
         const MASK: u32 = P;
-        let mut log_sizes = (0..100)
-            .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
-            .collect::<Vec<_>>();
+        let mut log_sizes =
+            (0..100).map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND)).collect::<Vec<_>>();
         log_sizes.sort();
 
         // Generate random evaluations.

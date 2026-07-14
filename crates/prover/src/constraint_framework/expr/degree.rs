@@ -57,12 +57,9 @@ impl BaseExpr {
 impl ExtExpr {
     pub fn degree_bound(&self, named_exprs: &NamedExprs) -> Degree {
         match self {
-            ExtExpr::SecureCol(coefs) => coefs
-                .iter()
-                .cloned()
-                .map(|coef| coef.degree_bound(named_exprs))
-                .max()
-                .unwrap(),
+            ExtExpr::SecureCol(coefs) => {
+                coefs.iter().cloned().map(|coef| coef.degree_bound(named_exprs)).max().unwrap()
+            }
             ExtExpr::Const(_) => 0,
             ExtExpr::Param(name) => named_exprs.degree_bound(name.clone()),
             ExtExpr::Add(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),

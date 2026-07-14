@@ -1,27 +1,27 @@
 use itertools::Itertools;
 use num_traits::One;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::{PreprocessedColumn, gen_is_first};
 use crate::constraint_framework::{
-    assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
-    TraceLocationAllocator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry, TraceLocationAllocator,
+    assert_constraints, relation,
 };
+use crate::core::ColumnVec;
+use crate::core::backend::Column;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use crate::core::prover::{StarkProof, prove};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use crate::core::ColumnVec;
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
@@ -66,22 +66,16 @@ impl FrameworkEval for PlonkEval {
                 + (E::F::one() - op) * a_val.clone() * b_val.clone(),
         );
 
-        eval.add_to_relation(RelationEntry::new(
-            &self.lookup_elements,
-            E::EF::one(),
-            &[a_wire, a_val],
-        ));
-        eval.add_to_relation(RelationEntry::new(
-            &self.lookup_elements,
-            E::EF::one(),
-            &[b_wire, b_val],
-        ));
+        eval.add_to_relation(RelationEntry::new(&self.lookup_elements, E::EF::one(), &[
+            a_wire, a_val,
+        ]));
+        eval.add_to_relation(RelationEntry::new(&self.lookup_elements, E::EF::one(), &[
+            b_wire, b_val,
+        ]));
 
-        eval.add_to_relation(RelationEntry::new(
-            &self.lookup_elements,
-            (-mult).into(),
-            &[c_wire, c_val],
-        ));
+        eval.add_to_relation(RelationEntry::new(&self.lookup_elements, (-mult).into(), &[
+            c_wire, c_val,
+        ]));
 
         eval.finalize_logup_in_pairs();
         eval
@@ -106,15 +100,10 @@ pub fn gen_trace(
     let _span = span!(Level::INFO, "Generation").entered();
 
     let domain = CanonicCoset::new(log_size).circle_domain();
-    [
-        &circuit.mult,
-        &circuit.a_val,
-        &circuit.b_val,
-        &circuit.c_val,
-    ]
-    .into_iter()
-    .map(|eval| CircleEvaluation::new(domain, eval.clone()))
-    .collect()
+    [&circuit.mult, &circuit.a_val, &circuit.b_val, &circuit.c_val]
+        .into_iter()
+        .map(|eval| CircleEvaluation::new(domain, eval.clone()))
+        .collect()
 }
 
 pub fn gen_interaction_trace(
@@ -122,10 +111,7 @@ pub fn gen_interaction_trace(
     padding_offset: usize,
     circuit: &PlonkCircuitTrace,
     lookup_elements: &LookupElements<2>,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    [SecureField; 2],
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, [SecureField; 2]) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
@@ -250,10 +236,8 @@ pub fn prove_fibonacci_plonk(
     );
 
     // Sanity check. Remove for production.
-    let trace_polys = commitment_scheme
-        .trees
-        .as_ref()
-        .map(|t| t.polynomials.iter().cloned().collect_vec());
+    let trace_polys =
+        commitment_scheme.trees.as_ref().map(|t| t.polynomials.iter().cloned().collect_vec());
     assert_constraints(
         &trace_polys,
         CanonicCoset::new(log_n_rows),
@@ -278,7 +262,7 @@ mod tests {
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::examples::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
+    use crate::examples::plonk::{PlonkLookupElements, prove_fibonacci_plonk};
 
     #[test_log::test]
     fn test_simd_plonk_prove() {
@@ -287,10 +271,7 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 4, 64),
-        };
+        let config = PcsConfig { pow_bits: 10, fri_config: FriConfig::new(5, 4, 64) };
 
         // Prove.
         let (component, proof) = prove_fibonacci_plonk(log_n_instances, config);

@@ -1,23 +1,23 @@
 use std::array;
-use std::simd::{u32x16, u32x8};
+use std::simd::{u32x8, u32x16};
 
 use num_traits::Zero;
 
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
+use super::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
+use crate::core::backend::Column;
 use crate::core::backend::simd::fft::compute_first_twiddles;
 use crate::core::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fri::{self, fold_circle_into_line, FriOps};
+use crate::core::fri::{self, FriOps, fold_circle_into_line};
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
-use crate::core::poly::BitReversedOrder;
 
 // TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
@@ -171,16 +171,16 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::SimdBackend;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
+    use crate::core::poly::BitReversedOrder;
     use crate::core::poly::circle::{CanonicCoset, CirclePoly, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation};
-    use crate::core::poly::BitReversedOrder;
     use crate::qm31;
 
     #[test]
@@ -208,16 +208,13 @@ mod tests {
     #[test]
     fn test_fold_circle_into_line() {
         const LOG_SIZE: u32 = 7;
-        let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
-            .map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
-            .collect();
+        let values: Vec<SecureField> =
+            (0..(1 << LOG_SIZE)).map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3)).collect();
         let alpha = qm31!(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);
-        let mut cpu_fold = LineEvaluation::new(
-            line_domain,
-            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
-        );
+        let mut cpu_fold =
+            LineEvaluation::new(line_domain, SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)));
         CpuBackend::fold_circle_into_line(
             &mut cpu_fold,
             &SecureEvaluation::new(circle_domain, values.iter().copied().collect()),
@@ -225,10 +222,8 @@ mod tests {
             &CpuBackend::precompute_twiddles(line_domain.coset()),
         );
 
-        let mut simd_fold = LineEvaluation::new(
-            line_domain,
-            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
-        );
+        let mut simd_fold =
+            LineEvaluation::new(line_domain, SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)));
         SimdBackend::fold_circle_into_line(
             &mut simd_fold,
             &SecureEvaluation::new(circle_domain, values.iter().copied().collect()),

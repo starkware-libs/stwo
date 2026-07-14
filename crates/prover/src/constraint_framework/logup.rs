@@ -4,22 +4,22 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
+use crate::core::ColumnVec;
+use crate::core::backend::Column;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
 use crate::core::channel::Channel;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-use crate::core::ColumnVec;
 
 /// Represents the value of the prefix sum column at some index.
 /// Should be used to eliminate padded rows for the logup sum.
@@ -118,11 +118,7 @@ impl<const N: usize> LookupElements<N> {
             cur *= alpha;
             res
         });
-        Self {
-            z,
-            alpha,
-            alpha_powers,
-        }
+        Self { z, alpha, alpha_powers }
     }
     pub fn combine<F: Clone, EF>(&self, values: &[F]) -> EF
     where
@@ -135,9 +131,7 @@ impl<const N: usize> LookupElements<N> {
         values
             .iter()
             .zip(self.alpha_powers)
-            .fold(EF::zero(), |acc, (value, power)| {
-                acc + EF::from(power) * value.clone()
-            })
+            .fold(EF::zero(), |acc, (value, power)| acc + EF::from(power) * value.clone())
             - EF::from(self.z)
     }
 
@@ -165,12 +159,7 @@ impl LogupTraceGenerator {
         let trace = vec![];
         let denom = SecureColumn::zeros(1 << log_size);
         let denom_inv = SecureColumn::zeros(1 << log_size);
-        Self {
-            log_size,
-            trace,
-            denom,
-            denom_inv,
-        }
+        Self { log_size, trace, denom, denom_inv }
     }
 
     /// Allocate a new lookup column.
@@ -185,10 +174,7 @@ impl LogupTraceGenerator {
     /// Finalize the trace. Returns the trace and the total sum of the last column.
     pub fn finalize_last(
         self,
-    ) -> (
-        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        SecureField,
-    ) {
+    ) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
         let log_size = self.log_size;
         let (trace, [total_sum]) = self.finalize_at([(1 << log_size) - 1]);
         (trace, total_sum)
@@ -199,16 +185,12 @@ impl LogupTraceGenerator {
     pub fn finalize_at<const N: usize>(
         mut self,
         indices: [usize; N],
-    ) -> (
-        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        [SecureField; N],
-    ) {
+    ) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, [SecureField; N])
+    {
         // Prefix sum the last column.
         let last_col_coords = self.trace.pop().unwrap().columns;
         let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
-        let secure_prefix_sum = SecureColumnByCoords {
-            columns: coord_prefix_sum,
-        };
+        let secure_prefix_sum = SecureColumnByCoords { columns: coord_prefix_sum };
         let returned_prefix_sums = indices.map(|idx| {
             // Prefix sum column is in bit-reversed circle domain order.
             let fixed_index = bit_reverse_index(
@@ -283,9 +265,9 @@ impl LogupColGenerator<'_> {
 mod tests {
     use super::LookupElements;
     use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn test_lookup_elements_combine() {

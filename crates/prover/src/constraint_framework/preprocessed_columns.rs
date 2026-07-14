@@ -2,11 +2,11 @@ use std::simd::Simd;
 
 use num_traits::{One, Zero};
 
-use crate::core::backend::simd::m31::{PackedM31, N_LANES};
+use crate::core::backend::simd::m31::{N_LANES, PackedM31};
 use crate::core::backend::{Backend, Col, Column};
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
 const SIMD_ENUMERATION_0: PackedM31 = unsafe {
@@ -54,11 +54,7 @@ impl PreprocessedColumn {
                 if vec_row == 0 {
                     unsafe {
                         PackedM31::from_simd_unchecked(Simd::from_array(std::array::from_fn(|i| {
-                            if i == 0 {
-                                1
-                            } else {
-                                0
-                            }
+                            if i == 0 { 1 } else { 0 }
                         })))
                     }
                 } else {
@@ -127,16 +123,14 @@ pub fn gen_seq<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitR
 pub fn gen_preprocessed_columns<'a, B: Backend>(
     columns: impl Iterator<Item = &'a PreprocessedColumn>,
 ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
-    columns
-        .map(PreprocessedColumn::gen_preprocessed_column)
-        .collect()
+    columns.map(PreprocessedColumn::gen_preprocessed_column).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::simd::m31::N_LANES;
-    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::Column;
+    use crate::core::backend::simd::SimdBackend;
+    use crate::core::backend::simd::m31::N_LANES;
     use crate::core::fields::m31::{BaseField, M31};
     const LOG_SIZE: u32 = 8;
 

@@ -70,9 +70,7 @@ impl Channel for Poseidon252Channel {
                 chunk
                     .iter()
                     .flat_map(|x| x.to_m31_array())
-                    .fold(FieldElement252::default(), |cur, y| {
-                        cur * shift + y.0.into()
-                    }),
+                    .fold(FieldElement252::default(), |cur, y| cur * shift + y.0.into()),
             );
         }
 
@@ -119,8 +117,8 @@ impl Channel for Poseidon252Channel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
+    use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::m31;
 
@@ -168,19 +166,15 @@ mod tests {
         random_felts.extend(channel.draw_felts(4));
 
         // Assert that all the random felts are unique.
-        assert_eq!(
-            random_felts.len(),
-            random_felts.iter().collect::<BTreeSet<_>>().len()
-        );
+        assert_eq!(random_felts.len(), random_felts.iter().collect::<BTreeSet<_>>().len());
     }
 
     #[test]
     pub fn test_mix_felts() {
         let mut channel = Poseidon252Channel::default();
         let initial_digest = channel.digest;
-        let felts: Vec<SecureField> = (0..2)
-            .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect();
+        let felts: Vec<SecureField> =
+            (0..2).map(|i| SecureField::from(m31!(i + 1923782))).collect();
 
         channel.mix_felts(felts.as_slice());
 

@@ -1,4 +1,4 @@
-use super::m31::{PackedM31, N_LANES};
+use super::m31::{N_LANES, PackedM31};
 use crate::core::fields::m31::M31;
 
 /// A trait to define the conversion from every M31-based type to it's packed complement.

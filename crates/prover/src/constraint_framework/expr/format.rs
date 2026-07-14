@@ -1,24 +1,16 @@
 use num_traits::Zero;
 
-use super::{BaseExpr, ColumnExpr, ExtExpr, CLAIMED_SUM_DUMMY_OFFSET};
+use super::{BaseExpr, CLAIMED_SUM_DUMMY_OFFSET, ColumnExpr, ExtExpr};
 
 impl BaseExpr {
     pub fn format_expr(&self) -> String {
         match self {
-            BaseExpr::Col(ColumnExpr {
-                interaction,
-                idx,
-                offset,
-            }) => {
+            BaseExpr::Col(ColumnExpr { interaction, idx, offset }) => {
                 let offset_str = if *offset == CLAIMED_SUM_DUMMY_OFFSET as isize {
                     "claimed_sum".to_string()
                 } else {
                     let offset_abs = offset.abs();
-                    if *offset >= 0 {
-                        offset.to_string()
-                    } else {
-                        format!("neg_{offset_abs}")
-                    }
+                    if *offset >= 0 { offset.to_string() } else { format!("neg_{offset_abs}") }
                 };
                 format!("trace_{interaction}_column_{idx}_offset_{offset_str}")
             }

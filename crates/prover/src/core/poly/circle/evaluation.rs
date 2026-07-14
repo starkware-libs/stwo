@@ -27,11 +27,7 @@ pub struct CircleEvaluation<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder
 impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F, EvalOrder> {
     pub fn new(domain: CircleDomain, values: Col<B, F>) -> Self {
         assert_eq!(domain.size(), values.len());
-        Self {
-            domain,
-            values,
-            _eval_order: PhantomData,
-        }
+        Self { domain, values, _eval_order: PhantomData }
     }
 }
 
@@ -41,8 +37,7 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F
 impl<F: ExtensionOf<BaseField>, B: FieldOps<F>> CircleEvaluation<B, F, NaturalOrder> {
     // TODO(alont): Remove. Is this even used.
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
-        self.values
-            .at(self.domain.find(point_index).expect("Not in domain"))
+        self.values.at(self.domain.find(point_index).expect("Not in domain"))
     }
 
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, BitReversedOrder> {
@@ -138,11 +133,7 @@ pub struct CosetSubEvaluation<'a, F: ExtensionOf<BaseField>> {
 impl<'a, F: ExtensionOf<BaseField>> CosetSubEvaluation<'a, F> {
     fn new(evaluation: &'a [F], offset: usize, step: isize) -> Self {
         assert!(evaluation.len().is_power_of_two());
-        Self {
-            evaluation,
-            offset,
-            step,
-        }
+        Self { evaluation, offset, step }
     }
 }
 
@@ -169,8 +160,8 @@ mod tests {
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::m31;
 
     #[test]

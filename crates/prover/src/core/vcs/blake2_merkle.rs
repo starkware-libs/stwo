@@ -28,10 +28,8 @@ impl MerkleHasher for Blake2sMerkleHasher {
             );
         }
         let rem = 15 - ((column_values.len() + 15) % 16);
-        let padded_values = column_values
-            .iter()
-            .copied()
-            .chain(std::iter::repeat(BaseField::zero()).take(rem));
+        let padded_values =
+            column_values.iter().copied().chain(std::iter::repeat(BaseField::zero()).take(rem));
         for chunk in padded_values.array_chunks::<16>() {
             state = compress(
                 state,

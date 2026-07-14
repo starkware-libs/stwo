@@ -3,16 +3,16 @@ use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::ptr;
 use std::simd::cmp::SimdOrd;
-use std::simd::{u32x16, Simd};
+use std::simd::{Simd, u32x16};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 use rand::distributions::{Distribution, Standard};
 
 use super::qm31::PackedQM31;
-use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
-use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
+use crate::core::fields::m31::{BaseField, M31, P, pow2147483645};
+use crate::core::fields::qm31::QM31;
 
 pub const LOG_N_LANES: u32 = 4;
 
@@ -584,13 +584,13 @@ cfg_if::cfg_if! {
 mod tests {
     use std::array;
 
-    use aligned::{Aligned, A64};
+    use aligned::{A64, Aligned};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::PackedM31;
-    use crate::core::fields::m31::BaseField;
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::BaseField;
 
     #[test]
     fn addition_works() {

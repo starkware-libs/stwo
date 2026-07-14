@@ -1,14 +1,14 @@
 use itertools::Itertools;
 
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::ColumnVec;
 use crate::core::backend::Col;
 use crate::core::circle::{CirclePoint, Coset};
+use crate::core::fields::FieldOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldOps;
-use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::poly::twiddles::TwiddleTree;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: FieldOps<BaseField> + Sized {
@@ -34,10 +34,7 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
         columns: impl IntoIterator<Item = CircleEvaluation<Self, BaseField, BitReversedOrder>>,
         twiddles: &TwiddleTree<Self>,
     ) -> Vec<CirclePoly<Self>> {
-        columns
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(twiddles))
-            .collect()
+        columns.into_iter().map(|eval| eval.interpolate_with_twiddles(twiddles)).collect()
     }
 
     /// Evaluates the polynomial at a single point.

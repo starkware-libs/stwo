@@ -4,23 +4,24 @@
 
 use std::iter::zip;
 
-use itertools::{chain, zip_eq, Itertools};
+use itertools::{Itertools, chain, zip_eq};
 use num_traits::{One, Zero};
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
+use crate::core::ColumnVec;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
 use crate::core::backend::cpu::bit_reverse;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
-use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::very_packed_m31::{LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField};
 use crate::core::backend::{Col, Column};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, point_vanishing};
@@ -32,13 +33,12 @@ use crate::core::lookups::gkr_prover::GkrOps;
 use crate::core::lookups::mle::Mle;
 use crate::core::lookups::utils::eq;
 use crate::core::pcs::{TreeSubspan, TreeVec};
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::{
     CanonicCoset, CircleEvaluation, SecureCirclePoly, SecureEvaluation,
 };
 use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-use crate::core::ColumnVec;
 
 /// Prover component that carries out a univariate IOP for multilinear eval at point.
 ///
@@ -214,12 +214,8 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
             .interpolate_with_twiddles(self.twiddles)
             .evaluate_with_twiddles(eval_domain, self.twiddles);
         let aux_interaction = component_trace.len();
-        let aux_trace = chain![
-            &mle_coeffs_column_lde,
-            &carry_quotients_column_lde,
-            [&is_first_lde]
-        ]
-        .collect();
+        let aux_trace =
+            chain![&mle_coeffs_column_lde, &carry_quotients_column_lde, [&is_first_lde]].collect();
         component_trace.push(aux_trace);
         span.exit();
 
@@ -709,10 +705,8 @@ fn gen_half_coset_carry_quotients(
     let mut half_coset0_carry_quotients = eval_point.eq_carry_quotients.clone();
     *half_coset0_carry_quotients.last_mut().unwrap() *=
         eq(&[SecureField::one()], &[last_variable]) / eq(&[SecureField::zero()], &[last_variable]);
-    let half_coset1_carry_quotients = half_coset0_carry_quotients
-        .iter()
-        .map(|v| v.inverse())
-        .collect();
+    let half_coset1_carry_quotients =
+        half_coset0_carry_quotients.iter().map(|v| v.inverse()).collect();
     (half_coset0_carry_quotients, half_coset1_carry_quotients)
 }
 
@@ -722,10 +716,7 @@ fn hadamard_product(
     b: &Col<SimdBackend, SecureField>,
 ) -> Col<SimdBackend, SecureField> {
     assert_eq!(a.len(), b.len());
-    SecureColumn {
-        data: zip_eq(&a.data, &b.data).map(|(&a, &b)| a * b).collect(),
-        length: a.len(),
-    }
+    SecureColumn { data: zip_eq(&a.data, &b.data).map(|(&a, &b)| a * b).collect(), length: a.len() }
 }
 
 #[cfg(test)]
@@ -733,26 +724,26 @@ mod tests {
     use std::array;
     use std::iter::{repeat, zip};
 
-    use itertools::{chain, Itertools};
+    use itertools::{Itertools, chain};
     use mle_coeff_column::{MleCoeffColumnComponent, MleCoeffColumnEval};
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{
-        build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
-        eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint, MleEvalProverComponent,
-        MleEvalVerifierComponent,
+        MleEvalPoint, MleEvalProverComponent, MleEvalVerifierComponent, build_trace,
+        eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
+        eval_prefix_sum_constraints, gen_carry_quotient_col,
     };
     use crate::constraint_framework::preprocessed_columns::{
         gen_is_first, gen_is_step_with_offset,
     };
-    use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
+    use crate::constraint_framework::{EvalAtRow, TraceLocationAllocator, assert_constraints};
     use crate::core::air::{Component, ComponentProver, Components};
     use crate::core::backend::cpu::bit_reverse;
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
     use crate::core::backend::simd::qm31::PackedSecureField;
-    use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::Blake2sChannel;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
@@ -760,9 +751,9 @@ mod tests {
     use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::lookups::mle::Mle;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::poly::BitReversedOrder;
-    use crate::core::prover::{prove, verify, VerificationError};
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+    use crate::core::prover::{VerificationError, prove, verify};
     use crate::core::utils::coset_order_to_circle_domain_order;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
@@ -1191,6 +1182,7 @@ mod tests {
         use crate::constraint_framework::{
             EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator,
         };
+        use crate::core::ColumnVec;
         use crate::core::air::accumulation::PointEvaluationAccumulator;
         use crate::core::backend::simd::SimdBackend;
         use crate::core::circle::CirclePoint;
@@ -1198,9 +1190,8 @@ mod tests {
         use crate::core::fields::qm31::SecureField;
         use crate::core::lookups::mle::Mle;
         use crate::core::pcs::TreeVec;
-        use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation};
         use crate::core::poly::BitReversedOrder;
-        use crate::core::ColumnVec;
+        use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation};
         use crate::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
 
         pub type MleCoeffColumnComponent = FrameworkComponent<MleCoeffColumnEval>;
@@ -1212,10 +1203,7 @@ mod tests {
 
         impl MleCoeffColumnEval {
             pub const fn new(interaction: usize, n_variables: usize) -> Self {
-                Self {
-                    interaction,
-                    n_variables,
-                }
+                Self { interaction, n_variables }
             }
         }
 

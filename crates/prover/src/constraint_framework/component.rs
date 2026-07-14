@@ -7,31 +7,31 @@ use std::ops::Deref;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::logup::LogupSums;
 use super::preprocessed_columns::PreprocessedColumn;
 use super::{
-    EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, InfoEvaluator, PREPROCESSED_TRACE_IDX, PointEvaluator, SimdDomainEvaluator,
 };
+use crate::core::ColumnVec;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
 use crate::core::backend::cpu::bit_reverse;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
 use crate::core::backend::simd::m31::LOG_N_LANES;
-use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
-use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::very_packed_m31::{LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldExpOps;
 use crate::core::pcs::{TreeSubspan, TreeVec};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 
 const CHUNK_SIZE: usize = 1;
 
@@ -70,11 +70,7 @@ impl TraceLocationAllocator {
                     let col_start = *offset;
                     let col_end = col_start + cols.len();
                     *offset = col_end;
-                    TreeSubspan {
-                        tree_index,
-                        col_start,
-                        col_end,
-                    }
+                    TreeSubspan { tree_index, col_start, col_end }
                 })
                 .collect(),
         )
@@ -144,31 +140,19 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             .iter()
             .map(|col| {
                 let next_column = location_allocator.preprocessed_columns.len();
-                *location_allocator
-                    .preprocessed_columns
-                    .entry(*col)
-                    .or_insert_with(|| {
-                        if matches!(
-                            location_allocator.preprocessed_columns_allocation_mode,
-                            PreprocessedColumnsAllocationMode::Static
-                        ) {
-                            panic!(
-                                "Preprocessed column {:?} is missing from static alloction",
-                                col
-                            );
-                        }
+                *location_allocator.preprocessed_columns.entry(*col).or_insert_with(|| {
+                    if matches!(
+                        location_allocator.preprocessed_columns_allocation_mode,
+                        PreprocessedColumnsAllocationMode::Static
+                    ) {
+                        panic!("Preprocessed column {:?} is missing from static alloction", col);
+                    }
 
-                        next_column
-                    })
+                    next_column
+                })
             })
             .collect();
-        Self {
-            eval,
-            trace_locations,
-            info,
-            preprocessed_column_indices,
-            logup_sums,
-        }
+        Self { eval, trace_locations, info, preprocessed_column_indices, logup_sums }
     }
 
     pub fn trace_locations(&self) -> &[TreeSubspan] {
@@ -192,11 +176,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             .as_ref()
             .map(|tree_offsets| vec![self.eval.log_size(); tree_offsets.len()]);
 
-        log_degree_bounds[0] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|_| self.eval.log_size())
-            .collect();
+        log_degree_bounds[0] =
+            self.preprocessed_column_indices.iter().map(|_| self.eval.log_size()).collect();
 
         log_degree_bounds
     }
@@ -273,10 +254,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         // Extend trace if necessary.
         // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
         // subdomain. (For larger blowup factors).
-        let need_to_extend = component_evals
-            .iter()
-            .flatten()
-            .any(|c| c.domain != eval_domain);
+        let need_to_extend = component_evals.iter().flatten().any(|c| c.domain != eval_domain);
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
         > = if need_to_extend {
@@ -340,10 +318,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let iter = range.step_by(CHUNK_SIZE).zip(col.chunks_mut(CHUNK_SIZE));
 
         #[cfg(feature = "parallel")]
-        let iter = range
-            .into_par_iter()
-            .step_by(CHUNK_SIZE)
-            .zip(col.chunks_mut(CHUNK_SIZE));
+        let iter = range.into_par_iter().step_by(CHUNK_SIZE).zip(col.chunks_mut(CHUNK_SIZE));
 
         // Define any `self` values outside the loop to prevent the compiler thinking there is a
         // `Sync` requirement on `Self`.
@@ -395,25 +370,13 @@ impl<E: FrameworkEval> Display for FrameworkComponent<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let log_n_rows = self.log_size();
         let mut n_cols = vec![];
-        self.trace_log_degree_bounds()
-            .0
-            .iter()
-            .for_each(|interaction| {
-                n_cols.push(interaction.len());
-            });
+        self.trace_log_degree_bounds().0.iter().for_each(|interaction| {
+            n_cols.push(interaction.len());
+        });
         writeln!(f, "n_rows 2^{}", log_n_rows)?;
         writeln!(f, "n_constraints {}", self.n_constraints())?;
-        writeln!(
-            f,
-            "constraint_log_degree_bound {}",
-            self.max_constraint_log_degree_bound()
-        )?;
-        writeln!(
-            f,
-            "total felts: 2^{} * {}",
-            log_n_rows,
-            n_cols.iter().sum::<usize>()
-        )?;
+        writeln!(f, "constraint_log_degree_bound {}", self.max_constraint_log_degree_bound())?;
+        writeln!(f, "total felts: 2^{} * {}", log_n_rows, n_cols.iter().sum::<usize>())?;
         for (j, n_cols) in n_cols.into_iter().enumerate() {
             writeln!(f, "\t Interaction {}: n_cols {}", j, n_cols)?;
         }

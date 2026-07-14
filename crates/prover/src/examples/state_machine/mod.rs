@@ -1,28 +1,28 @@
-use crate::constraint_framework::relation_tracker::RelationSummary;
 use crate::constraint_framework::Relation;
+use crate::constraint_framework::relation_tracker::RelationSummary;
 pub mod components;
 pub mod gen;
 
 use components::{
-    track_state_machine_relations, State, StateMachineComponents, StateMachineElements,
-    StateMachineOp0Component, StateMachineOp1Component, StateMachineProof, StateMachineStatement0,
-    StateMachineStatement1, StateTransitionEval,
+    State, StateMachineComponents, StateMachineElements, StateMachineOp0Component,
+    StateMachineOp1Component, StateMachineProof, StateMachineStatement0, StateMachineStatement1,
+    StateTransitionEval, track_state_machine_relations,
 };
 use gen::{gen_interaction_trace, gen_trace};
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 
-use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
-};
 use crate::constraint_framework::TraceLocationAllocator;
-use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::constraint_framework::preprocessed_columns::{
+    PreprocessedColumn, gen_preprocessed_columns,
+};
 use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, PolyOps};
-use crate::core::prover::{prove, verify, VerificationError};
+use crate::core::prover::{VerificationError, prove, verify};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 
 #[allow(unused)]
@@ -32,11 +32,7 @@ pub fn prove_state_machine(
     config: PcsConfig,
     channel: &mut Blake2sChannel,
     track_relations: bool,
-) -> (
-    StateMachineComponents,
-    StateMachineProof<Blake2sMerkleHasher>,
-    Option<RelationSummary>,
-) {
+) -> (StateMachineComponents, StateMachineProof<Blake2sMerkleHasher>, Option<RelationSummary>) {
     let (x_axis_log_rows, y_axis_log_rows) = (log_n_rows, log_n_rows - 1);
     let (x_row, y_row) = (34, 56);
     assert!(y_axis_log_rows >= LOG_N_LANES && x_axis_log_rows >= LOG_N_LANES);
@@ -75,15 +71,13 @@ pub fn prove_state_machine(
 
     let relation_summary = match track_relations {
         false => None,
-        true => Some(RelationSummary::summarize_relations(
-            &track_state_machine_relations(
-                &TreeVec(vec![&preprocessed_trace, &trace]),
-                x_axis_log_rows,
-                y_axis_log_rows,
-                x_row,
-                y_row,
-            ),
-        )),
+        true => Some(RelationSummary::summarize_relations(&track_state_machine_relations(
+            &TreeVec(vec![&preprocessed_trace, &trace]),
+            x_axis_log_rows,
+            y_axis_log_rows,
+            x_row,
+            y_row,
+        ))),
     };
 
     // Commitments.
@@ -91,10 +85,7 @@ pub fn prove_state_machine(
     tree_builder.extend_evals(preprocessed_trace);
     tree_builder.commit(channel);
 
-    let stmt0 = StateMachineStatement0 {
-        n: x_axis_log_rows,
-        m: y_axis_log_rows,
-    };
+    let stmt0 = StateMachineStatement0 { n: x_axis_log_rows, m: y_axis_log_rows };
     stmt0.mix_into(channel);
 
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -145,17 +136,10 @@ pub fn prove_state_machine(
 
     tree_span_provider.validate_preprocessed_columns(&preprocessed_columns);
 
-    let components = StateMachineComponents {
-        component0,
-        component1,
-    };
+    let components = StateMachineComponents { component0, component1 };
     let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
-    let proof = StateMachineProof {
-        public_input: [initial_state, final_state],
-        stmt0,
-        stmt1,
-        stark_proof,
-    };
+    let proof =
+        StateMachineProof { public_input: [initial_state, final_state], stmt0, stmt1, stark_proof };
     (components, proof, relation_summary)
 }
 
@@ -191,12 +175,7 @@ pub fn verify_state_machine(
     proof.stmt1.mix_into(channel);
     commitment_scheme.commit(proof.stark_proof.commitments[2], &sizes[2], channel);
 
-    verify(
-        &components.components(),
-        channel,
-        commitment_scheme,
-        proof.stark_proof,
-    )
+    verify(&components.components(), channel, commitment_scheme, proof.stark_proof)
 }
 
 #[cfg(test)]
@@ -204,19 +183,19 @@ mod tests {
     use num_traits::Zero;
 
     use super::components::{
-        StateMachineElements, StateMachineOp0Component, StateTransitionEval, STATE_SIZE,
+        STATE_SIZE, StateMachineElements, StateMachineOp0Component, StateTransitionEval,
     };
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{
-        assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
+        FrameworkEval, Relation, TraceLocationAllocator, assert_constraints,
     };
     use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::FieldExpOps;
     use crate::core::pcs::{PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
 
@@ -244,11 +223,7 @@ mod tests {
             (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
         );
 
-        let trace = TreeVec::new(vec![
-            vec![gen_is_first(log_n_rows)],
-            trace,
-            interaction_trace,
-        ]);
+        let trace = TreeVec::new(vec![vec![gen_is_first(log_n_rows)], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
         assert_constraints(
             &trace_polys,
@@ -358,32 +333,26 @@ mod tests {
         );
 
         let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
-        let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
-            + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
-            - (StateMachineElements_z);
+        let expected =
+            "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) + \
+             (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) - \
+             (StateMachineElements_z);
 
-\
-        let intermediate1 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0 + m31(1).into()) \
-            + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
-            - (StateMachineElements_z);
+let intermediate1 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0 + m31(1).into()) + \
+             (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) - \
+             (StateMachineElements_z);
 
-\
-        let constraint_0 = (QM31Impl::from_partial_evals([\
-            trace_2_column_2_offset_claimed_sum, \
-            trace_2_column_3_offset_claimed_sum, \
-            trace_2_column_4_offset_claimed_sum, \
-            trace_2_column_5_offset_claimed_sum\
-        ]) - (claimed_sum)) \
-            * (preprocessed_is_first);
+let constraint_0 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_claimed_sum, \
+             trace_2_column_3_offset_claimed_sum, trace_2_column_4_offset_claimed_sum, \
+             trace_2_column_5_offset_claimed_sum]) - (claimed_sum)) * (preprocessed_is_first);
 
-\
-        let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
-            - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1]) \
-                - ((total_sum) * (preprocessed_is_first)))\
-            ) \
-            * ((intermediate0) * (intermediate1)) \
-            - (intermediate1 - (intermediate0));"
-            .to_string();
+let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, \
+             trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) - \
+             (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, \
+             trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, \
+             trace_2_column_5_offset_neg_1]) - ((total_sum) * (preprocessed_is_first)))) * \
+             ((intermediate0) * (intermediate1)) - (intermediate1 - (intermediate0));"
+                .to_string();
 
         assert_eq!(eval.format_constraints(), expected);
     }

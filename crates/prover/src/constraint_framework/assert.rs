@@ -59,12 +59,7 @@ impl EvalAtRow for AssertEvaluator<'_> {
         // Cast to SecureField.
         // The constraint should be zero at the given row, since we are evaluating on the trace
         // domain.
-        assert_eq!(
-            Self::EF::from(constraint),
-            SecureField::zero(),
-            "row: {}",
-            self.row
-        );
+        assert_eq!(Self::EF::from(constraint), SecureField::zero(), "row: {}", self.row);
     }
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
@@ -84,11 +79,7 @@ pub fn assert_constraints<B: Backend>(
         tree.iter()
             .map(|poly| {
                 circle_domain_order_to_coset_order(
-                    &poly
-                        .evaluate(trace_domain.circle_domain())
-                        .bit_reverse()
-                        .values
-                        .to_cpu(),
+                    &poly.evaluate(trace_domain.circle_domain()).bit_reverse().values.to_cpu(),
                 )
             })
             .collect()

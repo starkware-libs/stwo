@@ -10,8 +10,8 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleEvaluation;
 use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
 /// Evaluates constraints at an evaluation domain points.

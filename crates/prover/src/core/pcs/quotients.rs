@@ -2,21 +2,21 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::iter::zip;
 
-use itertools::{izip, multiunzip, Itertools};
-use tracing::{span, Level};
+use itertools::{Itertools, izip, multiunzip};
+use tracing::{Level, span};
 
 use super::TreeVec;
+use crate::core::ColumnVec;
 use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
 };
-use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::utils::bit_reverse_index;
-use crate::core::ColumnVec;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.
@@ -60,10 +60,7 @@ impl ColumnSampleBatch {
         }
         grouped_samples
             .into_iter()
-            .map(|(point, columns_and_values)| ColumnSampleBatch {
-                point,
-                columns_and_values,
-            })
+            .map(|(point, columns_and_values)| ColumnSampleBatch { point, columns_and_values })
             .collect()
     }
 }
@@ -168,7 +165,7 @@ pub fn fri_answers_for_log_size(
 mod tests {
     use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
-    use crate::core::pcs::quotients::{compute_fri_quotients, PointSample};
+    use crate::core::pcs::quotients::{PointSample, compute_fri_quotients};
     use crate::core::poly::circle::CanonicCoset;
     use crate::{m31, qm31};
 

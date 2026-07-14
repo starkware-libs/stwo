@@ -2,11 +2,11 @@ use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
+use crate::core::fri::{FriOps, fold_circle_into_line, fold_line};
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -73,12 +73,8 @@ impl CpuBackend {
 
         // eval is in bit-reverse, hence all the positive factors are in the first half, opposite to
         // the latter.
-        let a_sum = (0..half_domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
-        let b_sum = (half_domain_size..domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
+        let a_sum = (0..half_domain_size).map(|i| eval.values.at(i)).sum::<SecureField>();
+        let b_sum = (half_domain_size..domain_size).map(|i| eval.values.at(i)).sum::<SecureField>();
 
         // lambda = sum(+-f(p)) / 2N.
         (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32)
@@ -89,14 +85,14 @@ impl CpuBackend {
 mod tests {
     use num_traits::Zero;
 
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::backend::CpuBackend;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
-    use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::m31;
 
     #[test]

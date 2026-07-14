@@ -3,7 +3,7 @@ use std::{array, mem};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{info, instrument, span, Level};
+use tracing::{Level, info, instrument, span};
 
 use super::air::{Component, ComponentProver, ComponentProvers, Components};
 use super::backend::BackendForChannel;
@@ -29,13 +29,9 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     channel: &mut MC::C,
     mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-        .polynomials
-        .len();
-    let component_provers = ComponentProvers {
-        components: components.to_vec(),
-        n_preprocessed_columns,
-    };
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].polynomials.len();
+    let component_provers =
+        ComponentProvers { components: components.to_vec(), n_preprocessed_columns };
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
@@ -68,9 +64,11 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if proof.extract_composition_oods_eval().unwrap()
-        != component_provers
-            .components()
-            .eval_composition_polynomial_at_point(oods_point, &proof.sampled_values, random_coeff)
+        != component_provers.components().eval_composition_polynomial_at_point(
+            oods_point,
+            &proof.sampled_values,
+            random_coeff,
+        )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
@@ -84,14 +82,10 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
-    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-        .column_log_sizes
-        .len();
+    let n_preprocessed_columns =
+        commitment_scheme.trees[PREPROCESSED_TRACE_IDX].column_log_sizes.len();
 
-    let components = Components {
-        components: components.to_vec(),
-        n_preprocessed_columns,
-    };
+    let components = Components { components: components.to_vec(), n_preprocessed_columns };
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
@@ -200,21 +194,12 @@ impl<H: MerkleHasher> StarkProof<H> {
             fri_proof,
         } = commitment_scheme_proof;
 
-        let FriProof {
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        } = fri_proof;
+        let FriProof { first_layer, inner_layers, last_layer_poly } = fri_proof;
 
         let mut inner_layers_samples_size = 0;
         let mut inner_layers_hashes_size = 0;
 
-        for FriLayerProof {
-            fri_witness,
-            decommitment,
-            commitment,
-        } in inner_layers
-        {
+        for FriLayerProof { fri_witness, decommitment, commitment } in inner_layers {
             inner_layers_samples_size += fri_witness.size_estimate();
             inner_layers_hashes_size += decommitment.size_estimate() + commitment.size_estimate();
         }
@@ -287,32 +272,21 @@ impl SizeEstimate for SecureField {
 
 impl<H: MerkleHasher> SizeEstimate for MerkleDecommitment<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            hash_witness,
-            column_witness,
-        } = self;
+        let Self { hash_witness, column_witness } = self;
         hash_witness.size_estimate() + column_witness.size_estimate()
     }
 }
 
 impl<H: MerkleHasher> SizeEstimate for FriLayerProof<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            fri_witness,
-            decommitment,
-            commitment,
-        } = self;
+        let Self { fri_witness, decommitment, commitment } = self;
         fri_witness.size_estimate() + decommitment.size_estimate() + commitment.size_estimate()
     }
 }
 
 impl<H: MerkleHasher> SizeEstimate for FriProof<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        } = self;
+        let Self { first_layer, inner_layers, last_layer_poly } = self;
         first_layer.size_estimate() + inner_layers.size_estimate() + last_layer_poly.size_estimate()
     }
 }
@@ -359,9 +333,6 @@ mod tests {
 
     #[test]
     fn test_secure_field_size_estimate() {
-        assert_eq!(
-            SecureField::one().size_estimate(),
-            4 * SECURE_EXTENSION_DEGREE
-        );
+        assert_eq!(SecureField::one().size_estimate(), 4 * SECURE_EXTENSION_DEGREE);
     }
 }

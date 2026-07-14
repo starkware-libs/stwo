@@ -1,14 +1,14 @@
 use itertools::Itertools;
 
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use crate::core::backend::simd::m31::PackedBaseField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::m31::PackedBaseField;
+use crate::core::backend::{Col, Column};
+use crate::core::fields::FieldExpOps;
+use crate::core::fields::m31::BaseField;
+use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
@@ -47,9 +47,8 @@ pub fn generate_trace<const N: usize>(
     log_size: u32,
     inputs: &[FibInput],
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    let mut trace = (0..N)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace =
+        (0..N).map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size)).collect_vec();
     for (vec_index, input) in inputs.iter().enumerate() {
         let mut a = input.a;
         let mut b = input.b;
@@ -74,26 +73,26 @@ mod tests {
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
-        assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
+        AssertEvaluator, FrameworkEval, TraceLocationAllocator, assert_constraints,
     };
+    use crate::core::ColumnVec;
     use crate::core::air::Component;
-    use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::Column;
+    use crate::core::backend::simd::SimdBackend;
+    use crate::core::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
     use crate::core::channel::Blake2sChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use crate::core::channel::Poseidon252Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::prover::{prove, verify};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
-    use crate::core::ColumnVec;
-    use crate::examples::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
+    use crate::examples::wide_fibonacci::{FibInput, WideFibonacciComponent, generate_trace};
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
 
@@ -104,11 +103,7 @@ mod tests {
             let n_instances = 1 << log_n_instances;
             let inputs = vec![FibInput {
                 a: PackedBaseField::from_array(std::array::from_fn(|j| {
-                    if j < n_instances {
-                        BaseField::one()
-                    } else {
-                        BaseField::zero()
-                    }
+                    if j < n_instances { BaseField::one() } else { BaseField::zero() }
                 })),
                 b: PackedBaseField::from_array(std::array::from_fn(|j| {
                     if j < n_instances {
@@ -200,9 +195,7 @@ mod tests {
             // Prove constraints.
             let component = WideFibonacciComponent::new(
                 &mut TraceLocationAllocator::default(),
-                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 (SecureField::zero(), None),
             );
 
@@ -258,9 +251,7 @@ mod tests {
         // Prove constraints.
         let component = WideFibonacciComponent::new(
             &mut TraceLocationAllocator::default(),
-            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                log_n_rows: LOG_N_INSTANCES,
-            },
+            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: LOG_N_INSTANCES },
             (SecureField::zero(), None),
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(

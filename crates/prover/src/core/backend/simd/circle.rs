@@ -5,10 +5,10 @@ use std::simd::Simd;
 use bytemuck::Zeroable;
 use num_traits::One;
 
-use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use super::qm31::PackedSecureField;
 use super::SimdBackend;
+use super::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE, ifft, rfft};
+use super::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
+use super::qm31::PackedSecureField;
 use crate::core::backend::cpu::circle::slow_precompute_twiddles;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::PackedM31;
@@ -17,12 +17,12 @@ use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
-use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 
 impl SimdBackend {
@@ -101,13 +101,9 @@ impl SimdBackend {
 
         let mut steps = vec![mappings[0]];
 
-        mappings
-            .iter()
-            .skip(1)
-            .zip(denom_inverses.iter())
-            .for_each(|(m, d)| {
-                steps.push(*m * *d);
-            });
+        mappings.iter().skip(1).zip(denom_inverses.iter()).for_each(|(m, d)| {
+            steps.push(*m * *d);
+        });
         steps.push(F::one());
         steps
     }
@@ -134,10 +130,7 @@ impl PolyOps for SimdBackend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(Ohad): Optimize.
         let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
-        CircleEvaluation::new(
-            eval.domain,
-            Col::<SimdBackend, BaseField>::from_iter(eval.values),
-        )
+        CircleEvaluation::new(eval.domain, Col::<SimdBackend, BaseField>::from_iter(eval.values))
     }
 
     fn interpolate(
@@ -217,8 +210,7 @@ impl PolyOps for SimdBackend {
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
         // TODO(shahars): Get rid of extends.
-        poly.evaluate(CanonicCoset::new(log_size).circle_domain())
-            .interpolate()
+        poly.evaluate(CanonicCoset::new(log_size).circle_domain()).interpolate()
     }
 
     fn evaluate(
@@ -228,10 +220,7 @@ impl PolyOps for SimdBackend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
-        assert!(
-            log_size >= fft_log_size,
-            "Can only evaluate on larger domains"
-        );
+        assert!(log_size >= fft_log_size, "Can only evaluate on larger domains");
 
         if fft_log_size < MIN_FFT_LOG_SIZE {
             let cpu_poly: CirclePoly<CpuBackend> = CirclePoly::new(poly.coeffs.to_cpu());
@@ -278,13 +267,7 @@ impl PolyOps for SimdBackend {
             }
         }
 
-        CircleEvaluation::new(
-            domain,
-            BaseColumn {
-                data: values,
-                length: domain.size(),
-            },
-        )
+        CircleEvaluation::new(domain, BaseColumn { data: values, length: domain.size() })
     }
 
     /// Precomputes the (doubled) twiddles for a given coset tower.
@@ -307,9 +290,7 @@ impl PolyOps for SimdBackend {
         // Handle cosets smaller than `N_LANES`.
         let remaining_twiddles = slow_precompute_twiddles(coset);
 
-        twiddles.push(PackedM31::from_array(
-            remaining_twiddles.try_into().unwrap(),
-        ));
+        twiddles.push(PackedM31::from_array(remaining_twiddles.try_into().unwrap()));
 
         let mut itwiddles = unsafe { BaseColumn::uninitialized(root_coset.size()) }.data;
         PackedBaseField::batch_inverse(&twiddles, &mut itwiddles);
@@ -323,11 +304,7 @@ impl PolyOps for SimdBackend {
             .flat_map(|x| (x.into_simd() * Simd::splat(2)).to_array())
             .collect();
 
-        TwiddleTree {
-            root_coset,
-            twiddles: dbl_twiddles,
-            itwiddles: dbl_itwiddles,
-        }
+        TwiddleTree { root_coset, twiddles: dbl_twiddles, itwiddles: dbl_itwiddles }
     }
 }
 
@@ -336,11 +313,7 @@ fn compute_small_coset_twiddles(coset: Coset) -> TwiddleTree<SimdBackend> {
 
     let dbl_twiddles = twiddles.iter().map(|x| x.0 * 2).collect();
     let dbl_itwiddles = twiddles.iter().map(|x| x.inverse().0 * 2).collect();
-    TwiddleTree {
-        root_coset: coset,
-        twiddles: dbl_twiddles,
-        itwiddles: dbl_itwiddles,
-    }
+    TwiddleTree { root_coset: coset, twiddles: dbl_twiddles, itwiddles: dbl_itwiddles }
 }
 
 /// Computes the twiddles of the coset in bit-reversed order. Optimized for SIMD.
@@ -408,9 +381,9 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::simd::circle::slow_eval_at_point;
     use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
@@ -467,11 +440,7 @@ mod tests {
 
                 let eval = poly.eval_at_point(p.into_ef());
 
-                assert_eq!(
-                    eval,
-                    BaseField::from(i).into(),
-                    "log_size={log_size}, i={i}"
-                );
+                assert_eq!(eval, BaseField::from(i).into(), "log_size={log_size}, i={i}");
             }
         }
     }
@@ -483,9 +452,8 @@ mod tests {
                 CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
             let eval0 = poly.evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
-            let eval1 = poly
-                .extend(log_size + 2)
-                .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
+            let eval1 =
+                poly.extend(log_size + 2).evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
             assert_eq!(eval0.values.to_cpu(), eval1.values.to_cpu());
         }
@@ -519,11 +487,7 @@ mod tests {
 
         assert_eq!(
             twiddles.twiddles,
-            expected_twiddles
-                .twiddles
-                .iter()
-                .map(|x| x.0 * 2)
-                .collect_vec()
+            expected_twiddles.twiddles.iter().map(|x| x.0 * 2).collect_vec()
         );
     }
 }

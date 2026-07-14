@@ -1,9 +1,9 @@
 use num_traits::One;
 
 use super::circle::{CirclePoint, Coset};
+use super::fields::ExtensionOf;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
 use super::pcs::quotients::PointSample;
 use crate::core::fields::ComplexConjugate;
 
@@ -123,8 +123,8 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ComplexConjugate, FieldExpOps};
-    use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::m31;
 
@@ -229,20 +229,16 @@ mod tests {
         for point in large_domain.iter() {
             let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
             let mut value = polynomial.eval_at_point(point.into_ef()) - line;
-            value /= pair_vanishing(
-                vanish_point,
-                vanish_point.complex_conjugate(),
-                point.into_ef(),
-            );
+            value /=
+                pair_vanishing(vanish_point, vanish_point.complex_conjugate(), point.into_ef());
             quotient_polynomial_values.push(value);
         }
         let quotient_evaluation = CpuCircleEvaluation::<SecureField, NaturalOrder>::new(
             large_domain,
             quotient_polynomial_values,
         );
-        let quotient_polynomial = secure_eval_to_base_eval(&quotient_evaluation)
-            .bit_reverse()
-            .interpolate();
+        let quotient_polynomial =
+            secure_eval_to_base_eval(&quotient_evaluation).bit_reverse().interpolate();
 
         // Check that the quotient polynomial is indeed in the wanted fft space.
         assert!(quotient_polynomial.is_in_fft_space(log_domain_size));

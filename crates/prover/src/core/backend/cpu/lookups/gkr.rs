@@ -7,7 +7,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
 use crate::core::lookups::gkr_prover::{
-    correct_sum_as_poly_in_first_variable, EqEvals, GkrMultivariatePolyOracle, GkrOps, Layer,
+    EqEvals, GkrMultivariatePolyOracle, GkrOps, Layer, correct_sum_as_poly_in_first_variable,
 };
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
@@ -21,14 +21,12 @@ impl GkrOps for CpuBackend {
     fn next_layer(layer: &Layer<Self>) -> Layer<Self> {
         match layer {
             Layer::GrandProduct(layer) => next_grand_product_layer(layer),
-            Layer::LogUpGeneric {
-                numerators,
-                denominators,
-            } => next_logup_layer(MleExpr::Mle(numerators), denominators),
-            Layer::LogUpMultiplicities {
-                numerators,
-                denominators,
-            } => next_logup_layer(MleExpr::Mle(numerators), denominators),
+            Layer::LogUpGeneric { numerators, denominators } => {
+                next_logup_layer(MleExpr::Mle(numerators), denominators)
+            }
+            Layer::LogUpMultiplicities { numerators, denominators } => {
+                next_logup_layer(MleExpr::Mle(numerators), denominators)
+            }
             Layer::LogUpSingles { denominators } => {
                 next_logup_layer(MleExpr::Constant(BaseField::one()), denominators)
             }
@@ -49,14 +47,12 @@ impl GkrOps for CpuBackend {
 
         let (mut eval_at_0, mut eval_at_2) = match &h.input_layer {
             Layer::GrandProduct(col) => eval_grand_product_sum(eq_evals, col, n_terms),
-            Layer::LogUpGeneric {
-                numerators,
-                denominators,
-            } => eval_logup_sum(eq_evals, numerators, denominators, n_terms, lambda),
-            Layer::LogUpMultiplicities {
-                numerators,
-                denominators,
-            } => eval_logup_sum(eq_evals, numerators, denominators, n_terms, lambda),
+            Layer::LogUpGeneric { numerators, denominators } => {
+                eval_logup_sum(eq_evals, numerators, denominators, n_terms, lambda)
+            }
+            Layer::LogUpMultiplicities { numerators, denominators } => {
+                eval_logup_sum(eq_evals, numerators, denominators, n_terms, lambda)
+            }
             Layer::LogUpSingles { denominators } => {
                 eval_logup_singles_sum(eq_evals, denominators, n_terms, lambda)
             }
@@ -144,16 +140,12 @@ where
         // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 1) * inp_denom(x, 0)`
         // at points `(r, {0, 2}, bits(i))`.
-        let Fraction {
-            numerator: numer_at_r0i,
-            denominator: denom_at_r0i,
-        } = Fraction::new(inp_numer_at_r0i0, inp_denom_at_r0i0)
-            + Fraction::new(inp_numer_at_r0i1, inp_denom_at_r0i1);
-        let Fraction {
-            numerator: numer_at_r2i,
-            denominator: denom_at_r2i,
-        } = Fraction::new(inp_numer_at_r2i0, inp_denom_at_r2i0)
-            + Fraction::new(inp_numer_at_r2i1, inp_denom_at_r2i1);
+        let Fraction { numerator: numer_at_r0i, denominator: denom_at_r0i } =
+            Fraction::new(inp_numer_at_r0i0, inp_denom_at_r0i0)
+                + Fraction::new(inp_numer_at_r0i1, inp_denom_at_r0i1);
+        let Fraction { numerator: numer_at_r2i, denominator: denom_at_r2i } =
+            Fraction::new(inp_numer_at_r2i0, inp_denom_at_r2i0)
+                + Fraction::new(inp_numer_at_r2i1, inp_denom_at_r2i1);
 
         let eq_eval_at_0i = eq_evals[i];
         eval_at_0 += eq_eval_at_0i * (numer_at_r0i + lambda * denom_at_r0i);
@@ -191,14 +183,10 @@ fn eval_logup_singles_sum(
         // - `numer(x) = inp_denom(x, 1) + inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 1) * inp_denom(x, 0)`
         // at points `(r, {0, 2}, bits(i))`.
-        let Fraction {
-            numerator: numer_at_r0i,
-            denominator: denom_at_r0i,
-        } = Reciprocal::new(inp_denom_at_r0i0) + Reciprocal::new(inp_denom_at_r0i1);
-        let Fraction {
-            numerator: numer_at_r2i,
-            denominator: denom_at_r2i,
-        } = Reciprocal::new(inp_denom_at_r2i0) + Reciprocal::new(inp_denom_at_r2i1);
+        let Fraction { numerator: numer_at_r0i, denominator: denom_at_r0i } =
+            Reciprocal::new(inp_denom_at_r0i0) + Reciprocal::new(inp_denom_at_r0i1);
+        let Fraction { numerator: numer_at_r2i, denominator: denom_at_r2i } =
+            Reciprocal::new(inp_denom_at_r2i0) + Reciprocal::new(inp_denom_at_r2i1);
 
         let eq_eval_at_0i = eq_evals[i];
         eval_at_0 += eq_eval_at_0i * (numer_at_r0i + lambda * denom_at_r0i);
@@ -288,10 +276,10 @@ mod tests {
     use crate::core::channel::Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
-    use crate::core::lookups::gkr_verifier::{partially_verify_batch, Gate, GkrArtifact, GkrError};
+    use crate::core::lookups::gkr_prover::{GkrOps, Layer, prove_batch};
+    use crate::core::lookups::gkr_verifier::{Gate, GkrArtifact, GkrError, partially_verify_batch};
     use crate::core::lookups::mle::Mle;
-    use crate::core::lookups::utils::{eq, Fraction};
+    use crate::core::lookups::utils::{Fraction, eq};
     use crate::core::test_utils::test_channel;
 
     #[test]
@@ -303,15 +291,12 @@ mod tests {
 
         let eq_evals = CpuBackend::gen_eq_evals(&y, two);
 
-        assert_eq!(
-            *eq_evals,
-            [
-                eq(&[zero, zero], &y) * two,
-                eq(&[zero, one], &y) * two,
-                eq(&[one, zero], &y) * two,
-                eq(&[one, one], &y) * two,
-            ]
-        );
+        assert_eq!(*eq_evals, [
+            eq(&[zero, zero], &y) * two,
+            eq(&[zero, one], &y) * two,
+            eq(&[one, zero], &y) * two,
+            eq(&[one, one], &y) * two,
+        ]);
     }
 
     #[test]
@@ -323,11 +308,8 @@ mod tests {
         let input_layer = Layer::GrandProduct(col.clone());
         let (proof, _) = prove_batch(&mut test_channel(), vec![input_layer]);
 
-        let GkrArtifact {
-            ood_point: r,
-            claims_to_verify_by_instance,
-            n_variables_by_instance: _,
-        } = partially_verify_batch(vec![Gate::GrandProduct], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point: r, claims_to_verify_by_instance, n_variables_by_instance: _ } =
+            partially_verify_batch(vec![Gate::GrandProduct], &proof, &mut test_channel())?;
 
         assert_eq!(proof.output_claims_by_instance, [vec![product]]);
         assert_eq!(claims_to_verify_by_instance, [vec![col.eval_at_point(&r)]]);
@@ -351,25 +333,16 @@ mod tests {
         };
         let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
-        let GkrArtifact {
-            ood_point,
-            claims_to_verify_by_instance,
-            n_variables_by_instance: _,
-        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point, claims_to_verify_by_instance, n_variables_by_instance: _ } =
+            partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_instance.len(), 1);
         assert_eq!(proof.output_claims_by_instance.len(), 1);
-        assert_eq!(
-            claims_to_verify_by_instance[0],
-            [
-                numerators.eval_at_point(&ood_point),
-                denominators.eval_at_point(&ood_point)
-            ]
-        );
-        assert_eq!(
-            proof.output_claims_by_instance[0],
-            [sum.numerator, sum.denominator]
-        );
+        assert_eq!(claims_to_verify_by_instance[0], [
+            numerators.eval_at_point(&ood_point),
+            denominators.eval_at_point(&ood_point)
+        ]);
+        assert_eq!(proof.output_claims_by_instance[0], [sum.numerator, sum.denominator]);
         Ok(())
     }
 
@@ -383,27 +356,19 @@ mod tests {
             .map(|&d| Fraction::new(SecureField::one(), d))
             .sum::<Fraction<SecureField, SecureField>>();
         let denominators = Mle::<CpuBackend, SecureField>::new(denominator_values);
-        let top_layer = Layer::LogUpSingles {
-            denominators: denominators.clone(),
-        };
+        let top_layer = Layer::LogUpSingles { denominators: denominators.clone() };
         let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
-        let GkrArtifact {
-            ood_point,
-            claims_to_verify_by_instance,
-            n_variables_by_instance: _,
-        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point, claims_to_verify_by_instance, n_variables_by_instance: _ } =
+            partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_instance.len(), 1);
         assert_eq!(proof.output_claims_by_instance.len(), 1);
-        assert_eq!(
-            claims_to_verify_by_instance[0],
-            [SecureField::one(), denominators.eval_at_point(&ood_point)]
-        );
-        assert_eq!(
-            proof.output_claims_by_instance[0],
-            [sum.numerator, sum.denominator]
-        );
+        assert_eq!(claims_to_verify_by_instance[0], [
+            SecureField::one(),
+            denominators.eval_at_point(&ood_point)
+        ]);
+        assert_eq!(proof.output_claims_by_instance[0], [sum.numerator, sum.denominator]);
         Ok(())
     }
 
@@ -424,25 +389,16 @@ mod tests {
         };
         let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
-        let GkrArtifact {
-            ood_point,
-            claims_to_verify_by_instance,
-            n_variables_by_instance: _,
-        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point, claims_to_verify_by_instance, n_variables_by_instance: _ } =
+            partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_instance.len(), 1);
         assert_eq!(proof.output_claims_by_instance.len(), 1);
-        assert_eq!(
-            claims_to_verify_by_instance[0],
-            [
-                numerators.eval_at_point(&ood_point),
-                denominators.eval_at_point(&ood_point)
-            ]
-        );
-        assert_eq!(
-            proof.output_claims_by_instance[0],
-            [sum.numerator, sum.denominator]
-        );
+        assert_eq!(claims_to_verify_by_instance[0], [
+            numerators.eval_at_point(&ood_point),
+            denominators.eval_at_point(&ood_point)
+        ]);
+        assert_eq!(proof.output_claims_by_instance[0], [sum.numerator, sum.denominator]);
         Ok(())
     }
 }

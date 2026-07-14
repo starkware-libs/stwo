@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tracing::{span, Level};
+use tracing::{Level, span};
 
+use super::super::ColumnVec;
 use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{FriProof, FriProver};
 use super::super::poly::BitReversedOrder;
-use super::super::ColumnVec;
-use super::quotients::{compute_fri_quotients, PointSample};
+use super::quotients::{PointSample, compute_fri_quotients};
 use super::utils::TreeVec;
 use super::{PcsConfig, TreeSubspan};
 use crate::core::air::Trace;
@@ -30,11 +30,7 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
 
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
     pub fn new(config: PcsConfig, twiddles: &'a TwiddleTree<B>) -> Self {
-        CommitmentSchemeProver {
-            trees: TreeVec::default(),
-            config,
-            twiddles,
-        }
+        CommitmentSchemeProver { trees: TreeVec::default(), config, twiddles }
     }
 
     fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut MC::C) {
@@ -49,11 +45,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn tree_builder(&mut self) -> TreeBuilder<'_, 'a, B, MC> {
-        TreeBuilder {
-            tree_index: self.trees.len(),
-            commitment_scheme: self,
-            polys: Vec::default(),
-        }
+        TreeBuilder { tree_index: self.trees.len(), commitment_scheme: self, polys: Vec::default() }
     }
 
     pub fn roots(&self) -> TreeVec<<MC::H as MerkleHasher>::Hash> {
@@ -61,17 +53,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn polynomials(&self) -> TreeVec<ColumnVec<&CirclePoly<B>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.polynomials.iter().collect())
+        self.trees.as_ref().map(|tree| tree.polynomials.iter().collect())
     }
 
     pub fn evaluations(
         &self,
     ) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.evaluations.iter().collect())
+        self.trees.as_ref().map(|tree| tree.evaluations.iter().collect())
     }
 
     pub fn trace(&self) -> Trace<'_, B> {
@@ -87,22 +75,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
-        let samples = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .map_cols(|(poly, points)| {
-                points
-                    .iter()
-                    .map(|&point| PointSample {
-                        point,
-                        value: poly.eval_at_point(point),
-                    })
-                    .collect_vec()
-            });
+        let samples = self.polynomials().zip_cols(&sampled_points).map_cols(|(poly, points)| {
+            points
+                .iter()
+                .map(|&point| PointSample { point, value: poly.eval_at_point(point) })
+                .collect_vec()
+        });
         span.exit();
-        let sampled_values = samples
-            .as_cols_ref()
-            .map_cols(|x| x.iter().map(|o| o.value).collect());
+        let sampled_values =
+            samples.as_cols_ref().map_cols(|x| x.iter().map(|o| o.value).collect());
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
         // Compute oods quotients for boundary constraints on the sampled points.
@@ -128,10 +109,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let (fri_proof, query_positions_per_log_size) = fri_prover.decommit(channel);
 
         // Decommit the FRI queries on the merkle trees.
-        let decommitment_results = self
-            .trees
-            .as_ref()
-            .map(|tree| tree.decommit(&query_positions_per_log_size));
+        let decommitment_results =
+            self.trees.as_ref().map(|tree| tree.decommit(&query_positions_per_log_size));
 
         let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
         let decommitments = decommitment_results.map(|(_, d)| d);
@@ -181,11 +160,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         let col_start = self.polys.len();
         self.polys.extend(columns);
         let col_end = self.polys.len();
-        TreeSubspan {
-            tree_index: self.tree_index,
-            col_start,
-            col_end,
-        }
+        TreeSubspan { tree_index: self.tree_index, col_start, col_end }
     }
 
     pub fn commit(self, channel: &mut MC::C) {
@@ -217,11 +192,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
         MC::mix_root(channel, tree.root());
 
-        CommitmentTreeProver {
-            polynomials,
-            evaluations,
-            commitment: tree,
-        }
+        CommitmentTreeProver { polynomials, evaluations, commitment: tree }
     }
 
     /// Decommits the merkle tree on the given query positions.
@@ -232,11 +203,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         &self,
         queries: &BTreeMap<u32, Vec<usize>>,
     ) -> (Vec<BaseField>, MerkleDecommitment<MC::H>) {
-        let eval_vec = self
-            .evaluations
-            .iter()
-            .map(|eval| &eval.values)
-            .collect_vec();
+        let eval_vec = self.evaluations.iter().map(|eval| &eval.values).collect_vec();
         self.commitment.decommit(queries, eval_vec)
     }
 }

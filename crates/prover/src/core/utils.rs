@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 
-use super::fields::m31::BaseField;
 use super::fields::Field;
+use super::fields::m31::BaseField;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -42,10 +42,7 @@ impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
         &'a mut self,
         predicate: P,
     ) -> PeekTakeWhile<'a, I, P> {
-        PeekTakeWhile {
-            iter: self,
-            predicate,
-        }
+        PeekTakeWhile { iter: self, predicate }
     }
 }
 
@@ -119,11 +116,7 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
 /// [`Coset`]: crate::core::circle::Coset
 pub const fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u32) -> usize {
-    if coset_index % 2 == 0 {
-        coset_index / 2
-    } else {
-        ((2 << log_domain_size) - coset_index) / 2
-    }
+    if coset_index % 2 == 0 { coset_index / 2 } else { ((2 << log_domain_size) - coset_index) / 2 }
 }
 
 /// Performs a coset-natural-order to circle-domain-bit-reversed-order permutation in-place.
@@ -151,8 +144,8 @@ mod tests {
         offset_bit_reversed_circle_domain_index, previous_bit_reversed_circle_domain_index,
     };
     use crate::core::backend::cpu::CpuCircleEvaluation;
-    use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::m31;
 
     #[test]
@@ -208,10 +201,7 @@ mod tests {
             .map(|index| {
                 let prev_index =
                     previous_bit_reversed_circle_domain_index(index, log_size - 3, log_size);
-                (
-                    bit_reversed_evaluation[index],
-                    bit_reversed_evaluation[prev_index],
-                )
+                (bit_reversed_evaluation[index], bit_reversed_evaluation[prev_index])
             })
             .sorted()
             .collect_vec();

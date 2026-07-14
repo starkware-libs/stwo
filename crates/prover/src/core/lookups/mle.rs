@@ -3,8 +3,8 @@ use std::ops::{Deref, DerefMut};
 use educe::Educe;
 
 use crate::core::backend::{Col, Column, ColumnOps};
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
+use crate::core::fields::qm31::SecureField;
 
 pub trait MleOps<F: Field>: ColumnOps<F> + Sized {
     /// Returns a transformed [`Mle`] where the first variable is fixed to `assignment`.

@@ -27,9 +27,7 @@ pub struct CanonicCoset {
 impl CanonicCoset {
     pub fn new(log_size: u32) -> Self {
         assert!(log_size > 0);
-        Self {
-            coset: Coset::odds(log_size),
-        }
+        Self { coset: Coset::odds(log_size) }
     }
 
     /// Gets the full coset represented G_{2n} + <G_n>.

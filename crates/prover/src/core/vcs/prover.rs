@@ -38,24 +38,18 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     /// A new instance of `MerkleProver` with the committed layers.
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
         if columns.is_empty() {
-            return Self {
-                layers: vec![B::commit_on_layer(0, None, &[])],
-            };
+            return Self { layers: vec![B::commit_on_layer(0, None, &[])] };
         }
 
-        let columns = &mut columns
-            .into_iter()
-            .sorted_by_key(|c| Reverse(c.len()))
-            .peekable();
+        let columns = &mut columns.into_iter().sorted_by_key(|c| Reverse(c.len())).peekable();
 
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
 
         let max_log_size = columns.peek().unwrap().len().ilog2();
         for log_size in (0..=max_log_size).rev() {
             // Take columns of the current log_size.
-            let layer_columns = columns
-                .peek_take_while(|column| column.len().ilog2() == log_size)
-                .collect_vec();
+            let layer_columns =
+                columns.peek_take_while(|column| column.len().ilog2() == log_size).collect_vec();
 
             layers.push(B::commit_on_layer(log_size, layers.last(), &layer_columns));
         }
@@ -87,10 +81,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
         let mut decommitment = MerkleDecommitment::empty();
 
         // Sort columns by layer.
-        let mut columns_by_layer = columns
-            .iter()
-            .sorted_by_key(|c| Reverse(c.len()))
-            .peekable();
+        let mut columns_by_layer = columns.iter().sorted_by_key(|c| Reverse(c.len())).peekable();
 
         let mut last_layer_queries = vec![];
         for layer_log_size in (0..self.layers.len() as u32).rev() {
@@ -118,16 +109,11 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
                 if let Some(previous_layer_hashes) = previous_layer_hashes {
                     // If the left child was not computed, add it to the witness.
                     if prev_layer_queries.next_if_eq(&(2 * node_index)).is_none() {
-                        decommitment
-                            .hash_witness
-                            .push(previous_layer_hashes.at(2 * node_index));
+                        decommitment.hash_witness.push(previous_layer_hashes.at(2 * node_index));
                     }
 
                     // If the right child was not computed, add it to the witness.
-                    if prev_layer_queries
-                        .next_if_eq(&(2 * node_index + 1))
-                        .is_none()
-                    {
+                    if prev_layer_queries.next_if_eq(&(2 * node_index + 1)).is_none() {
                         decommitment
                             .hash_witness
                             .push(previous_layer_hashes.at(2 * node_index + 1));
@@ -171,9 +157,6 @@ pub struct MerkleDecommitment<H: MerkleHasher> {
 }
 impl<H: MerkleHasher> MerkleDecommitment<H> {
     const fn empty() -> Self {
-        Self {
-            hash_witness: Vec::new(),
-            column_witness: Vec::new(),
-        }
+        Self { hash_witness: Vec::new(), column_witness: Vec::new() }
     }
 }

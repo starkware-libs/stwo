@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
+use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
 use rayon::prelude::*;
 use stwo_prover::core::backend::simd::m31::PackedM31;
 
@@ -15,10 +15,7 @@ pub struct RowIterMut<'trace, const N: usize> {
 }
 impl<'trace, const N: usize> RowIterMut<'trace, N> {
     pub fn new(slice: [&'trace mut [PackedM31]; N]) -> Self {
-        Self {
-            v: slice.map(|s| s as *mut _),
-            phantom: PhantomData,
-        }
+        Self { v: slice.map(|s| s as *mut _), phantom: PhantomData }
     }
 }
 impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
@@ -78,10 +75,7 @@ impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
     type IntoIter = RowIterMut<'trace, N>;
 
     fn into_iter(self) -> Self::IntoIter {
-        RowIterMut {
-            v: self.data.map(|s| s as *mut _),
-            phantom: PhantomData,
-        }
+        RowIterMut { v: self.data.map(|s| s as *mut _), phantom: PhantomData }
     }
 }
 

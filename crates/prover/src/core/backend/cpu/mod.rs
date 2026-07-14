@@ -98,8 +98,8 @@ mod tests {
 
     use crate::core::backend::cpu::bit_reverse;
     use crate::core::backend::{Column, CpuBackend, FieldOps};
-    use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::qm31::QM31;
 
     #[test]
     fn bit_reverse_works() {

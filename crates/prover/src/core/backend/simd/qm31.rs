@@ -7,10 +7,10 @@ use num_traits::{One, Zero};
 use rand::distributions::{Distribution, Standard};
 
 use super::cm31::PackedCM31;
-use super::m31::{PackedM31, N_LANES};
+use super::m31::{N_LANES, PackedM31};
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
 
 pub type PackedSecureField = PackedQM31;
 
@@ -21,10 +21,7 @@ pub struct PackedQM31(pub [PackedCM31; 2]);
 impl PackedQM31 {
     /// Constructs a new instance with all vector elements set to `value`.
     pub fn broadcast(value: QM31) -> Self {
-        Self([
-            PackedCM31::broadcast(value.0),
-            PackedCM31::broadcast(value.1),
-        ])
+        Self([PackedCM31::broadcast(value.0), PackedCM31::broadcast(value.1)])
     }
 
     /// Returns all `a` values such that each vector element is represented as `a + bu`.
@@ -125,10 +122,8 @@ impl Mul for PackedQM31 {
         let ad_p_bc = (self.a() + self.b()) * (rhs.a() + rhs.b()) - ac_p_bd;
         // ac + 2bd + ibd =
         // ac + bd + bd + ibd
-        let l = PackedCM31([
-            ac_p_bd.a() + bd_times_1_plus_i.a(),
-            ac_p_bd.b() + bd_times_1_plus_i.b(),
-        ]);
+        let l =
+            PackedCM31([ac_p_bd.a() + bd_times_1_plus_i.a(), ac_p_bd.b() + bd_times_1_plus_i.b()]);
         Self([l, ad_p_bc])
     }
 }

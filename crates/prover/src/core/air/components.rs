@@ -5,12 +5,12 @@ use itertools::Itertools;
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
 use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
+use crate::core::ColumnVec;
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::SecureCirclePoly;
-use crate::core::ColumnVec;
 
 pub struct Components<'a> {
     pub components: Vec<&'a dyn Component>,
@@ -31,9 +31,7 @@ impl Components<'_> {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let mut mask_points = TreeVec::concat_cols(
-            self.components
-                .iter()
-                .map(|component| component.mask_points(point)),
+            self.components.iter().map(|component| component.mask_points(point)),
         );
 
         let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
@@ -111,11 +109,7 @@ pub struct ComponentProvers<'a, B: Backend> {
 impl<B: Backend> ComponentProvers<'_, B> {
     pub fn components(&self) -> Components<'_> {
         Components {
-            components: self
-                .components
-                .iter()
-                .map(|c| *c as &dyn Component)
-                .collect_vec(),
+            components: self.components.iter().map(|c| *c as &dyn Component).collect_vec(),
             n_preprocessed_columns: self.n_preprocessed_columns,
         }
     }

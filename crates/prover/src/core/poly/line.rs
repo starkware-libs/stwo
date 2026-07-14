@@ -74,9 +74,7 @@ impl LineDomain {
 
     /// Returns a new domain comprising of all points in current domain doubled.
     pub fn double(&self) -> Self {
-        Self {
-            coset: self.coset.double(),
-        }
+        Self { coset: self.coset.double() }
     }
 
     /// Returns the domain's underlying coset.
@@ -97,9 +95,7 @@ impl IntoIterator for LineDomain {
 
 impl From<CircleDomain> for LineDomain {
     fn from(domain: CircleDomain) -> Self {
-        Self {
-            coset: domain.half_coset,
-        }
+        Self { coset: domain.half_coset }
     }
 }
 
@@ -391,10 +387,7 @@ mod tests {
         let domain = LineDomain::new(coset);
         let evals = LineEvaluation::<B>::new(
             domain,
-            (0..1 << LOG_SIZE)
-                .map(BaseField::from)
-                .map(|x| x.into())
-                .collect(),
+            (0..1 << LOG_SIZE).map(BaseField::from).map(|x| x.into()).collect(),
         );
         let poly = evals.clone().interpolate();
 

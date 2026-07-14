@@ -27,16 +27,12 @@ impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {
     }
 
     pub fn zeros(len: usize) -> Self {
-        Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
-        }
+        Self { columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)) }
     }
 
     /// # Safety
     pub unsafe fn uninitialized(len: usize) -> Self {
-        Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)),
-        }
+        Self { columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)) }
     }
 
     pub fn len(&self) -> usize {
@@ -48,9 +44,7 @@ impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {
     }
 
     pub fn to_cpu(&self) -> SecureColumnByCoords<CpuBackend> {
-        SecureColumnByCoords {
-            columns: self.columns.clone().map(|c| c.to_cpu()),
-        }
+        SecureColumnByCoords { columns: self.columns.clone().map(|c| c.to_cpu()) }
     }
 
     pub fn set(&mut self, index: usize, value: SecureField) {
@@ -84,10 +78,7 @@ impl<'a> IntoIterator for &'a SecureColumnByCoords<CpuBackend> {
     type IntoIter = SecureColumnByCoordsIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SecureColumnByCoordsIter {
-            column: self,
-            index: 0,
-        }
+        SecureColumnByCoordsIter { column: self, index: 0 }
     }
 }
 impl FromIterator<SecureField> for SecureColumnByCoords<CpuBackend> {

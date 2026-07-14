@@ -1,12 +1,12 @@
 mod constraints;
 mod gen;
 
-pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
+pub use gen::{BlakeRoundInput, generate_interaction_trace, generate_trace};
 use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, relation,
 };
 use crate::core::fields::qm31::SecureField;
 
@@ -56,11 +56,11 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::FrameworkEval;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::r#gen::{
-        generate_interaction_trace, generate_trace, BlakeRoundInput,
+        BlakeRoundInput, generate_interaction_trace, generate_trace,
     };
     use crate::examples::blake::round::{BlakeRoundEval, RoundElements};
     use crate::examples::blake::{BlakeXorElements, XorAccums};

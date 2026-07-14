@@ -1,15 +1,11 @@
-use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
+use crate::core::fields::m31::BaseField;
 
 pub trait SquareMatrix<F: ExtensionOf<BaseField> + Copy, const N: usize> {
     fn get_at(&self, i: usize, j: usize) -> F;
     fn mul(&self, v: [F; N]) -> [F; N] {
         (0..N)
-            .map(|i| {
-                (0..N)
-                    .map(|j| self.get_at(i, j) * v[j])
-                    .fold(F::zero(), |acc, x| acc + x)
-            })
+            .map(|i| (0..N).map(|j| self.get_at(i, j) * v[j]).fold(F::zero(), |acc, x| acc + x))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap()
@@ -49,11 +45,7 @@ mod tests {
     #[test]
     fn test_matrix_multiplication() {
         let matrix = RowMajorMatrix::<M31, 3>::new((0..9).map(|x| m31!(x + 1)).collect::<Vec<_>>());
-        let vector = (0..3)
-            .map(|x| m31!(x + 1))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let vector = (0..3).map(|x| m31!(x + 1)).collect::<Vec<_>>().try_into().unwrap();
         let expected_result = [
             m31!(14), // 1 * 1 + 2 * 2 + 3 * 3
             m31!(32), // 4 * 1 + 5 * 2 + 6 * 3

@@ -2,13 +2,13 @@ mod constraints;
 mod gen;
 
 use constraints::eval_blake_scheduler_constraints;
-pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
+pub use gen::{BlakeInput, gen_interaction_trace, gen_trace};
 use num_traits::Zero;
 
-use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
+use super::round::RoundElements;
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, relation,
 };
 use crate::core::fields::qm31::SecureField;
 
@@ -57,11 +57,11 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::FrameworkEval;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::RoundElements;
-    use crate::examples::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
+    use crate::examples::blake::scheduler::r#gen::{BlakeInput, gen_interaction_trace, gen_trace};
     use crate::examples::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
 
     #[test]

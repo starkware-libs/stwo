@@ -2,22 +2,22 @@ use std::iter::zip;
 use std::{array, mem};
 
 use bytemuck::allocation::cast_vec;
-use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
-use itertools::{izip, Itertools};
+use bytemuck::{Zeroable, cast_slice, cast_slice_mut};
+use itertools::{Itertools, izip};
 use num_traits::Zero;
 
+use super::SimdBackend;
 use super::cm31::PackedCM31;
-use super::m31::{PackedBaseField, N_LANES};
+use super::m31::{N_LANES, PackedBaseField};
 use super::qm31::{PackedQM31, PackedSecureField};
 use super::very_packed_m31::{
-    VeryPackedBaseField, VeryPackedQM31, VeryPackedSecureField, N_VERY_PACKED_ELEMS,
+    N_VERY_PACKED_ELEMS, VeryPackedBaseField, VeryPackedQM31, VeryPackedSecureField,
 };
-use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::secure_column::{SECURE_EXTENSION_DEGREE, SecureColumnByCoords};
 use crate::core::fields::{FieldExpOps, FieldOps};
 
 impl FieldOps<BaseField> for SimdBackend {
@@ -65,19 +65,13 @@ impl BaseColumn {
     }
 
     pub fn from_simd(values: Vec<PackedBaseField>) -> Self {
-        Self {
-            length: values.len() * N_LANES,
-            data: values,
-        }
+        Self { length: values.len() * N_LANES, data: values }
     }
 
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
-        self.data
-            .chunks_mut(chunk_size)
-            .map(BaseColumnMutSlice)
-            .collect_vec()
+        self.data.chunks_mut(chunk_size).map(BaseColumnMutSlice).collect_vec()
     }
 
     pub fn into_secure_column(self) -> SecureColumn {
@@ -147,10 +141,7 @@ pub struct CM31Column {
 
 impl Column<CM31> for CM31Column {
     fn zeros(length: usize) -> Self {
-        Self {
-            data: vec![PackedCM31::zeroed(); length.div_ceil(N_LANES)],
-            length,
-        }
+        Self { data: vec![PackedCM31::zeroed(); length.div_ceil(N_LANES)], length }
     }
 
     #[allow(clippy::uninit_vec)]
@@ -161,11 +152,7 @@ impl Column<CM31> for CM31Column {
     }
 
     fn to_cpu(&self) -> Vec<CM31> {
-        self.data
-            .iter()
-            .flat_map(|x| x.to_array())
-            .take(self.length)
-            .collect()
+        self.data.iter().flat_map(|x| x.to_array()).take(self.length).collect()
     }
 
     fn len(&self) -> usize {
@@ -254,18 +241,13 @@ impl SecureColumn {
             zip(&mut columns, packed_coords).for_each(|(col, packed_coord)| col.push(packed_coord));
         }
 
-        SecureColumnByCoords {
-            columns: columns.map(|col| BaseColumn { data: col, length }),
-        }
+        SecureColumnByCoords { columns: columns.map(|col| BaseColumn { data: col, length }) }
     }
 }
 
 impl Column<SecureField> for SecureColumn {
     fn zeros(length: usize) -> Self {
-        Self {
-            data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)],
-            length,
-        }
+        Self { data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)], length }
     }
 
     #[allow(clippy::uninit_vec)]
@@ -276,11 +258,7 @@ impl Column<SecureField> for SecureColumn {
     }
 
     fn to_cpu(&self) -> Vec<SecureField> {
-        self.data
-            .iter()
-            .flat_map(|x| x.to_array())
-            .take(self.length)
-            .collect()
+        self.data.iter().flat_map(|x| x.to_array()).take(self.length).collect()
     }
 
     fn len(&self) -> usize {
@@ -301,9 +279,7 @@ impl Column<SecureField> for SecureColumn {
 impl FromIterator<SecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut data = (&mut chunks)
-            .map(PackedSecureField::from_array)
-            .collect_vec();
+        let mut data = (&mut chunks).map(PackedSecureField::from_array).collect_vec();
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
@@ -433,20 +409,15 @@ impl SecureColumnByCoords<SimdBackend> {
     /// `SECURE_EXTENSION_DEGREE` slices of `chunk_size` `PackedBaseField`s
     /// (i.e, `chuck_size` * `N_LANES` secure field elements, by coordinates).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<SecureColumnByCoordsMutSlice<'_>> {
-        let [a, b, c, d] = self
-            .columns
-            .get_many_mut([0, 1, 2, 3])
-            .unwrap()
-            .map(|x| x.chunks_mut(chunk_size));
+        let [a, b, c, d] =
+            self.columns.get_many_mut([0, 1, 2, 3]).unwrap().map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
             .collect_vec()
     }
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
-        Self {
-            columns: cpu.columns.map(BaseColumn::from_cpu),
-        }
+        Self { columns: cpu.columns.map(BaseColumn::from_cpu) }
     }
 }
 
@@ -475,28 +446,19 @@ impl VeryPackedBaseColumn {
     }
 
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<VeryPackedBaseColumnMutSlice<'_>> {
-        self.data
-            .chunks_mut(chunk_size)
-            .map(VeryPackedBaseColumnMutSlice)
-            .collect_vec()
+        self.data.chunks_mut(chunk_size).map(VeryPackedBaseColumnMutSlice).collect_vec()
     }
 }
 
 impl From<BaseColumn> for VeryPackedBaseColumn {
     fn from(value: BaseColumn) -> Self {
-        Self {
-            data: cast_vec(value.data),
-            length: value.length,
-        }
+        Self { data: cast_vec(value.data), length: value.length }
     }
 }
 
 impl From<VeryPackedBaseColumn> for BaseColumn {
     fn from(value: VeryPackedBaseColumn) -> Self {
-        Self {
-            data: cast_vec(value.data),
-            length: value.length,
-        }
+        Self { data: cast_vec(value.data), length: value.length }
     }
 }
 
@@ -517,11 +479,7 @@ impl Column<BaseField> for VeryPackedBaseColumn {
     }
 
     fn to_cpu(&self) -> Vec<BaseField> {
-        self.data
-            .iter()
-            .flat_map(|x| x.to_array())
-            .take(self.length)
-            .collect()
+        self.data.iter().flat_map(|x| x.to_array()).take(self.length).collect()
     }
 
     fn len(&self) -> usize {
@@ -635,11 +593,8 @@ impl VeryPackedSecureColumnByCoords {
         &mut self,
         chunk_size: usize,
     ) -> Vec<VeryPackedSecureColumnByCoordsMutSlice<'_>> {
-        let [a, b, c, d] = self
-            .columns
-            .get_many_mut([0, 1, 2, 3])
-            .unwrap()
-            .map(|x| x.chunks_mut(chunk_size));
+        let [a, b, c, d] =
+            self.columns.get_many_mut([0, 1, 2, 3]).unwrap().map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| VeryPackedSecureColumnByCoordsMutSlice([a, b, c, d]))
             .collect_vec()
@@ -654,10 +609,10 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::BaseColumn;
+    use crate::core::backend::Column;
     use crate::core::backend::simd::column::SecureColumn;
     use crate::core::backend::simd::m31::N_LANES;
     use crate::core::backend::simd::qm31::PackedQM31;
-    use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumnByCoords;
@@ -716,14 +671,8 @@ mod tests {
             chunks[2].set_packed(3, rand0);
             chunks[3].set_packed(1, rand1);
 
-            assert_eq!(
-                col.packed_at(2 * CHUNK_SIZE + 3).to_array(),
-                rand0.to_array()
-            );
-            assert_eq!(
-                col.packed_at(3 * CHUNK_SIZE + 1).to_array(),
-                rand1.to_array()
-            );
+            assert_eq!(col.packed_at(2 * CHUNK_SIZE + 3).to_array(), rand0.to_array());
+            assert_eq!(col.packed_at(3 * CHUNK_SIZE + 1).to_array(), rand1.to_array());
         }
     }
 }

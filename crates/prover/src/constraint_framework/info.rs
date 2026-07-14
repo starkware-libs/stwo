@@ -9,9 +9,9 @@ use super::logup::{LogupAtRow, LogupSums};
 use super::preprocessed_columns::PreprocessedColumn;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 
@@ -437,20 +437,17 @@ mod tests {
         let mut res = f.drain();
         res.merge(ef.drain());
 
-        assert_eq!(
-            res,
-            ArithmeticCounts {
-                n_ef_mul_ef: N_EF_MUL_EF + N_EF_MUL_SECURE_FIELD + N_EF_MUL_ASSIGN_EF,
-                n_ef_mul_base_field: N_EF_MUL_BASE_FIELD,
-                n_ef_mul_f: N_EF_MUL_F,
-                n_ef_add_ef: N_EF_ADD_EF + N_EF_NEG + N_EF_SUB_EF + N_EF_ADD_ASSIGN_EF,
-                n_ef_add_f: N_EF_ADD_F,
-                n_ef_add_base_field: N_EF_ADD_BASE_FIELD,
-                n_f_mul_f: N_F_MUL_F + N_F_MUL_ASSIGN_F,
-                n_f_mul_base_field: N_F_MUL_BASE_FIELD,
-                n_f_add_f: N_F_ADD_F + N_F_NEG + N_F_SUB_F + N_F_ADD_ASSIGN_F,
-                n_f_add_base_field: N_F_ADD_ASSIGN_BASE_FIELD,
-            }
-        );
+        assert_eq!(res, ArithmeticCounts {
+            n_ef_mul_ef: N_EF_MUL_EF + N_EF_MUL_SECURE_FIELD + N_EF_MUL_ASSIGN_EF,
+            n_ef_mul_base_field: N_EF_MUL_BASE_FIELD,
+            n_ef_mul_f: N_EF_MUL_F,
+            n_ef_add_ef: N_EF_ADD_EF + N_EF_NEG + N_EF_SUB_EF + N_EF_ADD_ASSIGN_EF,
+            n_ef_add_f: N_EF_ADD_F,
+            n_ef_add_base_field: N_EF_ADD_BASE_FIELD,
+            n_f_mul_f: N_F_MUL_F + N_F_MUL_ASSIGN_F,
+            n_f_mul_base_field: N_F_MUL_BASE_FIELD,
+            n_f_add_f: N_F_ADD_F + N_F_NEG + N_F_SUB_F + N_F_ADD_ASSIGN_F,
+            n_f_add_base_field: N_F_ADD_ASSIGN_BASE_FIELD,
+        });
     }
 }

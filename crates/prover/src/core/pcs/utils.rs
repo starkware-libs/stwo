@@ -69,12 +69,7 @@ impl<T> Default for TreeVec<T> {
 
 impl<T> TreeVec<ColumnVec<T>> {
     pub fn map_cols<U, F: FnMut(T) -> U>(self, mut f: F) -> TreeVec<ColumnVec<U>> {
-        TreeVec(
-            self.0
-                .into_iter()
-                .map(|column| column.into_iter().map(&mut f).collect())
-                .collect(),
-        )
+        TreeVec(self.0.into_iter().map(|column| column.into_iter().map(&mut f).collect()).collect())
     }
 
     /// Zips two [`TreeVec<ColumVec<T>>`] with the same structure (number of columns in each tree).
@@ -152,12 +147,7 @@ impl<T> TreeVec<ColumnVec<T>> {
 
 impl<T> TreeVec<&ColumnVec<T>> {
     pub fn map_cols<U, F: FnMut(&T) -> U>(self, mut f: F) -> TreeVec<ColumnVec<U>> {
-        TreeVec(
-            self.0
-                .into_iter()
-                .map(|column| column.iter().map(&mut f).collect())
-                .collect(),
-        )
+        TreeVec(self.0.into_iter().map(|column| column.iter().map(&mut f).collect()).collect())
     }
 }
 

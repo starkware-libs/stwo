@@ -4,9 +4,9 @@ use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
-use super::m31::{PackedM31, N_LANES};
-use crate::core::fields::cm31::CM31;
+use super::m31::{N_LANES, PackedM31};
 use crate::core::fields::FieldExpOps;
+use crate::core::fields::cm31::CM31;
 
 /// SIMD implementation of [`CM31`].
 #[derive(Copy, Clone, Debug)]

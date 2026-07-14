@@ -1,10 +1,10 @@
 use std::iter;
 
 use super::{Channel, ChannelTime};
+use crate::core::fields::IntoSlice;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::fields::IntoSlice;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::core::vcs::blake2s_ref::compress;
 
@@ -115,8 +115,8 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::core::channel::blake2s::Blake2sChannel;
     use crate::core::channel::Channel;
+    use crate::core::channel::blake2s::Blake2sChannel;
     use crate::core::fields::qm31::SecureField;
     use crate::m31;
 
@@ -164,19 +164,15 @@ mod tests {
         random_felts.extend(channel.draw_felts(4));
 
         // Assert that all the random felts are unique.
-        assert_eq!(
-            random_felts.len(),
-            random_felts.iter().collect::<BTreeSet<_>>().len()
-        );
+        assert_eq!(random_felts.len(), random_felts.iter().collect::<BTreeSet<_>>().len());
     }
 
     #[test]
     pub fn test_mix_felts() {
         let mut channel = Blake2sChannel::default();
         let initial_digest = channel.digest;
-        let felts: Vec<SecureField> = (0..2)
-            .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect();
+        let felts: Vec<SecureField> =
+            (0..2).map(|i| SecureField::from(m31!(i + 1923782))).collect();
 
         channel.mix_felts(felts.as_slice());
 

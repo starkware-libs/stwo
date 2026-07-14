@@ -2,12 +2,12 @@ use std::ops::Mul;
 
 use super::logup::{LogupAtRow, LogupSums};
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::core::ColumnVec;
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
-use crate::core::ColumnVec;
 
 /// Evaluates expressions at a point out of domain.
 pub struct PointEvaluator<'a> {
@@ -54,8 +54,7 @@ impl EvalAtRow for PointEvaluator<'_> {
     where
         Self::EF: Mul<G, Output = Self::EF>,
     {
-        self.evaluation_accumulator
-            .accumulate(self.denom_inverse * constraint);
+        self.evaluation_accumulator.accumulate(self.denom_inverse * constraint);
     }
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_partial_evals(values)

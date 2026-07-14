@@ -11,8 +11,8 @@ use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
+use super::m31::{LOG_N_LANES, N_LANES};
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
@@ -259,9 +259,7 @@ fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
         let (d5, d13) = data[10].deinterleave(data[11]);
         let (d6, d14) = data[12].deinterleave(data[13]);
         let (d7, d15) = data[14].deinterleave(data[15]);
-        data = [
-            d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15,
-        ];
+        data = [d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15];
     }
 
     data
@@ -341,7 +339,7 @@ mod tests {
     use std::mem::transmute;
     use std::simd::u32x16;
 
-    use aligned::{Aligned, A64};
+    use aligned::{A64, Aligned};
 
     use super::{compress16, transpose_msgs, untranspose_states};
     use crate::core::vcs::blake2s_ref::compress;
@@ -357,19 +355,13 @@ mod tests {
         let lastblock = 3;
         let lastnode = 4;
         let res_unvectorized = array::from_fn(|i| {
-            compress(
-                states[i], msgs[i], count_low, count_high, lastblock, lastnode,
-            )
+            compress(states[i], msgs[i], count_low, count_high, lastblock, lastnode)
         });
 
         let res_vectorized: [[u32; 8]; 16] = unsafe {
             transmute(untranspose_states(compress16(
-                transpose_states(transmute::<Aligned<A64, [[u32; 8]; 16]>, [u32x16; 8]>(
-                    states,
-                )),
-                transpose_msgs(transmute::<Aligned<A64, [[u32; 16]; 16]>, [u32x16; 16]>(
-                    msgs,
-                )),
+                transpose_states(transmute::<Aligned<A64, [[u32; 8]; 16]>, [u32x16; 8]>(states)),
+                transpose_msgs(transmute::<Aligned<A64, [[u32; 16]; 16]>, [u32x16; 16]>(msgs)),
                 u32x16::splat(count_low),
                 u32x16::splat(count_high),
                 u32x16::splat(lastblock),

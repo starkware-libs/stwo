@@ -5,14 +5,14 @@ use itertools::Itertools;
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriVerifier};
-use super::quotients::{fri_answers, PointSample};
+use super::quotients::{PointSample, fri_answers};
 use super::utils::TreeVec;
 use super::{CommitmentSchemeProof, PcsConfig};
+use crate::core::ColumnVec;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::prover::VerificationError;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
-use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
@@ -23,17 +23,12 @@ pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
 
 impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     pub fn new(config: PcsConfig) -> Self {
-        Self {
-            trees: TreeVec::default(),
-            config,
-        }
+        Self { trees: TreeVec::default(), config }
     }
 
     /// A [TreeVec<ColumnVec>] of the log sizes of each column in each commitment tree.
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.column_log_sizes.clone())
+        self.trees.as_ref().map(|tree| tree.column_log_sizes.clone())
     }
 
     /// Reads a commitment from the prover.

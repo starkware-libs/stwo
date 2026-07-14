@@ -4,12 +4,12 @@ use std::ops::{Deref, DerefMut};
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::FieldOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::FieldOps;
-use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::fields::secure_column::{SECURE_EXTENSION_DEGREE, SecureColumnByCoords};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::twiddles::TwiddleTree;
 
 pub struct SecureCirclePoly<B: FieldOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
 
@@ -71,11 +71,7 @@ pub struct SecureEvaluation<B: FieldOps<BaseField>, EvalOrder> {
 impl<B: FieldOps<BaseField>, EvalOrder> SecureEvaluation<B, EvalOrder> {
     pub fn new(domain: CircleDomain, values: SecureColumnByCoords<B>) -> Self {
         assert_eq!(domain.size(), values.len());
-        Self {
-            domain,
-            values,
-            _eval_order: PhantomData,
-        }
+        Self { domain, values, _eval_order: PhantomData }
     }
 
     pub fn into_coordinate_evals(

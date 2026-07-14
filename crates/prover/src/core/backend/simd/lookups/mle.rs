@@ -2,10 +2,10 @@ use core::ops::Sub;
 use std::iter::zip;
 use std::ops::{Add, Mul};
 
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;

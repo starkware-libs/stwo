@@ -11,12 +11,8 @@ use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::prover::MerkleProver;
 
-pub type TestData<H> = (
-    BTreeMap<u32, Vec<usize>>,
-    MerkleDecommitment<H>,
-    Vec<BaseField>,
-    MerkleVerifier<H>,
-);
+pub type TestData<H> =
+    (BTreeMap<u32, Vec<usize>>, MerkleDecommitment<H>, Vec<BaseField>, MerkleVerifier<H>);
 
 pub fn prepare_merkle<H: MerkleHasher>() -> TestData<H>
 where
@@ -27,15 +23,11 @@ where
     let log_size_range = 3..5;
 
     let mut rng = SmallRng::seed_from_u64(0);
-    let log_sizes = (0..N_COLS)
-        .map(|_| rng.gen_range(log_size_range.clone()))
-        .collect_vec();
+    let log_sizes = (0..N_COLS).map(|_| rng.gen_range(log_size_range.clone())).collect_vec();
     let cols = log_sizes
         .iter()
         .map(|&log_size| {
-            (0..(1 << log_size))
-                .map(|_| BaseField::from(rng.gen_range(0..(1 << 30))))
-                .collect_vec()
+            (0..(1 << log_size)).map(|_| BaseField::from(rng.gen_range(0..(1 << 30)))).collect_vec()
         })
         .collect_vec();
     let merkle = MerkleProver::<CpuBackend, H>::commit(cols.iter().collect_vec());

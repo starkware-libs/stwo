@@ -1,14 +1,14 @@
 pub use components::{ComponentProvers, Components};
 
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use super::ColumnVec;
 use super::backend::Backend;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::ColumnVec;
+use super::poly::circle::{CircleEvaluation, CirclePoly};
 
 pub mod accumulation;
 mod components;

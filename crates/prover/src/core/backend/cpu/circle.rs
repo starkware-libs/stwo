@@ -8,12 +8,12 @@ use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::poly::BitReversedOrder;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
-use crate::core::poly::BitReversedOrder;
 use crate::core::utils::coset_order_to_circle_domain_order;
 
 impl PolyOps for CpuBackend {
@@ -160,11 +160,7 @@ impl PolyOps for CpuBackend {
         // Fallback to the non-chunked version if the domain is not big enough.
         if CHUNK_SIZE > root_coset.size() {
             let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
-            return TwiddleTree {
-                root_coset,
-                twiddles,
-                itwiddles,
-            };
+            return TwiddleTree { root_coset, twiddles, itwiddles };
         }
 
         let mut itwiddles = vec![BaseField::zero(); twiddles.len()];
@@ -175,11 +171,7 @@ impl PolyOps for CpuBackend {
                 BaseField::batch_inverse(src, dst);
             });
 
-        TwiddleTree {
-            root_coset,
-            twiddles,
-            itwiddles,
-        }
+        TwiddleTree { root_coset, twiddles, itwiddles }
     }
 }
 
@@ -187,13 +179,7 @@ pub fn slow_precompute_twiddles(mut coset: Coset) -> Vec<BaseField> {
     let mut twiddles = Vec::with_capacity(coset.size());
     for _ in 0..coset.log_size() {
         let i0 = twiddles.len();
-        twiddles.extend(
-            coset
-                .iter()
-                .take(coset.size() / 2)
-                .map(|p| p.x)
-                .collect::<Vec<_>>(),
-        );
+        twiddles.extend(coset.iter().take(coset.size() / 2).map(|p| p.x).collect::<Vec<_>>());
         bit_reverse(&mut twiddles[i0..]);
         coset = coset.double();
     }
@@ -237,10 +223,7 @@ fn circle_twiddles_from_line_twiddles(
     // points:
     //   [x, y]
     // Works also for inverse of the twiddles.
-    first_line_twiddles
-        .iter()
-        .array_chunks()
-        .flat_map(|[&x, &y]| [y, -y, -x, x])
+    first_line_twiddles.iter().array_chunks().flat_map(|[&x, &y]| [y, -y, -x, x])
 }
 
 impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator

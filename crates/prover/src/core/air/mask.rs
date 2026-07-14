@@ -3,10 +3,10 @@ use std::vec;
 
 use itertools::Itertools;
 
+use crate::core::ColumnVec;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
-use crate::core::ColumnVec;
 
 /// Mask holds a vector with an entry for each column.
 /// Each entry holds a list of mask items, which are the offsets of the mask at that column.
@@ -26,9 +26,7 @@ pub fn fixed_mask_points(
             .collect_vec(),
         vec![&0]
     );
-    mask.iter()
-        .map(|mask_entry| mask_entry.iter().map(|_| point).collect())
-        .collect()
+    mask.iter().map(|mask_entry| mask_entry.iter().map(|_| point).collect()).collect()
 }
 
 /// For each mask item returns the point shifted by the domain initial point of the column.
@@ -41,10 +39,7 @@ pub fn shifted_mask_points(
     mask.iter()
         .zip(domains.iter())
         .map(|(mask_entry, domain)| {
-            mask_entry
-                .iter()
-                .map(|mask_item| point + domain.at(*mask_item).into_ef())
-                .collect()
+            mask_entry.iter().map(|mask_item| point + domain.at(*mask_item).into_ef()).collect()
         })
         .collect()
 }
@@ -73,9 +68,7 @@ mod tests {
     fn test_mask_shifted_points() {
         let mask = vec![vec![0, 1], vec![0, 1, 2]];
         let constraint_point = CirclePoint::get_point(1234);
-        let domains = (0..mask.len() as u32)
-            .map(|i| CanonicCoset::new(7 + i))
-            .collect::<Vec<_>>();
+        let domains = (0..mask.len() as u32).map(|i| CanonicCoset::new(7 + i)).collect::<Vec<_>>();
 
         let points = shifted_mask_points(&mask, &domains, constraint_point);
 

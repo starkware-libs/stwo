@@ -30,8 +30,8 @@ mod tests {
 
     use crate::core::air::accumulation::AccumulationOps;
     use crate::core::backend::CpuBackend;
-    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::qm31::SecureField;
     use crate::qm31;
     #[test]
     fn generate_secure_powers_works() {

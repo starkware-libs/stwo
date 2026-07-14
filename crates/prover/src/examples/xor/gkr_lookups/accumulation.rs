@@ -5,8 +5,8 @@ use educe::Educe;
 use num_traits::One;
 
 use crate::core::air::accumulation::AccumulationOps;
-use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Backend;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::circle::M31_CIRCLE_LOG_ORDER;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -90,9 +90,7 @@ pub fn combine<EF: AddAssign + Mul<F, Output = EF> + Copy, F: Copy>(
 
 impl<B: Backend> Default for MleCollection<B> {
     fn default() -> Self {
-        Self {
-            mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES as usize + 1],
-        }
+        Self { mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES as usize + 1] }
     }
 }
 
@@ -141,9 +139,9 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::backend::simd::SimdBackend;
+    use crate::core::fields::Field;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::Field;
     use crate::core::lookups::mle::{Mle, MleOps};
     use crate::examples::xor::gkr_lookups::accumulation::MleCollection;
 
@@ -161,10 +159,8 @@ mod tests {
         let small_eval_point = [SecureField::zero(); SMALL_N_VARS];
         let large_eval_point = [SecureField::zero(); LARGE_N_VARS];
 
-        let [small_mle, large_mle] = mle_collection
-            .random_linear_combine_by_n_variables(alpha)
-            .try_into()
-            .unwrap();
+        let [small_mle, large_mle] =
+            mle_collection.random_linear_combine_by_n_variables(alpha).try_into().unwrap();
 
         assert_eq!(small_mle.n_variables(), SMALL_N_VARS);
         assert_eq!(large_mle.n_variables(), LARGE_N_VARS);

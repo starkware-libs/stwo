@@ -1,25 +1,25 @@
-use itertools::{izip, zip_eq, Itertools};
+use itertools::{Itertools, izip, zip_eq};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
+use super::SimdBackend;
 use super::cm31::PackedCM31;
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use super::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
 use super::qm31::PackedSecureField;
-use super::SimdBackend;
 use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, column_line_coeffs};
 use crate::core::backend::{Column, CpuBackend};
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::secure_column::{SECURE_EXTENSION_DEGREE, SecureColumnByCoords};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -40,10 +40,7 @@ impl QuotientOps for SimdBackend {
         let (subdomain, mut subdomain_shifts) = domain.split(log_blowup_factor);
         if subdomain.log_size() < LOG_N_LANES + 2 {
             // Fall back to the CPU backend for small domains.
-            let columns = columns
-                .iter()
-                .map(|circle_eval| circle_eval.to_cpu())
-                .collect_vec();
+            let columns = columns.iter().map(|circle_eval| circle_eval.to_cpu()).collect_vec();
             let eval = CpuBackend::accumulate_quotients(
                 domain,
                 &columns.iter().collect_vec(),
@@ -116,9 +113,7 @@ fn accumulate_quotients_on_subdomain(
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
-    let quad_rows = CircleDomainBitRevIterator::new(subdomain)
-        .array_chunks::<4>()
-        .collect_vec();
+    let quad_rows = CircleDomainBitRevIterator::new(subdomain).array_chunks::<4>().collect_vec();
 
     #[cfg(not(feature = "parallel"))]
     let iter = quad_rows.iter().zip(values.chunks_mut(4)).enumerate();
@@ -245,10 +240,7 @@ fn denominator_inverses(
 
     let mut flat_denominator_inverses =
         unsafe { CM31Column::uninitialized(flat_denominators.len()) };
-    FieldExpOps::batch_inverse(
-        &flat_denominators.data,
-        &mut flat_denominator_inverses.data[..],
-    );
+    FieldExpOps::batch_inverse(&flat_denominators.data, &mut flat_denominator_inverses.data[..]);
 
     flat_denominator_inverses
         .data
@@ -266,25 +258,21 @@ fn quotient_constants(
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
-    QuotientConstants {
-        line_coeffs,
-        batch_random_coeffs,
-        denominator_inverses,
-    }
+    QuotientConstants { line_coeffs, batch_random_coeffs, denominator_inverses }
 }
 
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::SimdBackend;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::qm31;
 
     #[test]
@@ -294,9 +282,7 @@ mod tests {
         let small_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
         let e0: BaseColumn = (0..small_domain.size()).map(BaseField::from).collect();
-        let e1: BaseColumn = (0..small_domain.size())
-            .map(|i| BaseField::from(2 * i))
-            .collect();
+        let e1: BaseColumn = (0..small_domain.size()).map(|i| BaseField::from(2 * i)).collect();
         let polys = [
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(small_domain, e0)
                 .interpolate(),

@@ -4,29 +4,29 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
 use num_traits::One;
-use tracing::{info, span, Level};
+use tracing::{Level, info, span};
 
 use crate::constraint_framework::logup::LogupTraceGenerator;
 use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry, TraceLocationAllocator,
+    relation,
 };
-use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::ColumnVec;
 use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::column::BaseColumn;
+use crate::core::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
+use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::{Col, Column};
 use crate::core::channel::Blake2sChannel;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use crate::core::prover::{StarkProof, prove};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use crate::core::ColumnVec;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -93,12 +93,7 @@ where
 {
     // Applies circ(2M4, M4, M4, M4).
     for i in 0..4 {
-        [
-            state[4 * i],
-            state[4 * i + 1],
-            state[4 * i + 2],
-            state[4 * i + 3],
-        ] = apply_m4([
+        [state[4 * i], state[4 * i + 1], state[4 * i + 2], state[4 * i + 3]] = apply_m4([
             state[4 * i].clone(),
             state[4 * i + 1].clone(),
             state[4 * i + 2].clone(),
@@ -123,10 +118,7 @@ where
 {
     // TODO(shahars): Check that these coefficients are good according to section  5.3 of Poseidon2
     // paper.
-    let sum = state[1..]
-        .iter()
-        .cloned()
-        .fold(state[0].clone(), |acc, s| acc + s);
+    let sum = state[1..].iter().cloned().fold(state[0].clone(), |acc, s| acc + s);
     state.iter_mut().enumerate().for_each(|(i, s)| {
         // TODO(andrew): Change to rotations.
         *s = s.clone() * BaseField::from_u32_unchecked(1 << (i + 1)) + sum.clone();
@@ -186,11 +178,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         });
 
         // Provide state lookups.
-        eval.add_to_relation(RelationEntry::new(
-            lookup_elements,
-            E::EF::one(),
-            &initial_state,
-        ));
+        eval.add_to_relation(RelationEntry::new(lookup_elements, E::EF::one(), &initial_state));
         eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &state));
     }
 
@@ -203,15 +191,11 @@ pub struct LookupData {
 }
 pub fn gen_trace(
     log_size: u32,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    LookupData,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, LookupData) {
     let _span = span!(Level::INFO, "Generation").entered();
     assert!(log_size >= LOG_N_LANES);
-    let mut trace = (0..N_COLUMNS)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace =
+        (0..N_COLUMNS).map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size)).collect_vec();
     let mut lookup_data = LookupData {
         initial_state: std::array::from_fn(|_| {
             std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
@@ -283,10 +267,7 @@ pub fn gen_trace(
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
-    let trace = trace
-        .into_iter()
-        .map(|eval| CircleEvaluation::new(domain, eval))
-        .collect();
+    let trace = trace.into_iter().map(|eval| CircleEvaluation::new(domain, eval)).collect();
     (trace, lookup_data)
 }
 
@@ -294,10 +275,7 @@ pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: LookupData,
     lookup_elements: &PoseidonElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    SecureField,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
@@ -306,16 +284,10 @@ pub fn gen_interaction_trace(
         let mut col_gen = logup_gen.new_col();
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
             // Batch the 2 lookups together.
-            let denom0: PackedSecureField = lookup_elements.combine(
-                &lookup_data.initial_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
-            let denom1: PackedSecureField = lookup_elements.combine(
-                &lookup_data.final_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
+            let denom0: PackedSecureField = lookup_elements
+                .combine(&lookup_data.initial_state[rep_i].each_ref().map(|s| s.data[vec_row]));
+            let denom1: PackedSecureField = lookup_elements
+                .combine(&lookup_data.final_state[rep_i].each_ref().map(|s| s.data[vec_row]));
             // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
             col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
         }
@@ -376,11 +348,7 @@ pub fn prove_poseidon(
     // Prove constraints.
     let component = PoseidonComponent::new(
         &mut TraceLocationAllocator::default(),
-        PoseidonEval {
-            log_n_rows,
-            lookup_elements,
-            total_sum,
-        },
+        PoseidonEval { log_n_rows, lookup_elements, total_sum },
         (total_sum, None),
     );
     info!("Poseidon component info:\n{}", component);
@@ -407,8 +375,8 @@ mod tests {
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::poseidon::{
-        apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, PoseidonElements,
+        PoseidonElements, apply_internal_round_matrix, apply_m4, eval_poseidon_constraints,
+        gen_interaction_trace, gen_trace, prove_poseidon,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -416,10 +384,7 @@ mod tests {
     #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_poseidon_prove_wasm() {
         const LOG_N_INSTANCES: u32 = 10;
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64),
-        };
+        let config = PcsConfig { pow_bits: 10, fri_config: FriConfig::new(5, 1, 64) };
 
         // Prove.
         prove_poseidon(LOG_N_INSTANCES, config);
@@ -433,11 +398,7 @@ mod tests {
                 .into_iter()
                 .collect_vec(),
         );
-        let state = (0..4)
-            .map(BaseField::from_u32_unchecked)
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let state = (0..4).map(BaseField::from_u32_unchecked).collect_vec().try_into().unwrap();
 
         assert_eq!(apply_m4(state), m4.mul(state));
     }
@@ -497,10 +458,7 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64),
-        };
+        let config = PcsConfig { pow_bits: 10, fri_config: FriConfig::new(5, 1, 64) };
 
         // Prove.
         let (component, proof) = prove_poseidon(log_n_instances, config);

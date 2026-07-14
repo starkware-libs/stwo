@@ -6,14 +6,14 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 use std::simd::u32x16;
 
 use num_traits::One;
-use xor_table::{xor12, xor4, xor7, xor8, xor9};
+use xor_table::{xor4, xor7, xor8, xor9, xor12};
 
-use crate::constraint_framework::{relation, EvalAtRow, Relation, RelationEntry};
+use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, relation};
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::channel::Channel;
-use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
+use crate::core::fields::m31::BaseField;
 
 mod air;
 mod round;
@@ -156,8 +156,7 @@ where
 
 /// Utility for splitting a u32 into 2 field elements in trace generation.
 fn to_felts(x: &u32x16) -> [PackedBaseField; 2] {
-    [
-        unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) },
-        unsafe { PackedBaseField::from_simd_unchecked(x >> 16) },
-    ]
+    [unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) }, unsafe {
+        PackedBaseField::from_simd_unchecked(x >> 16)
+    }]
 }

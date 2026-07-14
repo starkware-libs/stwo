@@ -1,8 +1,5 @@
 #![allow(incomplete_features)]
-#![cfg_attr(
-    all(target_arch = "x86_64", target_feature = "avx512f"),
-    feature(stdarch_x86_avx512)
-)]
+#![cfg_attr(all(target_arch = "x86_64", target_feature = "avx512f"), feature(stdarch_x86_avx512))]
 #![feature(
     array_chunks,
     array_try_from_fn,

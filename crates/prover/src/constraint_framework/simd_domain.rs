@@ -4,20 +4,20 @@ use num_traits::Zero;
 
 use super::logup::{LogupAtRow, LogupSums};
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::core::backend::Column;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::simd::column::VeryPackedBaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, VeryPackedSecureField, LOG_N_VERY_PACKED_ELEMS,
+    LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField, VeryPackedSecureField,
 };
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleEvaluation;
 use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
 /// Evaluates constraints at an evaluation domain points.
@@ -73,11 +73,8 @@ impl EvalAtRow for SimdDomainEvaluator<'_> {
             // If the offset is 0, we can just return the value directly from this row.
             if off == 0 {
                 unsafe {
-                    let col = &self
-                        .trace_eval
-                        .get_unchecked(interaction)
-                        .get_unchecked(col_index)
-                        .values;
+                    let col =
+                        &self.trace_eval.get_unchecked(interaction).get_unchecked(col_index).values;
                     let very_packed_col = VeryPackedBaseColumn::transform_under_ref(col);
                     return *very_packed_col.data.get_unchecked(self.vec_row);
                 };

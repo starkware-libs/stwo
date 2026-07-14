@@ -1,24 +1,24 @@
 use std::simd::u32x16;
 
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use num_traits::Zero;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
-use super::{blake_scheduler_info, BlakeElements};
+use super::{BlakeElements, blake_scheduler_info};
 use crate::constraint_framework::logup::LogupTraceGenerator;
-use crate::constraint_framework::{Relation, ORIGINAL_TRACE_IDX};
+use crate::constraint_framework::{ORIGINAL_TRACE_IDX, Relation};
+use crate::core::ColumnVec;
+use crate::core::backend::Column;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::{blake2s, SimdBackend};
-use crate::core::backend::Column;
+use crate::core::backend::simd::{SimdBackend, blake2s};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::examples::blake::round::{BlakeRoundInput, RoundElements};
-use crate::examples::blake::{to_felts, N_ROUNDS, N_ROUND_INPUT_FELTS, STATE_SIZE};
+use crate::examples::blake::{N_ROUND_INPUT_FELTS, N_ROUNDS, STATE_SIZE, to_felts};
 
 #[derive(Copy, Clone, Default)]
 pub struct BlakeInput {
@@ -82,10 +82,7 @@ pub fn gen_trace(
             write_u32_array(v, &mut col_index);
 
             let round_m = blake2s::SIGMA[r].map(|i| m[i as usize]);
-            round_inputs.push(BlakeRoundInput {
-                v: prev_v,
-                m: round_m,
-            });
+            round_inputs.push(BlakeRoundInput { v: prev_v, m: round_m });
 
             chain![
                 prev_v.iter().flat_map(to_felts),
@@ -106,10 +103,7 @@ pub fn gen_trace(
     }
 
     let domain = CanonicCoset::new(log_size).circle_domain();
-    let trace = trace
-        .into_iter()
-        .map(|eval| CircleEvaluation::new(domain, eval))
-        .collect();
+    let trace = trace.into_iter().map(|eval| CircleEvaluation::new(domain, eval)).collect();
 
     (trace, lookup_data, round_inputs)
 }
@@ -118,10 +112,7 @@ pub fn gen_interaction_trace(
     lookup_data: BlakeSchedulerLookupData,
     round_lookup_elements: &RoundElements,
     blake_lookup_elements: &BlakeElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    SecureField,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
     let _span = span!(Level::INFO, "Generate scheduler interaction trace").entered();
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -147,17 +138,11 @@ pub fn gen_interaction_trace(
     let mut col_gen = logup_gen.new_col();
     #[allow(clippy::needless_range_loop)]
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-        let p_blake: PackedSecureField = blake_lookup_elements.combine(
-            &lookup_data
-                .blake_lookups
-                .each_ref()
-                .map(|l| l.data[vec_row]),
-        );
+        let p_blake: PackedSecureField = blake_lookup_elements
+            .combine(&lookup_data.blake_lookups.each_ref().map(|l| l.data[vec_row]));
         if N_ROUNDS % 2 == 1 {
             let p_round: PackedSecureField = round_lookup_elements.combine(
-                &lookup_data.round_lookups[N_ROUNDS - 1]
-                    .each_ref()
-                    .map(|l| l.data[vec_row]),
+                &lookup_data.round_lookups[N_ROUNDS - 1].each_ref().map(|l| l.data[vec_row]),
             );
             // TODO(alont): Remove.
             col_gen.write_frac(vec_row, p_blake, p_round * p_blake);

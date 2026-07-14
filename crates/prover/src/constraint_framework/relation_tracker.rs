@@ -7,20 +7,20 @@ use num_traits::Zero;
 use super::logup::LogupSums;
 use super::preprocessed_columns::PreprocessedColumn;
 use super::{
-    Batching, EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
-    TraceLocationAllocator, INTERACTION_TRACE_IDX,
+    Batching, EvalAtRow, FrameworkEval, INTERACTION_TRACE_IDX, InfoEvaluator, Relation,
+    RelationEntry, TraceLocationAllocator,
 };
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use crate::core::backend::Column;
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::very_packed_m31::LOG_N_VERY_PACKED_ELEMS;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{TreeSubspan, TreeVec};
-use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleEvaluation;
 use crate::core::utils::{
     bit_reverse_index, coset_index_to_circle_domain_index, offset_bit_reversed_circle_domain_index,
 };
@@ -39,19 +39,11 @@ pub struct RelationTrackerComponent<E: FrameworkEval> {
 }
 impl<E: FrameworkEval> RelationTrackerComponent<E> {
     pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E, n_rows: usize) -> Self {
-        let info = eval.evaluate(InfoEvaluator::new(
-            eval.log_size(),
-            vec![],
-            LogupSums::default(),
-        ));
+        let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], LogupSums::default()));
         let mut mask_offsets = info.mask_offsets;
         mask_offsets.drain(INTERACTION_TRACE_IDX..);
         let trace_locations = location_allocator.next_for_structure(&mask_offsets);
-        Self {
-            eval,
-            trace_locations,
-            n_rows,
-        }
+        Self { eval, trace_locations, n_rows }
     }
 
     pub fn entries(
@@ -61,9 +53,8 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
         let log_size = self.eval.log_size();
 
         // Deref the sub-tree. Only copies the references.
-        let sub_tree = trace
-            .sub_tree(&self.trace_locations)
-            .map(|vec| vec.into_iter().copied().collect_vec());
+        let sub_tree =
+            trace.sub_tree(&self.trace_locations).map(|vec| vec.into_iter().copied().collect_vec());
         let mut entries = vec![];
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
@@ -123,11 +114,8 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
             // If the offset is 0, we can just return the value directly from this row.
             if off == 0 {
                 unsafe {
-                    let col = &self
-                        .trace_eval
-                        .get_unchecked(interaction)
-                        .get_unchecked(col_index)
-                        .values;
+                    let col =
+                        &self.trace_eval.get_unchecked(interaction).get_unchecked(col_index).values;
                     return *col.data.get_unchecked(self.vec_row);
                 };
             }
@@ -185,11 +173,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
             }
             let values = values.iter().map(|v| v[j]).collect_vec();
             let mult = mult[j].to_m31_array()[0];
-            self.entries.push(RelationTrackerEntry {
-                relation: relation.clone(),
-                mult,
-                values,
-            });
+            self.entries.push(RelationTrackerEntry { relation: relation.clone(), mult, values });
         }
     }
 }
@@ -202,10 +186,7 @@ impl RelationSummary {
     pub fn summarize_relations(entries: &[RelationTrackerEntry]) -> Self {
         let mut entry_by_relation = HashMap::new();
         for entry in entries {
-            entry_by_relation
-                .entry(entry.relation.clone())
-                .or_insert_with(Vec::new)
-                .push(entry);
+            entry_by_relation.entry(entry.relation.clone()).or_insert_with(Vec::new).push(entry);
         }
         let mut summary = vec![];
         for (relation, entries) in entry_by_relation {
@@ -227,10 +208,7 @@ impl RelationSummary {
     }
 
     pub fn get_relation_info(&self, relation: &str) -> Option<&[(Vec<M31>, M31)]> {
-        self.0
-            .iter()
-            .find(|(name, _)| name == relation)
-            .map(|(_, entries)| entries.as_slice())
+        self.0.iter().find(|(name, _)| name == relation).map(|(_, entries)| entries.as_slice())
     }
 
     /// Cleans up the summary by removing zero-sum entries, only keeping the non-zero ones.

@@ -1,17 +1,17 @@
-use itertools::{izip, zip_eq, Itertools};
+use itertools::{Itertools, izip, zip_eq};
 use num_traits::{One, Zero};
 
 use super::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::complex_conjugate_line_coeffs;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::utils::bit_reverse_index;
 
 impl QuotientOps for CpuBackend {
@@ -90,10 +90,7 @@ pub fn column_line_coeffs(
                 .iter()
                 .map(|(_, sampled_value)| {
                     alpha *= random_coeff;
-                    let sample = PointSample {
-                        point: sample_batch.point,
-                        value: *sampled_value,
-                    };
+                    let sample = PointSample { point: sample_batch.point, value: *sampled_value };
                     complex_conjugate_line_coeffs(&sample, alpha)
                 })
                 .collect()
@@ -109,10 +106,7 @@ pub fn batch_random_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> Vec<SecureField> {
-    sample_batches
-        .iter()
-        .map(|sb| random_coeff.pow(sb.columns_and_values.len() as u128))
-        .collect()
+    sample_batches.iter().map(|sb| random_coeff.pow(sb.columns_and_values.len() as u128)).collect()
 }
 
 fn denominator_inverses(
@@ -160,8 +154,8 @@ pub struct QuotientConstants {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::backend::CpuBackend;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::CanonicCoset;
@@ -181,10 +175,7 @@ mod tests {
             eval_domain,
             &[&eval],
             coeff,
-            &[ColumnSampleBatch {
-                point,
-                columns_and_values: vec![(0, value)],
-            }],
+            &[ColumnSampleBatch { point, columns_and_values: vec![(0, value)] }],
             LOG_BLOWUP_FACTOR,
         );
         let quot_poly_base_field =

@@ -7,7 +7,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::{fold_mle_evals, UnivariatePoly};
+use crate::core::lookups::utils::{UnivariatePoly, fold_mle_evals};
 
 impl MleOps<BaseField> for CpuBackend {
     fn fix_first_variable(

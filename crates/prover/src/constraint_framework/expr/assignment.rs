@@ -6,9 +6,9 @@ use itertools::sorted;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
 use crate::constraint_framework::{AssertEvaluator, EvalAtRow};
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 
 /// An assignment to the variables that may appear in an expression.
 pub type ExprVarAssignment = (
@@ -219,11 +219,11 @@ mod tests {
 
     use num_traits::One;
 
-    use crate::constraint_framework::expr::utils::*;
     use crate::constraint_framework::AssertEvaluator;
+    use crate::constraint_framework::expr::utils::*;
+    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn test_eval_expr() {

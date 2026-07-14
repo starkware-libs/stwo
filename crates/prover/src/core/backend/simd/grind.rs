@@ -6,8 +6,8 @@ use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::blake2s::compress16;
 use super::SimdBackend;
+use super::blake2s::compress16;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::channel::Blake2sChannel;
 #[cfg(not(target_arch = "wasm32"))]

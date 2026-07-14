@@ -14,7 +14,7 @@ use std::array;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
-pub use assert::{assert_constraints, AssertEvaluator};
+pub use assert::{AssertEvaluator, assert_constraints};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
@@ -22,10 +22,10 @@ pub use point::PointEvaluator;
 use preprocessed_columns::PreprocessedColumn;
 pub use simd_domain::SimdDomainEvaluator;
 
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
@@ -141,10 +141,7 @@ pub trait EvalAtRow {
         &mut self,
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
-        let frac = Fraction::new(
-            entry.multiplicity.clone(),
-            entry.relation.combine(entry.values),
-        );
+        let frac = Fraction::new(entry.multiplicity.clone(), entry.relation.combine(entry.values));
         self.write_logup_frac(frac);
     }
 
@@ -199,19 +196,13 @@ macro_rules! logup_proxy {
                 std::collections::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
 
             for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
-                fracs_by_batch
-                    .entry(*batch)
-                    .or_insert_with(Vec::new)
-                    .push(frac.clone());
+                fracs_by_batch.entry(*batch).or_insert_with(Vec::new).push(frac.clone());
             }
 
             let keys_set: std::collections::HashSet<_> = fracs_by_batch.keys().cloned().collect();
             let all_batches_set: std::collections::HashSet<_> = (0..last_batch + 1).collect();
 
-            assert_eq!(
-                keys_set, all_batches_set,
-                "Batching must contain all consecutive batches"
-            );
+            assert_eq!(keys_set, all_batches_set, "Batching must contain all consecutive batches");
 
             let mut prev_col_cumsum = <Self::EF as num_traits::Zero>::zero();
 
@@ -232,10 +223,11 @@ macro_rules! logup_proxy {
             let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum.clone() {
                 Some((claimed_sum, claimed_row_index)) => {
                     let [prev_row_cumsum, cur_cumsum, claimed_cumsum] = self
-                        .next_extension_interaction_mask(
-                            self.logup.interaction,
-                            [-1, 0, claimed_row_index as isize],
-                        );
+                        .next_extension_interaction_mask(self.logup.interaction, [
+                            -1,
+                            0,
+                            claimed_row_index as isize,
+                        ]);
 
                     // Constrain that the claimed_sum in case that it is not equal to the total_sum.
                     self.add_constraint(
@@ -308,11 +300,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
 }
 impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
     pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
-        Self {
-            relation,
-            multiplicity,
-            values,
-        }
+        Self { relation, multiplicity, values }
     }
 }
 
@@ -328,9 +316,7 @@ macro_rules! relation {
                 Self($crate::constraint_framework::logup::LookupElements::dummy())
             }
             pub fn draw(channel: &mut impl $crate::core::channel::Channel) -> Self {
-                Self($crate::constraint_framework::logup::LookupElements::draw(
-                    channel,
-                ))
+                Self($crate::constraint_framework::logup::LookupElements::draw(channel))
             }
         }
 
@@ -341,9 +327,7 @@ macro_rules! relation {
                 values
                     .iter()
                     .zip(self.0.alpha_powers)
-                    .fold(EF::zero(), |acc, (value, power)| {
-                        acc + EF::from(power) * value.clone()
-                    })
+                    .fold(EF::zero(), |acc, (value, power)| acc + EF::from(power) * value.clone())
                     - self.0.z.into()
             }
 

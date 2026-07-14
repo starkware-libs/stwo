@@ -5,17 +5,17 @@ use crate::constraint_framework::relation_tracker::{
     RelationTrackerComponent, RelationTrackerEntry,
 };
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
-    TraceLocationAllocator, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX,
+    RelationEntry, TraceLocationAllocator, relation,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::{SecureField, QM31};
+use crate::core::fields::qm31::{QM31, SecureField};
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleEvaluation;
 use crate::core::prover::StarkProof;
 use crate::core::vcs::ops::MerkleHasher;
 
@@ -52,11 +52,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         let mut output_state = input_state.clone();
         output_state[COORDINATE] += E::F::one();
 
-        eval.add_to_relation(RelationEntry::new(
-            &self.lookup_elements,
-            E::EF::one(),
-            &input_state,
-        ));
+        eval.add_to_relation(RelationEntry::new(&self.lookup_elements, E::EF::one(), &input_state));
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
             -E::EF::one(),
@@ -75,14 +71,8 @@ pub struct StateMachineStatement0 {
 impl StateMachineStatement0 {
     pub fn log_sizes(&self) -> TreeVec<Vec<u32>> {
         let sizes = vec![
-            state_transition_info::<0>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.n),
-            state_transition_info::<1>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.m),
+            state_transition_info::<0>().mask_offsets.as_cols_ref().map_cols(|_| self.n),
+            state_transition_info::<1>().mask_offsets.as_cols_ref().map_cols(|_| self.m),
         ];
         let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
         log_sizes[PREPROCESSED_TRACE_IDX] = vec![self.n, self.m];
@@ -121,10 +111,7 @@ pub struct StateMachineComponents {
 
 impl StateMachineComponents {
     pub fn components(&self) -> Vec<&dyn Component> {
-        vec![
-            &self.component0 as &dyn Component,
-            &self.component1 as &dyn Component,
-        ]
+        vec![&self.component0 as &dyn Component, &self.component1 as &dyn Component]
     }
 
     pub fn component_provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {

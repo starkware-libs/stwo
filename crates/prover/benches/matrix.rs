@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::fields::m31::{M31, P};
@@ -13,15 +13,11 @@ fn row_major_matrix_multiplication_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
 
     let matrix_m31 = RowMajorMatrix::<M31, MATRIX_SIZE>::new(
-        (0..MATRIX_SIZE.pow(2))
-            .map(|_| rng.gen())
-            .collect::<Vec<M31>>(),
+        (0..MATRIX_SIZE.pow(2)).map(|_| rng.gen()).collect::<Vec<M31>>(),
     );
 
     let matrix_qm31 = RowMajorMatrix::<QM31, QM31_MATRIX_SIZE>::new(
-        (0..QM31_MATRIX_SIZE.pow(2))
-            .map(|_| rng.gen())
-            .collect::<Vec<QM31>>(),
+        (0..QM31_MATRIX_SIZE.pow(2)).map(|_| rng.gen()).collect::<Vec<QM31>>(),
     );
 
     // Create vector M31.
@@ -38,19 +34,13 @@ fn row_major_matrix_multiplication_bench(c: &mut Criterion) {
     });
 
     // bench matrix multiplication.
+    c.bench_function(&format!("RowMajorMatrix M31 {size}x{size} mul", size = MATRIX_SIZE), |b| {
+        b.iter(|| {
+            black_box(matrix_m31.mul(vec));
+        })
+    });
     c.bench_function(
-        &format!("RowMajorMatrix M31 {size}x{size} mul", size = MATRIX_SIZE),
-        |b| {
-            b.iter(|| {
-                black_box(matrix_m31.mul(vec));
-            })
-        },
-    );
-    c.bench_function(
-        &format!(
-            "QM31 RowMajorMatrix {size}x{size} mul",
-            size = QM31_MATRIX_SIZE
-        ),
+        &format!("QM31 RowMajorMatrix {size}x{size} mul", size = QM31_MATRIX_SIZE),
         |b| {
             b.iter(|| {
                 black_box(matrix_qm31.mul(vec_qm31));

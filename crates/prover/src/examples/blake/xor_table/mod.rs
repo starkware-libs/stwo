@@ -17,28 +17,28 @@ use std::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::{PreprocessedColumn, gen_is_first};
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
-    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, INTERACTION_TRACE_IDX, InfoEvaluator,
+    PREPROCESSED_TRACE_IDX, Relation, RelationEntry, relation,
 };
-use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
+use crate::core::ColumnVec;
 use crate::core::backend::Column;
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::simd::column::BaseColumn;
+use crate::core::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
+use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{TreeSubspan, TreeVec};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::examples::blake::{
-    XorElements12, XorElements4, XorElements7, XorElements8, XorElements9,
+    XorElements4, XorElements7, XorElements8, XorElements9, XorElements12,
 };
 use crate::{xor_table_eval, xor_table_gen};
 
@@ -50,9 +50,7 @@ macro_rules! xor_table_component {
                 claimed_sum: SecureField::zero(),
             };
             let info = component.evaluate(InfoEvaluator::empty());
-            info.mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
+            info.mask_offsets.as_cols_ref().map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
         }
 
         pub const fn limb_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
@@ -154,11 +152,11 @@ mod tests {
     use std::simd::u32x16;
 
     use crate::constraint_framework::logup::LookupElements;
-    use crate::constraint_framework::{assert_constraints, FrameworkEval};
+    use crate::constraint_framework::{FrameworkEval, assert_constraints};
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::xor_table::xor12::{
-        column_bits, generate_constant_trace, generate_interaction_trace, generate_trace,
-        XorAccumulator, XorTableEval,
+        XorAccumulator, XorTableEval, column_bits, generate_constant_trace,
+        generate_interaction_trace, generate_trace,
     };
 
     #[test]
@@ -180,10 +178,7 @@ mod tests {
         let trace = TreeVec::new(vec![constant_trace, trace, interaction_trace]);
         let trace_polys = TreeVec::<Vec<_>>::map_cols(trace, |c| c.interpolate());
 
-        let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> {
-            lookup_elements,
-            claimed_sum,
-        };
+        let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> { lookup_elements, claimed_sum };
         assert_constraints(
             &trace_polys,
             CanonicCoset::new(column_bits::<ELEM_BITS, EXPAND_BITS>()),
