@@ -6,7 +6,7 @@ use std_shims::Vec;
 
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::poseidon252_merkle::{construct_felt252_from_m31s, ELEMENTS_IN_BLOCK};
+use crate::core::vcs::poseidon252_merkle::{ELEMENTS_IN_BLOCK, construct_felt252_from_m31s};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
 pub const ELEMENTS_IN_BUFFER: usize = 2 * ELEMENTS_IN_BLOCK;
@@ -30,11 +30,7 @@ impl MerkleHasherLifted for Poseidon252MerkleHasher {
     }
 
     fn update_leaf(&mut self, column_values: &[BaseField]) {
-        let chunks = self
-            .buffer
-            .iter()
-            .chain(column_values)
-            .chunks(ELEMENTS_IN_BUFFER);
+        let chunks = self.buffer.iter().chain(column_values).chunks(ELEMENTS_IN_BUFFER);
 
         // The rest is collected in `remainder` and stored in the hasher's buffer.
         let mut remainder = Vec::new();
@@ -47,10 +43,7 @@ impl MerkleHasherLifted for Poseidon252MerkleHasher {
             }
             let second = chunk.split_off(ELEMENTS_IN_BLOCK);
             poseidon_update(
-                &[
-                    construct_felt252_from_m31s(&chunk),
-                    construct_felt252_from_m31s(&second),
-                ],
+                &[construct_felt252_from_m31s(&chunk), construct_felt252_from_m31s(&second)],
                 &mut self.state,
             );
         }
@@ -58,11 +51,8 @@ impl MerkleHasherLifted for Poseidon252MerkleHasher {
     }
 
     fn finalize(self) -> Self::Hash {
-        let remainder: Vec<FieldElement252> = self
-            .buffer
-            .chunks(ELEMENTS_IN_BLOCK)
-            .map(construct_felt252_from_m31s)
-            .collect();
+        let remainder: Vec<FieldElement252> =
+            self.buffer.chunks(ELEMENTS_IN_BLOCK).map(construct_felt252_from_m31s).collect();
         let state = poseidon_finalize(&remainder, self.state);
         state[0]
     }

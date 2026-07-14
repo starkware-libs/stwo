@@ -1,13 +1,13 @@
-use itertools::{zip_eq, Itertools};
+use itertools::{Itertools, zip_eq};
 
 use crate::core::fields::qm31::SecureField;
-use crate::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
+use crate::prover::AccumulationOps;
+use crate::prover::backend::CpuBackend;
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::simd::m31::{LOG_N_LANES, N_LANES, PackedM31};
 use crate::prover::backend::simd::qm31::PackedSecureField;
 use crate::prover::backend::simd::utils::to_lifted_simd;
-use crate::prover::backend::simd::SimdBackend;
-use crate::prover::backend::CpuBackend;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::AccumulationOps;
 
 impl AccumulationOps for SimdBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
@@ -85,11 +85,11 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use crate::core::fields::m31::M31;
-    use crate::prover::backend::cpu::CpuBackend;
-    use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::secure_column::SecureColumnByCoords;
     use crate::prover::AccumulationOps;
+    use crate::prover::backend::cpu::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::secure_column::SecureColumnByCoords;
     use crate::qm31;
 
     #[test]
@@ -112,20 +112,16 @@ mod tests {
         const LOG_SIZE_SHORT: u32 = 4;
         const LOG_SIZE_LONG: u32 = 8;
         let mut rng = SmallRng::seed_from_u64(0);
-        let col_short = (0..1 << LOG_SIZE_SHORT)
-            .map(|_| M31::from(rng.random::<u32>()))
-            .collect_vec();
-        let col_long = (0..1 << LOG_SIZE_LONG)
-            .map(|_| M31::from(rng.random::<u32>()))
-            .collect_vec();
+        let col_short =
+            (0..1 << LOG_SIZE_SHORT).map(|_| M31::from(rng.random::<u32>())).collect_vec();
+        let col_long =
+            (0..1 << LOG_SIZE_LONG).map(|_| M31::from(rng.random::<u32>())).collect_vec();
 
         // Prepare CPU inputs.
-        let secure_col_short = SecureColumnByCoords {
-            columns: std::array::from_fn(|_| col_short.clone()),
-        };
-        let secure_col_long = SecureColumnByCoords {
-            columns: std::array::from_fn(|_| col_long.clone()),
-        };
+        let secure_col_short =
+            SecureColumnByCoords { columns: std::array::from_fn(|_| col_short.clone()) };
+        let secure_col_long =
+            SecureColumnByCoords { columns: std::array::from_fn(|_| col_long.clone()) };
         let res_cpu = <CpuBackend as AccumulationOps>::lift_and_accumulate(vec![
             secure_col_short,
             secure_col_long,

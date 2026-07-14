@@ -1,12 +1,12 @@
+use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 /// A preprocessed table for the xor operation of 2 n_bits numbers.
 /// n_expand_bits is an optimization parameter reducing the table's columns' length to
@@ -21,11 +21,7 @@ pub struct XorTable {
 }
 impl XorTable {
     pub const fn new(n_bits: u32, n_expand_bits: u32, index_in_table: usize) -> Self {
-        Self {
-            n_bits,
-            n_expand_bits,
-            index_in_table,
-        }
+        Self { n_bits, n_expand_bits, index_in_table }
     }
 
     pub fn id(&self) -> PreProcessedColumnId {

@@ -3,11 +3,11 @@ use core::{array, iter};
 use itertools::Itertools;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many, poseidon_permute_comp};
 use starknet_ff::FieldElement as FieldElement252;
-use std_shims::{vec, Vec};
+use std_shims::{Vec, vec};
 
 use super::Channel;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::core::vcs::utils::add_length_padding;
 
 // Number of bytes that fit into a felt252.
@@ -93,11 +93,7 @@ impl Channel for Poseidon252Channel {
             .chain(iter::repeat_n(&0, padding_len))
             .chunks(7)
             .into_iter()
-            .map(|chunk| {
-                chunk.fold(FieldElement252::default(), |cur, y| {
-                    cur * shift + (*y).into()
-                })
-            })
+            .map(|chunk| chunk.fold(FieldElement252::default(), |cur, y| cur * shift + (*y).into()))
             .collect_vec();
         // If `data.len() % 7 != 0`, inject it into the bits [248:251] of the last
         // felt252.
@@ -161,8 +157,8 @@ mod tests {
     use starknet_ff::FieldElement as FieldElement252;
     use std_shims::BTreeSet;
 
-    use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
+    use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::m31;
 
@@ -207,19 +203,14 @@ mod tests {
         random_felts.extend(channel.draw_secure_felts(4));
 
         // Assert that all the random felts are unique.
-        assert_eq!(
-            random_felts.len(),
-            random_felts.iter().collect::<BTreeSet<_>>().len()
-        );
+        assert_eq!(random_felts.len(), random_felts.iter().collect::<BTreeSet<_>>().len());
     }
 
     #[test]
     pub fn test_mix_felts() {
         let mut channel = Poseidon252Channel::default();
         let initial_digest = channel.digest;
-        let felts = (0..2)
-            .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect_vec();
+        let felts = (0..2).map(|i| SecureField::from(m31!(i + 1923782))).collect_vec();
 
         channel.mix_felts(felts.as_slice());
 

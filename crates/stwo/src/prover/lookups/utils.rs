@@ -3,9 +3,9 @@ use std::ops::{Add, Deref, Mul, Neg, Sub};
 
 use num_traits::Zero;
 
+use crate::core::Fraction;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::Fraction;
 
 /// Univariate polynomial stored as coefficients in the monomial basis.
 #[derive(Debug, Clone)]
@@ -165,9 +165,7 @@ impl<F: Field> Deref for UnivariatePoly<F> {
 ///
 /// [Horner's method]: https://en.wikipedia.org/wiki/Horner%27s_method
 pub fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
-    coeffs
-        .iter()
-        .rfold(F::zero(), |acc, coeff| acc * x + *coeff)
+    coeffs.iter().rfold(F::zero(), |acc, coeff| acc * x + *coeff)
 }
 
 /// Returns `v_0 + alpha * v_1 + ... + alpha^(n-1) * v_{n-1}`.
@@ -181,9 +179,7 @@ pub fn random_linear_combination(v: &[SecureField], alpha: SecureField) -> Secur
 /// when given `x, y` in `{0, 1}^n` evaluates to 1 if `x = y`, and evaluates to 0 otherwise.
 pub fn eq<F: Field>(x: &[F], y: &[F]) -> F {
     assert_eq!(x.len(), y.len());
-    zip(x, y)
-        .map(|(xi, yi)| *xi * *yi + (F::one() - *xi) * (F::one() - *yi))
-        .product()
+    zip(x, y).map(|(xi, yi)| *xi * *yi + (F::one() - *xi) * (F::one() - *yi)).product()
 }
 
 /// Computes `eq(0, assignment) * eval0 + eq(1, assignment) * eval1`.
@@ -211,10 +207,7 @@ impl<T: Add<Output = T> + Mul<Output = T> + Clone> Add for Reciprocal<T> {
 
     fn add(self, rhs: Self) -> Fraction<T, T> {
         // `1/a + 1/b = (a + b)/(a * b)`
-        Fraction {
-            numerator: self.x.clone() + rhs.x.clone(),
-            denominator: self.x * rhs.x,
-        }
+        Fraction { numerator: self.x.clone() + rhs.x.clone(), denominator: self.x * rhs.x }
     }
 }
 
@@ -223,10 +216,7 @@ impl<T: Sub<Output = T> + Mul<Output = T> + Clone> Sub for Reciprocal<T> {
 
     fn sub(self, rhs: Self) -> Fraction<T, T> {
         // `1/a - 1/b = (b - a)/(a * b)`
-        Fraction {
-            numerator: rhs.x.clone() - self.x.clone(),
-            denominator: self.x * rhs.x,
-        }
+        Fraction { numerator: rhs.x.clone() - self.x.clone(), denominator: self.x * rhs.x }
     }
 }
 
@@ -236,11 +226,11 @@ mod tests {
 
     use num_traits::{One, Zero};
 
-    use super::{horner_eval, UnivariatePoly};
+    use super::{UnivariatePoly, horner_eval};
+    use crate::core::Fraction;
+    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
-    use crate::core::Fraction;
     use crate::prover::lookups::utils::eq;
 
     #[test]
@@ -302,14 +292,8 @@ mod tests {
         let a = Fraction::new(BaseField::from(1), BaseField::from(3));
         let b = Fraction::new(BaseField::from(2), BaseField::from(6));
 
-        let Fraction {
-            numerator,
-            denominator,
-        } = a + b;
+        let Fraction { numerator, denominator } = a + b;
 
-        assert_eq!(
-            numerator / denominator,
-            BaseField::from(2) / BaseField::from(3)
-        );
+        assert_eq!(numerator / denominator, BaseField::from(2) / BaseField::from(3));
     }
 }

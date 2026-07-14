@@ -12,10 +12,7 @@ pub struct Fraction<N, D> {
 
 impl<N, D> Fraction<N, D> {
     pub const fn new(numerator: N, denominator: D) -> Self {
-        Self {
-            numerator,
-            denominator,
-        }
+        Self { numerator, denominator }
     }
 }
 
@@ -38,10 +35,7 @@ where
     Self: Add<Output = Self>,
 {
     fn zero() -> Self {
-        Self {
-            numerator: N::zero(),
-            denominator: D::one(),
-        }
+        Self { numerator: N::zero(), denominator: D::one() }
     }
 
     fn is_zero(&self) -> bool {

@@ -9,10 +9,10 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 pub use evaluator::ExprEvaluator;
 use num_traits::{One, Zero};
+use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::cm31::CM31;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::{SecureField, QM31};
-use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::qm31::{QM31, SecureField};
 
 /// A single base field column at index `idx` of interaction `interaction`, at mask offset `offset`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -24,11 +24,7 @@ pub struct ColumnExpr {
 
 impl From<(usize, usize, isize)> for ColumnExpr {
     fn from((interaction, idx, offset): (usize, usize, isize)) -> Self {
-        Self {
-            interaction,
-            idx,
-            offset,
-        }
+        Self { interaction, idx, offset }
     }
 }
 

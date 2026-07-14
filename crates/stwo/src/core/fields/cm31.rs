@@ -46,10 +46,7 @@ impl Mul for CM31 {
 
     fn mul(self, rhs: Self) -> Self::Output {
         // (a + bi) * (c + di) = (ac - bd) + (ad + bc)i.
-        Self(
-            self.0 * rhs.0 - self.1 * rhs.1,
-            self.0 * rhs.1 + self.1 * rhs.0,
-        )
+        Self(self.0 * rhs.0 - self.1 * rhs.1, self.0 * rhs.1 + self.1 * rhs.0)
     }
 }
 
@@ -83,8 +80,8 @@ macro_rules! cm31 {
 #[cfg(test)]
 mod tests {
     use super::CM31;
-    use crate::core::fields::m31::P;
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::P;
     use crate::m31;
 
     #[test]

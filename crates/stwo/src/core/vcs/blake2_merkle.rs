@@ -1,7 +1,7 @@
 use blake2::{Blake2s256, Digest};
 use serde::{Deserialize, Serialize};
 
-use super::blake2_hash::{reduce_to_m31, Blake2sHash};
+use super::blake2_hash::{Blake2sHash, reduce_to_m31};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::MerkleHasher;
 

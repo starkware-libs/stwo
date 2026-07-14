@@ -11,7 +11,7 @@ use thiserror::Error;
 use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
-use super::utils::{eq, random_linear_combination, UnivariatePoly};
+use super::utils::{UnivariatePoly, eq, random_linear_combination};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -113,12 +113,8 @@ impl<B: GkrOps> Layer<B> {
         match self {
             Self::GrandProduct(mle)
             | Self::LogUpSingles { denominators: mle }
-            | Self::LogUpMultiplicities {
-                denominators: mle, ..
-            }
-            | Self::LogUpGeneric {
-                denominators: mle, ..
-            } => mle.n_variables(),
+            | Self::LogUpMultiplicities { denominators: mle, .. }
+            | Self::LogUpGeneric { denominators: mle, .. } => mle.n_variables(),
         }
     }
 
@@ -150,18 +146,12 @@ impl<B: GkrOps> Layer<B> {
                 let denominator = denominators.at(0);
                 vec![numerator, denominator]
             }
-            Layer::LogUpMultiplicities {
-                numerators,
-                denominators,
-            } => {
+            Layer::LogUpMultiplicities { numerators, denominators } => {
                 let numerator = numerators.at(0).into();
                 let denominator = denominators.at(0);
                 vec![numerator, denominator]
             }
-            Layer::LogUpGeneric {
-                numerators,
-                denominators,
-            } => {
+            Layer::LogUpGeneric { numerators, denominators } => {
                 let numerator = numerators.at(0);
                 let denominator = denominators.at(0);
                 vec![numerator, denominator]
@@ -180,23 +170,17 @@ impl<B: GkrOps> Layer<B> {
 
         match self {
             Self::GrandProduct(mle) => Self::GrandProduct(mle.fix_first_variable(x0)),
-            Self::LogUpGeneric {
-                numerators,
-                denominators,
-            } => Self::LogUpGeneric {
+            Self::LogUpGeneric { numerators, denominators } => Self::LogUpGeneric {
                 numerators: numerators.fix_first_variable(x0),
                 denominators: denominators.fix_first_variable(x0),
             },
-            Self::LogUpMultiplicities {
-                numerators,
-                denominators,
-            } => Self::LogUpGeneric {
+            Self::LogUpMultiplicities { numerators, denominators } => Self::LogUpGeneric {
                 numerators: numerators.fix_first_variable(x0),
                 denominators: denominators.fix_first_variable(x0),
             },
-            Self::LogUpSingles { denominators } => Self::LogUpSingles {
-                denominators: denominators.fix_first_variable(x0),
-            },
+            Self::LogUpSingles { denominators } => {
+                Self::LogUpSingles { denominators: denominators.fix_first_variable(x0) }
+            }
         }
     }
 
@@ -248,23 +232,17 @@ impl<B: GkrOps> Layer<B> {
     pub fn to_cpu(&self) -> Layer<CpuBackend> {
         match self {
             Layer::GrandProduct(mle) => Layer::GrandProduct(Mle::new(mle.to_cpu())),
-            Layer::LogUpGeneric {
-                numerators,
-                denominators,
-            } => Layer::LogUpGeneric {
+            Layer::LogUpGeneric { numerators, denominators } => Layer::LogUpGeneric {
                 numerators: Mle::new(numerators.to_cpu()),
                 denominators: Mle::new(denominators.to_cpu()),
             },
-            Layer::LogUpMultiplicities {
-                numerators,
-                denominators,
-            } => Layer::LogUpMultiplicities {
+            Layer::LogUpMultiplicities { numerators, denominators } => Layer::LogUpMultiplicities {
                 numerators: Mle::new(numerators.to_cpu()),
                 denominators: Mle::new(denominators.to_cpu()),
             },
-            Layer::LogUpSingles { denominators } => Layer::LogUpSingles {
-                denominators: Mle::new(denominators.to_cpu()),
-            },
+            Layer::LogUpSingles { denominators } => {
+                Layer::LogUpSingles { denominators: Mle::new(denominators.to_cpu()) }
+            }
         }
     }
 }
@@ -347,10 +325,7 @@ impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
 
         let columns = match self.input_layer {
             Layer::GrandProduct(mle) => vec![mle.to_cpu().try_into().unwrap()],
-            Layer::LogUpGeneric {
-                numerators,
-                denominators,
-            } => {
+            Layer::LogUpGeneric { numerators, denominators } => {
                 let numerators = numerators.to_cpu().try_into().unwrap();
                 let denominators = denominators.to_cpu().try_into().unwrap();
                 vec![numerators, denominators]
@@ -403,10 +378,8 @@ pub fn prove_batch<B: GkrOps>(
     input_layer_by_instance: Vec<Layer<B>>,
 ) -> (GkrBatchProof, GkrArtifact) {
     let n_instances = input_layer_by_instance.len();
-    let n_layers_by_instance = input_layer_by_instance
-        .iter()
-        .map(|l| l.n_variables())
-        .collect_vec();
+    let n_layers_by_instance =
+        input_layer_by_instance.iter().map(|l| l.n_variables()).collect_vec();
     let n_layers = *n_layers_by_instance.iter().max().unwrap();
 
     // Evaluate all instance circuits and collect the layer values.
@@ -484,21 +457,14 @@ pub fn prove_batch<B: GkrOps>(
         }
     }
 
-    let output_claims_by_instance = output_claims_by_instance
-        .into_iter()
-        .map(Option::unwrap)
-        .collect();
+    let output_claims_by_instance =
+        output_claims_by_instance.into_iter().map(Option::unwrap).collect();
 
-    let claims_to_verify_by_instance = claims_to_verify_by_instance
-        .into_iter()
-        .map(Option::unwrap)
-        .collect();
+    let claims_to_verify_by_instance =
+        claims_to_verify_by_instance.into_iter().map(Option::unwrap).collect();
 
-    let proof = GkrBatchProof {
-        sumcheck_proofs,
-        layer_masks_by_instance,
-        output_claims_by_instance,
-    };
+    let proof =
+        GkrBatchProof { sumcheck_proofs, layer_masks_by_instance, output_claims_by_instance };
 
     let artifact = GkrArtifact {
         ood_point,
@@ -555,12 +521,7 @@ pub fn correct_sum_as_poly_in_first_variable(
 
     // Interpolate.
     UnivariatePoly::interpolate_lagrange(
-        &[
-            SecureField::zero(),
-            SecureField::one(),
-            SecureField::from(BaseField::from(2)),
-            b_const,
-        ],
+        &[SecureField::zero(), SecureField::one(), SecureField::from(BaseField::from(2)), b_const],
         &[r_at_0, r_at_1, r_at_2, r_at_b],
     )
 }

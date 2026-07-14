@@ -5,16 +5,16 @@
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
 use itertools::Itertools;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::core::air::Component;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
 /// Controls how constraint evaluations are accumulated and finalized.
@@ -42,16 +42,10 @@ impl EvaluationMode {
     pub fn infer(components: &[&dyn Component], log_blowup_factor: u32) -> Self {
         let mut common_log_expansion: Option<u32> = None;
         for c in components {
-            let trace_log_size = c
-                .trace_log_degree_bounds()
-                .iter()
-                .flatten()
-                .copied()
-                .max()
-                .unwrap_or(0);
-            let constraint_log_degree = c
-                .max_constraint_log_degree_bound()
-                .saturating_sub(trace_log_size);
+            let trace_log_size =
+                c.trace_log_degree_bounds().iter().flatten().copied().max().unwrap_or(0);
+            let constraint_log_degree =
+                c.max_constraint_log_degree_bound().saturating_sub(trace_log_size);
             if constraint_log_degree > log_blowup_factor {
                 return EvaluationMode::ExtendToEvalDomain;
             }
@@ -64,9 +58,7 @@ impl EvaluationMode {
                 _ => {}
             }
         }
-        EvaluationMode::SubDomain {
-            log_expansion: common_log_expansion.unwrap_or(0),
-        }
+        EvaluationMode::SubDomain { log_expansion: common_log_expansion.unwrap_or(0) }
     }
 }
 
@@ -117,9 +109,8 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .into_iter()
             .zip(n_cols_per_size)
             .map(|(col, (log_size, n_cols))| {
-                let random_coeffs = self
-                    .random_coeff_powers
-                    .split_off(self.random_coeff_powers.len() - n_cols);
+                let random_coeffs =
+                    self.random_coeff_powers.split_off(self.random_coeff_powers.len() - n_cols);
                 ColumnAccumulator {
                     random_coeff_powers: random_coeffs,
                     col: col.get_or_insert_with(|| SecureColumnByCoords::zeros(1 << log_size)),
@@ -143,18 +134,11 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
     /// `twiddles` must be precomputed for the max-size canonical domain's half coset.
     pub fn finalize(self, twiddles: &TwiddleTree<B>) -> SecureCirclePoly<B> {
-        assert_eq!(
-            self.random_coeff_powers.len(),
-            0,
-            "not all random coefficients were used"
-        );
+        assert_eq!(self.random_coeff_powers.len(), 0, "not all random coefficients were used");
         let log_size = self.log_size();
-        let _span = span!(
-            Level::INFO,
-            "Constraints interpolation",
-            class = "ConstraintInterpolation"
-        )
-        .entered();
+        let _span =
+            span!(Level::INFO, "Constraints interpolation", class = "ConstraintInterpolation")
+                .entered();
 
         let sub_accumulations = self.sub_accumulations.into_iter().flatten().collect_vec();
         let lifted_accumulation = B::lift_and_accumulate(sub_accumulations);
@@ -248,18 +232,15 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 10;
-        let mut log_sizes = (0..100)
-            .map(|_| rng.random_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
-            .collect::<Vec<_>>();
+        let mut log_sizes =
+            (0..100).map(|_| rng.random_range(LOG_SIZE_MIN..LOG_SIZE_BOUND)).collect::<Vec<_>>();
         log_sizes.sort();
 
         // Generate random evaluations.
         let evaluations = log_sizes
             .iter()
             .map(|log_size| {
-                (0..(1 << *log_size))
-                    .map(|_| M31::from(rng.random::<u32>()))
-                    .collect::<Vec<_>>()
+                (0..(1 << *log_size)).map(|_| M31::from(rng.random::<u32>())).collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
         let alpha = qm31!(2, 3, 4, 5);
@@ -304,9 +285,7 @@ mod tests {
             eval_chunk_offset += n_cols;
         }
         let twiddles = CpuBackend::precompute_twiddles(
-            CanonicCoset::new(LOG_SIZE_BOUND - 1)
-                .circle_domain()
-                .half_coset,
+            CanonicCoset::new(LOG_SIZE_BOUND - 1).circle_domain().half_coset,
         );
         let accumulator_poly = accumulator.finalize(&twiddles);
 

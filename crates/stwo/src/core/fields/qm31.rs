@@ -28,10 +28,7 @@ impl_extension_field!(QM31, CM31);
 
 impl QM31 {
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
-        Self(
-            CM31::from_u32_unchecked(a, b),
-            CM31::from_u32_unchecked(c, d),
-        )
+        Self(CM31::from_u32_unchecked(a, b), CM31::from_u32_unchecked(c, d))
     }
 
     pub const fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
@@ -43,7 +40,7 @@ impl QM31 {
     }
 
     pub const fn to_m31_array(self) -> [M31; SECURE_EXTENSION_DEGREE] {
-        [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
+        [self.0.0, self.0.1, self.1.0, self.1.1]
     }
 
     /// Returns the combined value, given the values of its composing base field polynomials at that
@@ -80,10 +77,7 @@ impl Mul for QM31 {
 
     fn mul(self, rhs: Self) -> Self::Output {
         // (a + bu) * (c + du) = (ac + rbd) + (ad + bc)u.
-        Self(
-            self.0 * rhs.0 + R * self.1 * rhs.1,
-            self.0 * rhs.1 + self.1 * rhs.0,
-        )
+        Self(self.0 * rhs.0 + R * self.1 * rhs.1, self.0 * rhs.1 + self.1 * rhs.0)
     }
 }
 
@@ -142,8 +136,8 @@ mod tests {
     use num_traits::One;
 
     use super::QM31;
-    use crate::core::fields::m31::P;
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::P;
     use crate::m31;
 
     #[test]

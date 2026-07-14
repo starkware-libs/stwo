@@ -1,7 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, BTreeMap, Vec};
+use std_shims::{BTreeMap, Vec, vec};
 use thiserror::Error;
 
 use super::utils::{next_decommitment_node, option_flatten_peekable};
@@ -22,10 +22,7 @@ pub struct MerkleDecommitment<H: MerkleHasher> {
 }
 impl<H: MerkleHasher> MerkleDecommitment<H> {
     pub const fn empty() -> Self {
-        Self {
-            hash_witness: Vec::new(),
-            column_witness: Vec::new(),
-        }
+        Self { hash_witness: Vec::new(), column_witness: Vec::new() }
     }
 }
 
@@ -53,11 +50,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
             *n_columns_per_log_size.entry(*log_size).or_insert(0) += 1;
         }
 
-        Self {
-            root,
-            column_log_sizes,
-            n_columns_per_log_size,
-        }
+        Self { root, column_log_sizes, n_columns_per_log_size }
     }
     /// Verifies the decommitment of the columns.
     ///
@@ -101,10 +94,8 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
         let mut last_layer_hashes: Option<Vec<(usize, H::Hash)>> = None;
         for layer_log_size in (0..=*max_log_size).rev() {
-            let n_columns_in_layer = *self
-                .n_columns_per_log_size
-                .get(&layer_log_size)
-                .unwrap_or(&0);
+            let n_columns_in_layer =
+                *self.n_columns_per_log_size.get(&layer_log_size).unwrap_or(&0);
 
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
@@ -127,9 +118,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
             while let Some(node_index) =
                 next_decommitment_node(&mut prev_layer_queries, &mut layer_column_queries)
             {
-                prev_layer_queries
-                    .peek_take_while(|q| q / 2 == node_index)
-                    .for_each(drop);
+                prev_layer_queries.peek_take_while(|q| q / 2 == node_index).for_each(drop);
 
                 let node_hashes = prev_layer_hashes
                     .as_mut()
@@ -161,15 +150,9 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
                 // If the column values were queried, read them from `queried_value`.
                 let (err, node_values_iter) = match layer_column_queries.next_if_eq(&node_index) {
-                    Some(_) => (
-                        MerkleVerificationError::TooFewQueriedValues,
-                        &mut queried_values,
-                    ),
+                    Some(_) => (MerkleVerificationError::TooFewQueriedValues, &mut queried_values),
                     // Otherwise, read them from the witness.
-                    None => (
-                        MerkleVerificationError::WitnessTooShort,
-                        &mut column_witness,
-                    ),
+                    None => (MerkleVerificationError::WitnessTooShort, &mut column_witness),
                 };
 
                 let node_values = node_values_iter.take(n_columns_in_layer).collect_vec();

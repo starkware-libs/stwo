@@ -5,7 +5,7 @@ use std_shims::Vec;
 
 use super::Channel;
 use crate::core::fields::m31::{BaseField, P};
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::core::vcs::keccak256_hash::{Keccak256Hash, Keccak256Hasher};
 
 pub const KECCAK_BYTES_PER_HASH: usize = 32;
@@ -144,8 +144,8 @@ mod tests {
     use itertools::Itertools;
     use std_shims::BTreeSet;
 
-    use crate::core::channel::keccak256::Keccak256Channel;
     use crate::core::channel::Channel;
+    use crate::core::channel::keccak256::Keccak256Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::m31;
 
@@ -187,19 +187,14 @@ mod tests {
         let mut random_felts = channel.draw_secure_felts(5);
         random_felts.extend(channel.draw_secure_felts(4));
 
-        assert_eq!(
-            random_felts.len(),
-            random_felts.iter().collect::<BTreeSet<_>>().len()
-        );
+        assert_eq!(random_felts.len(), random_felts.iter().collect::<BTreeSet<_>>().len());
     }
 
     #[test]
     pub fn test_mix_felts() {
         let mut channel = Keccak256Channel::default();
         let initial_digest = channel.digest;
-        let felts = (0..2)
-            .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect_vec();
+        let felts = (0..2).map(|i| SecureField::from(m31!(i + 1923782))).collect_vec();
 
         channel.mix_felts(felts.as_slice());
 

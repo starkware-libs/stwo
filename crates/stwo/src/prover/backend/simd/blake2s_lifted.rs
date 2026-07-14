@@ -8,9 +8,9 @@ use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use super::SimdBackend;
 use super::m31::LOG_N_LANES;
 use super::utils::to_lifted_simd;
-use super::SimdBackend;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT};
 use crate::core::fields::qm31::SECURE_EXTENSION_DEGREE;
 use crate::core::utils::uninit_vec;
@@ -20,10 +20,10 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::PACKED_LEAF_SIZE;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
-    compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states, INITIAL_STATE,
+    INITIAL_STATE, compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states,
 };
 use crate::prover::backend::simd::column::BaseColumn;
-use crate::prover::backend::simd::m31::{PackedBaseField, N_LANES};
+use crate::prover::backend::simd::m31::{N_LANES, PackedBaseField};
 use crate::prover::backend::simd::utils::transpose_packed_leaf;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::vcs_lifted::ops::{MerkleOpsLifted, PackLeavesOps};
@@ -78,9 +78,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         #[cfg(not(feature = "parallel"))]
         prev_layer_states.fill(INITIAL_STATE);
         #[cfg(feature = "parallel")]
-        prev_layer_states
-            .par_iter_mut()
-            .for_each(|uninit| *uninit = INITIAL_STATE);
+        prev_layer_states.par_iter_mut().for_each(|uninit| *uninit = INITIAL_STATE);
 
         // The last column chunk, which requires the `compress_finalize` permutation, is
         // `columns[last_chunk_index..]`. This chunk is treated on its own towards the end of the
@@ -198,9 +196,8 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         // Untranspose the states.
         #[cfg(not(feature = "parallel"))]
-        let iter_states = transposed_states
-            .iter_mut()
-            .zip(res.chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
+        let iter_states =
+            transposed_states.iter_mut().zip(res.chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
         #[cfg(feature = "parallel")]
         let iter_states = transposed_states
             .par_iter_mut()
@@ -309,10 +306,7 @@ impl PackLeavesOps for SimdBackend {
             }
         }
 
-        packed_simd.map(|data| BaseColumn {
-            data,
-            length: output_len,
-        })
+        packed_simd.map(|data| BaseColumn { data, length: output_len })
     }
 }
 /// Given a vector of columns sorted by size (in ascending order) and an index `last_chunk_index`
@@ -328,11 +322,7 @@ fn get_lifting_indices(
 ) -> Vec<usize> {
     let mut prev_size = 0;
     let mut res = vec![];
-    for (idx, col_size) in col_sizes
-        .enumerate()
-        .step_by(N_FELTS_IN_BLAKE_MESSAGE)
-        .skip(1)
-    {
+    for (idx, col_size) in col_sizes.enumerate().step_by(N_FELTS_IN_BLAKE_MESSAGE).skip(1) {
         if col_size > prev_size {
             res.push(idx - N_FELTS_IN_BLAKE_MESSAGE);
             prev_size = col_size;
@@ -352,8 +342,8 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
-    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
     use crate::prover::vcs_lifted::prover::MerkleProverLifted;
@@ -361,9 +351,8 @@ mod tests {
     #[test]
     fn test_build_next_layer() {
         const LOG_SIZE: u32 = 6;
-        let layer: Vec<Blake2sHash> = (0u32..1 << (LOG_SIZE + 1))
-            .map(|i| Blake2sHasher::hash(&i.to_le_bytes()))
-            .collect();
+        let layer: Vec<Blake2sHash> =
+            (0u32..1 << (LOG_SIZE + 1)).map(|i| Blake2sHasher::hash(&i.to_le_bytes())).collect();
         assert_eq!(
             <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&layer),
             <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&layer)
@@ -374,20 +363,12 @@ mod tests {
         const MAX_LOG_N_ROWS: u32 = 9;
         const N_COLS: u32 = 100;
         let mut cols: Vec<Vec<BaseField>> = (0..N_COLS)
-            .map(|i| {
-                (0..1 << MAX_LOG_N_ROWS)
-                    .map(|j| M31::from(100 * i + j))
-                    .collect_vec()
-            })
+            .map(|i| (0..1 << MAX_LOG_N_ROWS).map(|j| M31::from(100 * i + j)).collect_vec())
             .collect();
 
         // Make the first two columns smaller to test a non-uniform sized trace.
-        cols[0] = (0..1 << (MAX_LOG_N_ROWS - 4))
-            .map(M31::from_u32_unchecked)
-            .collect_vec();
-        cols[1] = (0..1 << (MAX_LOG_N_ROWS - 3))
-            .map(M31::from_u32_unchecked)
-            .collect_vec();
+        cols[0] = (0..1 << (MAX_LOG_N_ROWS - 4)).map(M31::from_u32_unchecked).collect_vec();
+        cols[1] = (0..1 << (MAX_LOG_N_ROWS - 3)).map(M31::from_u32_unchecked).collect_vec();
         let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 
         (

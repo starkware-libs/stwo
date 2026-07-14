@@ -1,28 +1,28 @@
 use std::array;
-use std::simd::{u32x16, u32x8};
+use std::simd::{u32x8, u32x16};
 
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
+use super::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
 use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::line::LineDomain;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::core::utils::uninit_vec;
+use crate::prover::backend::Column;
 use crate::prover::backend::cpu::{fold_circle_into_line_cpu, fold_line_cpu};
 use crate::prover::backend::simd::fft::compute_first_twiddles;
 use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::prover::backend::simd::qm31::PackedSecureField;
-use crate::prover::backend::Column;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
 const FOLD_CHUNK_SIZE: usize = 128;
@@ -57,57 +57,52 @@ impl FriOps for SimdBackend {
         #[cfg(feature = "parallel")]
         let folded_values_iter = folded_values.par_chunks_mut(FOLD_CHUNK_SIZE);
 
-        folded_values_iter
-            .enumerate()
-            .for_each(|(chunk_idx, mut dst_chunk)| {
-                let chunk_start = chunk_idx * FOLD_CHUNK_SIZE;
-                let mut layer_values: Vec<[PackedBaseField; 4]> =
-                    unsafe { uninit_vec(1 << fold_step) };
-                let packed_chunk_len = dst_chunk.0[0].0.len();
+        folded_values_iter.enumerate().for_each(|(chunk_idx, mut dst_chunk)| {
+            let chunk_start = chunk_idx * FOLD_CHUNK_SIZE;
+            let mut layer_values: Vec<[PackedBaseField; 4]> = unsafe { uninit_vec(1 << fold_step) };
+            let packed_chunk_len = dst_chunk.0[0].0.len();
 
-                for local_i in 0..packed_chunk_len {
-                    let i = chunk_start + local_i;
-                    // Read the packed inputs needed for a full fold.
-                    let input_base = i << fold_step;
-                    unsafe {
-                        for (j, val) in layer_values.iter_mut().enumerate() {
-                            *val = eval.values.packed_at(input_base + j).into_packed_m31s();
-                        }
-                    }
-                    let mut next_layer_size = 1 << (fold_step - 1);
-                    for layer in 0..fold_step as usize {
-                        let itwiddles = all_twiddles[layer];
-                        let alpha = alphas[layer];
-                        unsafe {
-                            for j in 0..next_layer_size {
-                                let packed_itwiddles = u32x16::from_array(array::from_fn(|k| {
-                                    *itwiddles.get_unchecked((i * next_layer_size + j) * 16 + k)
-                                }));
-                                let val0 = layer_values[2 * j];
-                                let val1 = layer_values[2 * j + 1];
-                                let pairs: [_; 4] = array::from_fn(|c| {
-                                    let (a, b) = val0[c].deinterleave(val1[c]);
-                                    simd_ibutterfly(a, b, packed_itwiddles)
-                                });
-                                let v0 = PackedSecureField::from_packed_m31s(array::from_fn(|c| {
-                                    pairs[c].0
-                                }));
-                                let v1 = PackedSecureField::from_packed_m31s(array::from_fn(|c| {
-                                    pairs[c].1
-                                }));
-                                layer_values[j] = (v0 + PackedSecureField::broadcast(alpha) * v1)
-                                    .into_packed_m31s();
-                            }
-                        }
-                        next_layer_size >>= 1;
-                    }
-                    let result = layer_values[0];
-
-                    unsafe {
-                        dst_chunk.set_packed(local_i, PackedSecureField::from_packed_m31s(result));
+            for local_i in 0..packed_chunk_len {
+                let i = chunk_start + local_i;
+                // Read the packed inputs needed for a full fold.
+                let input_base = i << fold_step;
+                unsafe {
+                    for (j, val) in layer_values.iter_mut().enumerate() {
+                        *val = eval.values.packed_at(input_base + j).into_packed_m31s();
                     }
                 }
-            });
+                let mut next_layer_size = 1 << (fold_step - 1);
+                for layer in 0..fold_step as usize {
+                    let itwiddles = all_twiddles[layer];
+                    let alpha = alphas[layer];
+                    unsafe {
+                        for j in 0..next_layer_size {
+                            let packed_itwiddles = u32x16::from_array(array::from_fn(|k| {
+                                *itwiddles.get_unchecked((i * next_layer_size + j) * 16 + k)
+                            }));
+                            let val0 = layer_values[2 * j];
+                            let val1 = layer_values[2 * j + 1];
+                            let pairs: [_; 4] = array::from_fn(|c| {
+                                let (a, b) = val0[c].deinterleave(val1[c]);
+                                simd_ibutterfly(a, b, packed_itwiddles)
+                            });
+                            let v0 =
+                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                            let v1 =
+                                PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                            layer_values[j] =
+                                (v0 + PackedSecureField::broadcast(alpha) * v1).into_packed_m31s();
+                        }
+                    }
+                    next_layer_size >>= 1;
+                }
+                let result = layer_values[0];
+
+                unsafe {
+                    dst_chunk.set_packed(local_i, PackedSecureField::from_packed_m31s(result));
+                }
+            }
+        });
 
         let new_domain = domain.repeated_double(fold_step);
         LineEvaluation::new(new_domain, folded_values)
@@ -307,13 +302,13 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::LineDomain;
-    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::fri::FriOps;
     use crate::prover::line::LineEvaluation;
-    use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureEvaluation};
     use crate::prover::secure_column::SecureColumnByCoords;
     use crate::qm31;
 
@@ -342,9 +337,8 @@ mod tests {
     #[test]
     fn test_fold_circle_into_line() {
         const LOG_SIZE: u32 = 7;
-        let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
-            .map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
-            .collect();
+        let values: Vec<SecureField> =
+            (0..(1 << LOG_SIZE)).map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3)).collect();
         let alpha = qm31!(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);

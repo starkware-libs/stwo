@@ -3,8 +3,8 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
 pub mod accumulation;
@@ -28,9 +28,7 @@ impl IsFirst {
     }
 
     pub fn id(&self) -> PreProcessedColumnId {
-        PreProcessedColumnId {
-            id: format!("preprocessed_is_first_{}", self.log_size).to_string(),
-        }
+        PreProcessedColumnId { id: format!("preprocessed_is_first_{}", self.log_size).to_string() }
     }
 }
 

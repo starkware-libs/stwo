@@ -51,13 +51,7 @@ fn generate_row_producer(
     let iter_mut_name = format_ident!("{}IterMut", struct_name);
     let (field_names, mut_slice_types, split_at): (Vec<_>, Vec<_>, Vec<_>) = iterable_fields
         .iter()
-        .map(|f| {
-            (
-                f.name(),
-                f.mut_slice_type(lifetime),
-                f.split_at(split_index),
-            )
-        })
+        .map(|f| (f.name(), f.mut_slice_type(lifetime), f.split_at(split_index)))
         .multiunzip();
     let field_names_head = field_names.iter().map(|f| format_ident!("{}_head", f));
     let field_names_tail = field_names.iter().map(|f| format_ident!("{}_tail", f));
@@ -95,10 +89,8 @@ fn generate_par_iter_struct(
     lifetime: &Lifetime,
 ) -> TokenStream {
     let par_iter_mut_name = format_ident!("{struct_name}ParIterMut");
-    let (field_names, mut_slice_types): (Vec<_>, Vec<_>) = iterable_fields
-        .iter()
-        .map(|f| (f.name(), f.mut_slice_type(lifetime)))
-        .unzip();
+    let (field_names, mut_slice_types): (Vec<_>, Vec<_>) =
+        iterable_fields.iter().map(|f| (f.name(), f.mut_slice_type(lifetime))).unzip();
     quote! {
         pub struct #par_iter_mut_name<#lifetime> {
             #(#field_names: Box<#mut_slice_types>,)*

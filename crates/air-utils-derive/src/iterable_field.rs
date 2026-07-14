@@ -53,10 +53,7 @@ impl IterableField {
                     ty,
                 }))
             }
-            _ => Err(syn::Error::new_spanned(
-                field,
-                "Expected vector or array of vectors",
-            )),
+            _ => Err(syn::Error::new_spanned(field, "Expected vector or array of vectors")),
         }
     }
 
@@ -362,10 +359,7 @@ fn parse_inner_type(type_path: &syn::TypePath) -> Result<Type, syn::Error> {
                 )),
             }
         }
-        _ => Err(syn::Error::new_spanned(
-            type_path.path.clone(),
-            "Expected last segment",
-        )),
+        _ => Err(syn::Error::new_spanned(type_path.path.clone(), "Expected last segment")),
     }
 }
 
@@ -377,14 +371,9 @@ pub(super) fn to_iterable_fields(input: DeriveInput) -> Result<Vec<IterableField
     }?;
 
     match input.fields {
-        Fields::Named(fields) => Ok(fields
-            .named
-            .iter()
-            .map(IterableField::from_field)
-            .collect::<Result<_, _>>()?),
-        _ => Err(syn::Error::new_spanned(
-            input.fields,
-            "Expected named fields",
-        )),
+        Fields::Named(fields) => {
+            Ok(fields.named.iter().map(IterableField::from_field).collect::<Result<_, _>>()?)
+        }
+        _ => Err(syn::Error::new_spanned(input.fields, "Expected named fields")),
     }
 }

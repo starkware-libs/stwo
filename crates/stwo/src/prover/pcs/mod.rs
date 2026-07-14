@@ -2,8 +2,9 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tracing::{info, span, Level};
+use tracing::{Level, info, span};
 
+use crate::core::ColumnVec;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -17,15 +18,14 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::MaybeOwned;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
-use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
 use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::mempool::BaseColumnPool;
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub mod quotient_ops;
@@ -100,11 +100,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn tree_builder(&mut self) -> TreeBuilder<'_, 'a, B, MC> {
-        TreeBuilder {
-            tree_index: self.trees.len(),
-            commitment_scheme: self,
-            polys: Vec::default(),
-        }
+        TreeBuilder { tree_index: self.trees.len(), commitment_scheme: self, polys: Vec::default() }
     }
 
     pub fn roots(&self) -> TreeVec<<MC::H as MerkleHasherLifted>::Hash> {
@@ -112,17 +108,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn polynomials(&self) -> TreeVec<ColumnVec<&Poly<B>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.polynomials.iter().collect())
+        self.trees.as_ref().map(|tree| tree.polynomials.iter().collect())
     }
 
     pub fn evaluations(
         &self,
     ) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.polynomials.iter().map(|poly| &poly.evals).collect())
+        self.trees.as_ref().map(|tree| tree.polynomials.iter().map(|poly| &poly.evals).collect())
     }
 
     pub fn trace(&self) -> Trace<'_, B> {
@@ -140,34 +132,32 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     {
         let weights_dashmap = WeightsHashMap::<B>::new();
 
-        self.polynomials()
-            .zip_cols(sampled_points)
-            .map_cols(|(poly, points)| {
-                let compute_weights = |(log_size, point): (u32, CirclePoint<SecureField>)| {
-                    weights_dashmap.entry((log_size, point)).or_insert_with(|| {
-                        CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
-                            CanonicCoset::new(log_size),
-                            point,
-                        )
-                    });
-                };
-
-                let log_size = poly.evals.domain.log_size();
-                // For each sample point, compute the weights needed to evaluate the polynomial at
-                // the folded sample point.
-                // TODO(Leo): the computation `point.repeated_double(max_log_size - log_size)` is
-                // likely repeated a bunch of times in a typical flat air. Consider moving it
-                // outside the loop.
-                #[cfg(not(feature = "parallel"))]
-                points.iter().for_each(|&point| {
-                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
+        self.polynomials().zip_cols(sampled_points).map_cols(|(poly, points)| {
+            let compute_weights = |(log_size, point): (u32, CirclePoint<SecureField>)| {
+                weights_dashmap.entry((log_size, point)).or_insert_with(|| {
+                    CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
+                        CanonicCoset::new(log_size),
+                        point,
+                    )
                 });
+            };
 
-                #[cfg(feature = "parallel")]
-                points.par_iter().for_each(|&point| {
-                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
-                });
+            let log_size = poly.evals.domain.log_size();
+            // For each sample point, compute the weights needed to evaluate the polynomial at
+            // the folded sample point.
+            // TODO(Leo): the computation `point.repeated_double(max_log_size - log_size)` is
+            // likely repeated a bunch of times in a typical flat air. Consider moving it
+            // outside the loop.
+            #[cfg(not(feature = "parallel"))]
+            points.iter().for_each(|&point| {
+                compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
             });
+
+            #[cfg(feature = "parallel")]
+            points.par_iter().for_each(|&point| {
+                compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
+            });
+        });
 
         weights_dashmap
     }
@@ -178,12 +168,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel: &mut MC::C,
     ) -> ExtendedCommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
-        let span = span!(
-            Level::INFO,
-            "Evaluate columns out of domain",
-            class = "EvaluateOutOfDomain"
-        )
-        .entered();
+        let span =
+            span!(Level::INFO, "Evaluate columns out of domain", class = "EvaluateOutOfDomain")
+                .entered();
 
         let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let weights_hash_map = if self.store_polynomials_coefficients {
@@ -208,20 +195,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         };
 
         #[cfg(not(feature = "parallel"))]
-        let samples: TreeVec<Vec<Vec<PointSample>>> = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .map_cols(eval_at_points);
+        let samples: TreeVec<Vec<Vec<PointSample>>> =
+            self.polynomials().zip_cols(&sampled_points).map_cols(eval_at_points);
         #[cfg(feature = "parallel")]
-        let samples: TreeVec<Vec<Vec<PointSample>>> = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .par_map_cols(eval_at_points);
+        let samples: TreeVec<Vec<Vec<PointSample>>> =
+            self.polynomials().zip_cols(&sampled_points).par_map_cols(eval_at_points);
 
         span.exit();
-        let sampled_values = samples
-            .as_cols_ref()
-            .map_cols(|x| x.iter().map(|o| o.value).collect());
+        let sampled_values =
+            samples.as_cols_ref().map_cols(|x| x.iter().map(|o| o.value).collect());
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
         let columns = self.evaluations();
@@ -247,11 +229,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel.mix_u64(proof_of_work);
 
         // FRI decommitment phase.
-        let FriDecommitResult {
-            fri_proof,
-            query_positions,
-            unsorted_query_locations,
-        } = fri_prover.decommit(channel);
+        let FriDecommitResult { fri_proof, query_positions, unsorted_query_locations } =
+            fri_prover.decommit(channel);
         // Build the query position tree.
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
@@ -336,11 +315,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         let col_start = self.polys.len();
         self.polys.extend(columns);
         let col_end = self.polys.len();
-        TreeSubspan {
-            tree_index: self.tree_index,
-            col_start,
-            col_end,
-        }
+        TreeSubspan { tree_index: self.tree_index, col_start, col_end }
     }
 
     pub fn commit(self, channel: &mut MC::C) {
@@ -376,25 +351,16 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
-        let max_log_domain_size = polynomials
-            .iter()
-            .map(|poly| poly.evals.domain.log_size())
-            .max()
-            .unwrap_or_default();
+        let max_log_domain_size =
+            polynomials.iter().map(|poly| poly.evals.domain.log_size()).max().unwrap_or_default();
         let lifting_log_size = min_lifting_log_size.max(max_log_domain_size);
         let tree = MerkleProverLifted::commit(
-            polynomials
-                .iter()
-                .map(|poly: &Poly<B>| &poly.evals.values)
-                .collect(),
+            polynomials.iter().map(|poly: &Poly<B>| &poly.evals.values).collect(),
             lifting_log_size,
             0,
         );
 
-        CommitmentTreeProver {
-            polynomials,
-            commitment: tree,
-        }
+        CommitmentTreeProver { polynomials, commitment: tree }
     }
 
     /// Decommits the merkle tree on the given query positions.
@@ -404,15 +370,8 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     fn decommit(
         &self,
         queries: &[usize],
-    ) -> (
-        ColumnVec<Vec<BaseField>>,
-        ExtendedMerkleDecommitmentLifted<MC::H>,
-    ) {
-        let eval_vec = self
-            .polynomials
-            .iter()
-            .map(|poly| &poly.evals.values)
-            .collect_vec();
+    ) -> (ColumnVec<Vec<BaseField>>, ExtendedMerkleDecommitmentLifted<MC::H>) {
+        let eval_vec = self.polynomials.iter().map(|poly| &poly.evals.values).collect_vec();
         self.commitment.decommit(queries, eval_vec)
     }
 }
@@ -423,9 +382,7 @@ fn print_column_size_histogram<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let mut log_size_histogram = HashMap::new();
     for columns in columns_per_tree.iter() {
         for column in columns {
-            *log_size_histogram
-                .entry(column.domain.log_size())
-                .or_insert(0) += 1;
+            *log_size_histogram.entry(column.domain.log_size()).or_insert(0) += 1;
         }
     }
     for (log_size, count) in log_size_histogram {

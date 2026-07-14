@@ -5,9 +5,9 @@ use educe::Educe;
 
 use super::{CircleCoefficients, PolyOps};
 use crate::core::circle::CirclePoint;
+use crate::core::fields::ExtensionOf;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::ExtensionOf;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
@@ -27,11 +27,7 @@ pub struct CircleEvaluation<B: ColumnOps<F>, F: ExtensionOf<BaseField>, EvalOrde
 impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F, EvalOrder> {
     pub fn new(domain: CircleDomain, values: Col<B, F>) -> Self {
         assert_eq!(domain.size(), values.len());
-        Self {
-            domain,
-            values,
-            _eval_order: PhantomData,
-        }
+        Self { domain, values, _eval_order: PhantomData }
     }
 }
 

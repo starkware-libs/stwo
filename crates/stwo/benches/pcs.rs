@@ -1,18 +1,18 @@
 use std::iter;
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+use stwo::prover::CommitmentTreeProver;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{BackendForChannel, CpuBackend};
 use stwo::prover::mempool::BaseColumnPool;
+use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::twiddles::TwiddleTree;
-use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::CommitmentTreeProver;
 
 const LOG_COSET_SIZE: u32 = 20;
 const LOG_BLOWUP_FACTOR: u32 = 1;
@@ -22,10 +22,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
     evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     twiddles: &TwiddleTree<B>,
 ) {
-    let polys = evals
-        .into_iter()
-        .map(|eval| eval.interpolate_with_twiddles(twiddles))
-        .collect();
+    let polys = evals.into_iter().map(|eval| eval.interpolate_with_twiddles(twiddles)).collect();
 
     CommitmentTreeProver::<B, Blake2sMerkleChannel>::new(
         polys,
@@ -52,16 +49,13 @@ fn bench_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(c: &mut Criterion, id: 
     .take(N_POLYS)
     .collect();
 
-    c.bench_function(
-        &format!("{id} polynomial commitment 2^{LOG_COSET_SIZE}"),
-        |b| {
-            b.iter_batched(
-                || evals.clone(),
-                |evals| benched_fn::<B>(black_box(evals), black_box(&twiddles)),
-                BatchSize::LargeInput,
-            );
-        },
-    );
+    c.bench_function(&format!("{id} polynomial commitment 2^{LOG_COSET_SIZE}"), |b| {
+        b.iter_batched(
+            || evals.clone(),
+            |evals| benched_fn::<B>(black_box(evals), black_box(&twiddles)),
+            BatchSize::LargeInput,
+        );
+    });
 }
 
 fn pcs_benches(c: &mut Criterion) {

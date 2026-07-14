@@ -5,20 +5,20 @@ use tracing::instrument;
 
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, QM31};
+use crate::core::fields::qm31::{QM31, SecureField};
 use crate::core::fri::{
     ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
     FriProofAux,
 };
 use crate::core::poly::line::LinePoly;
-use crate::core::queries::{draw_queries, Queries};
+use crate::core::queries::{Queries, draw_queries};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::LOG_PACKED_LEAF_SIZE;
 use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::line::LineEvaluation;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
@@ -120,12 +120,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             Self::commit_inner_layers(channel, config, column, twiddles);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
 
-        Self {
-            config,
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        }
+        Self { config, first_layer, inner_layers, last_layer_poly }
     }
 
     /// Commits to the first FRI layer.
@@ -246,12 +241,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     ///
     /// Panics if the queries were sampled on the wrong domain size.
     pub fn decommit_on_queries(self, queries: &Queries) -> ExtendedFriProof<MC::H> {
-        let Self {
-            config,
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        } = self;
+        let Self { config, first_layer, inner_layers, last_layer_poly } = self;
 
         let first_layer_proof = first_layer.decommit(queries, config.fold_step);
 
@@ -265,10 +255,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             })
             .collect_vec();
 
-        let (inner_proofs, inner_layers_aux): (Vec<_>, Vec<_>) = inner_layer_proofs
-            .into_iter()
-            .map(|p| (p.proof, p.aux))
-            .unzip();
+        let (inner_proofs, inner_layers_aux): (Vec<_>, Vec<_>) =
+            inner_layer_proofs.into_iter().map(|p| (p.proof, p.aux)).unzip();
 
         ExtendedFriProof {
             proof: FriProof {
@@ -276,10 +264,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
                 inner_layers: inner_proofs,
                 last_layer_poly,
             },
-            aux: FriProofAux {
-                first_layer: first_layer_proof.aux,
-                inner_layers: inner_layers_aux,
-            },
+            aux: FriProofAux { first_layer: first_layer_proof.aux, inner_layers: inner_layers_aux },
         }
     }
 }
@@ -302,11 +287,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
             log_rows_per_leaf,
         );
 
-        FriFirstLayerProver {
-            column: first_layer_column,
-            merkle_tree,
-            pack_leaves,
-        }
+        FriFirstLayerProver { column: first_layer_column, merkle_tree, pack_leaves }
     }
 
     fn decommit(self, queries: &Queries, fold_step: u32) -> ExtendedFriLayerProof<H> {
@@ -331,9 +312,8 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         // We can pass an empty vector to the merkle decommit because we don't use its returned
         // opened values.
         // TODO(Leo): consider adding a method to merkle prover to decommit only the auth paths.
-        let (_, decommitment) = self
-            .merkle_tree
-            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
+        let (_, decommitment) =
+            self.merkle_tree.decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
         let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
@@ -342,10 +322,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
                 decommitment: decommitment.decommitment,
                 commitment,
             },
-            aux: FriLayerProofAux {
-                all_values: vec![value_map],
-                decommitment: decommitment.aux,
-            },
+            aux: FriLayerProofAux { all_values: vec![value_map], decommitment: decommitment.aux },
         }
     }
 }
@@ -374,12 +351,7 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
             log_rows_per_leaf,
         );
 
-        FriInnerLayerProver {
-            evaluation,
-            merkle_tree,
-            fold_step,
-            pack_leaves,
-        }
+        FriInnerLayerProver { evaluation, merkle_tree, fold_step, pack_leaves }
     }
 
     fn decommit(self, queries: &Queries) -> ExtendedFriLayerProof<H> {
@@ -401,9 +373,8 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
         };
         // We can pass an empty vector to the merkle decommit because we don't use its returned
         // opened values.
-        let (_, decommitment) = self
-            .merkle_tree
-            .decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
+        let (_, decommitment) =
+            self.merkle_tree.decommit(&decommitment_positions, Vec::<&Col<B, BaseField>>::new());
         let commitment = self.merkle_tree.root();
 
         ExtendedFriLayerProof {
@@ -412,10 +383,7 @@ impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<
                 decommitment: decommitment.decommitment,
                 commitment,
             },
-            aux: FriLayerProofAux {
-                all_values: vec![value_map],
-                decommitment: decommitment.aux,
-            },
+            aux: FriLayerProofAux { all_values: vec![value_map], decommitment: decommitment.aux },
         }
     }
 }
@@ -463,7 +431,7 @@ mod tests {
 
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+    use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
     use crate::core::fri::FriConfig;
     use crate::core::poly::circle::CircleDomain;
     use crate::core::queries::Queries;
@@ -473,8 +441,8 @@ mod tests {
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Col, Column, CpuBackend};
-    use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::secure_column::SecureColumnByCoords;
     use crate::prover::vcs_lifted::ops::PackLeavesOps;
 
@@ -595,10 +563,8 @@ mod tests {
 
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
         let cpu_eval = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
-        let column = SecureEvaluation::new(
-            cpu_eval.domain,
-            cpu_eval.values.to_vec().into_iter().collect(),
-        );
+        let column =
+            SecureEvaluation::new(cpu_eval.domain, cpu_eval.values.to_vec().into_iter().collect());
         let twiddles = SimdBackend::precompute_twiddles(column.domain.half_coset);
         let prover = super::FriProver::<'_, SimdBackend, Keccak256MerkleChannel>::commit(
             &mut Keccak256Channel::default(),

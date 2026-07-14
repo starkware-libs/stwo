@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::One;
+use stwo::core::ColumnVec;
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
@@ -7,22 +8,21 @@ use stwo::core::pcs::{PcsConfig, TreeSubspan};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo::core::ColumnVec;
+use stwo::prover::backend::Column;
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::qm31::PackedSecureField;
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::Column;
-use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::{prove, CommitmentSchemeProver};
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::{CommitmentSchemeProver, prove};
 use stwo_constraint_framework::logup::LookupElements;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{
-    assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
-    LogupTraceGenerator, RelationEntry, TraceLocationAllocator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, LogupTraceGenerator, RelationEntry,
+    TraceLocationAllocator, assert_constraints_on_polys, relation,
 };
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
@@ -106,25 +106,17 @@ pub fn gen_trace(
     let _span = span!(Level::INFO, "Generation").entered();
 
     let domain = CanonicCoset::new(log_size).circle_domain();
-    [
-        &circuit.mult,
-        &circuit.a_val,
-        &circuit.b_val,
-        &circuit.c_val,
-    ]
-    .into_iter()
-    .map(|eval| CircleEvaluation::new(domain, eval.clone()))
-    .collect()
+    [&circuit.mult, &circuit.a_val, &circuit.b_val, &circuit.c_val]
+        .into_iter()
+        .map(|eval| CircleEvaluation::new(domain, eval.clone()))
+        .collect()
 }
 
 pub fn gen_interaction_trace(
     log_size: u32,
     circuit: &PlonkCircuitTrace,
     lookup_elements: &LookupElements<2>,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    SecureField,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
@@ -245,12 +237,10 @@ pub fn prove_fibonacci_plonk(
     );
 
     // Sanity check. Remove for production.
-    let trace_polys = commitment_scheme.trees.as_ref().map(|t| {
-        t.polynomials
-            .iter()
-            .map(|p| p.coeffs.clone().unwrap())
-            .collect_vec()
-    });
+    let trace_polys = commitment_scheme
+        .trees
+        .as_ref()
+        .map(|t| t.polynomials.iter().map(|p| p.coeffs.clone().unwrap()).collect_vec());
     let component_eval = component.clone();
     assert_constraints_on_polys(
         &trace_polys,
@@ -279,9 +269,7 @@ impl Plonk {
     }
 
     pub fn id(&self) -> PreProcessedColumnId {
-        PreProcessedColumnId {
-            id: format!("preprocessed_plonk_{}", self.name),
-        }
+        PreProcessedColumnId { id: format!("preprocessed_plonk_{}", self.name) }
     }
 }
 
@@ -296,7 +284,7 @@ mod tests {
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
 
-    use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
+    use crate::plonk::{PlonkLookupElements, prove_fibonacci_plonk};
 
     #[test_log::test]
     fn test_simd_plonk_prove() {

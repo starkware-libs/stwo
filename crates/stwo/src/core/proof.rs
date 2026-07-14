@@ -6,7 +6,7 @@ use std_shims::Vec;
 
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
 use crate::core::vcs::hash::Hash;
@@ -75,21 +75,12 @@ impl<H: MerkleHasherLifted> StarkProof<H> {
             config: _,
         } = commitment_scheme_proof;
 
-        let FriProof {
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        } = fri_proof;
+        let FriProof { first_layer, inner_layers, last_layer_poly } = fri_proof;
 
         let mut inner_layers_samples_size = 0;
         let mut inner_layers_hashes_size = 0;
 
-        for FriLayerProof {
-            fri_witness,
-            decommitment,
-            commitment,
-        } in inner_layers
-        {
+        for FriLayerProof { fri_witness, decommitment, commitment } in inner_layers {
             inner_layers_samples_size += fri_witness.size_estimate();
             inner_layers_hashes_size += decommitment.size_estimate() + commitment.size_estimate();
         }
@@ -169,22 +160,14 @@ impl<H: MerkleHasherLifted> SizeEstimate for MerkleDecommitmentLifted<H> {
 
 impl<H: MerkleHasherLifted> SizeEstimate for FriLayerProof<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            fri_witness,
-            decommitment,
-            commitment,
-        } = self;
+        let Self { fri_witness, decommitment, commitment } = self;
         fri_witness.size_estimate() + decommitment.size_estimate() + commitment.size_estimate()
     }
 }
 
 impl<H: MerkleHasherLifted> SizeEstimate for FriProof<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            first_layer,
-            inner_layers,
-            last_layer_poly,
-        } = self;
+        let Self { first_layer, inner_layers, last_layer_poly } = self;
         first_layer.size_estimate() + inner_layers.size_estimate() + last_layer_poly.size_estimate()
     }
 }
@@ -222,7 +205,7 @@ mod tests {
     use num_traits::One;
 
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+    use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
     use crate::core::proof::SizeEstimate;
 
     #[test]
@@ -232,9 +215,6 @@ mod tests {
 
     #[test]
     fn test_secure_field_size_estimate() {
-        assert_eq!(
-            SecureField::one().size_estimate(),
-            4 * SECURE_EXTENSION_DEGREE
-        );
+        assert_eq!(SecureField::one().size_estimate(), 4 * SECURE_EXTENSION_DEGREE);
     }
 }

@@ -27,14 +27,14 @@ pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
 #[cfg(all(feature = "prover", feature = "std"))]
 pub use prover::{
-    assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
-    CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
-    SimdDomainEvaluator,
+    AssertEvaluator, CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
+    SimdDomainEvaluator, assert_constraints_on_polys, assert_constraints_on_trace,
+    relation_tracker,
 };
-use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo::core::fields::FieldExpOps;
 use stwo::core::Fraction;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 
 #[rustfmt::skip]
 pub use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
@@ -146,10 +146,7 @@ pub trait EvalAtRow {
         &mut self,
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
-        let frac = Fraction::new(
-            entry.multiplicity.clone(),
-            entry.relation.combine(entry.values),
-        );
+        let frac = Fraction::new(entry.multiplicity.clone(), entry.relation.combine(entry.values));
         self.write_logup_frac(frac);
     }
 
@@ -270,11 +267,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
 }
 impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
     pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
-        Self {
-            relation,
-            multiplicity,
-            values,
-        }
+        Self { relation, multiplicity, values }
     }
 }
 
@@ -321,7 +314,5 @@ macro_rules! m31 {
 #[cfg(test)]
 #[macro_export]
 macro_rules! qm31 {
-    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {{
-        stwo::core::fields::qm31::QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
-    }};
+    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {{ stwo::core::fields::qm31::QM31::from_u32_unchecked($m0, $m1, $m2, $m3) }};
 }

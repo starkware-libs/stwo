@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use stwo::core::pcs::PcsConfig;
 use stwo_examples::poseidon::prove_poseidon;
 

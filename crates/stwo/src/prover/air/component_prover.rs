@@ -1,18 +1,18 @@
 use dashmap::DashMap;
 use itertools::Itertools;
 
+use crate::core::ColumnVec;
 use crate::core::air::{Component, Components};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleDomain;
-use crate::core::ColumnVec;
+use crate::prover::CirclePoint;
 use crate::prover::air::accumulation::{DomainEvaluationAccumulator, EvaluationMode};
 use crate::prover::backend::{Backend, Col};
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
-use crate::prover::CirclePoint;
 
 /// Type alias for the weights hash map used in barycentric eval_at_point.
 pub type WeightsHashMap<B> = DashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>>;
@@ -87,11 +87,7 @@ pub struct ComponentProvers<'a, B: Backend> {
 impl<B: Backend> ComponentProvers<'_, B> {
     pub fn components(&self) -> Components<'_> {
         Components {
-            components: self
-                .components
-                .iter()
-                .map(|c| *c as &dyn Component)
-                .collect_vec(),
+            components: self.components.iter().map(|c| *c as &dyn Component).collect_vec(),
             n_preprocessed_columns: self.n_preprocessed_columns,
         }
     }
@@ -103,11 +99,8 @@ impl<B: Backend> ComponentProvers<'_, B> {
         log_blowup_factor: u32,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
-        let components: Vec<&dyn Component> = self
-            .components
-            .iter()
-            .map(|c| *c as &dyn Component)
-            .collect();
+        let components: Vec<&dyn Component> =
+            self.components.iter().map(|c| *c as &dyn Component).collect();
         let evaluation_mode = EvaluationMode::infer(&components, log_blowup_factor);
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,

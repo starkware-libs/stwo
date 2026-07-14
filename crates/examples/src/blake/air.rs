@@ -1,6 +1,6 @@
 use std::simd::u32x16;
 
-use itertools::{chain, multiunzip, Itertools};
+use itertools::{Itertools, chain, multiunzip};
 use num_traits::Zero;
 use serde::Serialize;
 use stwo::core::air::Component;
@@ -10,23 +10,23 @@ use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::core::verifier::{verify, VerificationError};
-use stwo::prover::backend::simd::m31::LOG_N_LANES;
-use stwo::prover::backend::simd::SimdBackend;
+use stwo::core::verifier::{VerificationError, verify};
 use stwo::prover::backend::BackendForChannel;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::poly::circle::PolyOps;
-use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
+use stwo::prover::{CommitmentSchemeProver, ComponentProver, prove};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
-use tracing::{span, Level};
+use stwo_constraint_framework::{PREPROCESSED_TRACE_IDX, TraceLocationAllocator};
+use tracing::{Level, span};
 
 use super::preprocessed_columns::XorTable;
-use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
+use super::round::{BlakeRoundComponent, BlakeRoundEval, blake_round_info};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
-use super::xor_table::{xor12, xor4, xor7, xor8, xor9};
+use super::xor_table::{xor4, xor7, xor8, xor9, xor12};
 use crate::blake::round::RoundElements;
-use crate::blake::scheduler::{self, blake_scheduler_info, BlakeElements, BlakeInput};
-use crate::blake::{round, xor_table, BlakeXorElements, XorAccums, N_ROUNDS, ROUND_LOG_SPLIT};
+use crate::blake::scheduler::{self, BlakeElements, BlakeInput, blake_scheduler_info};
+use crate::blake::{BlakeXorElements, N_ROUNDS, ROUND_LOG_SPLIT, XorAccums, round, xor_table};
 
 fn preprocessed_xor_columns() -> [PreProcessedColumnId; 15] {
     [
@@ -75,18 +75,10 @@ pub struct BlakeStatement0 {
 impl BlakeStatement0 {
     fn log_sizes(&self) -> TreeVec<Vec<u32>> {
         let mut sizes = vec![];
-        sizes.push(
-            blake_scheduler_info()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.log_size),
-        );
+        sizes.push(blake_scheduler_info().mask_offsets.as_cols_ref().map_cols(|_| self.log_size));
         for l in ROUND_LOG_SPLIT {
             sizes.push(
-                blake_round_info()
-                    .mask_offsets
-                    .as_cols_ref()
-                    .map_cols(|_| self.log_size + l),
+                blake_round_info().mask_offsets.as_cols_ref().map_cols(|_| self.log_size + l),
             );
         }
         sizes.push(xor_table::xor12::trace_sizes::<12, 4>());
@@ -256,9 +248,7 @@ impl BlakeComponents {
     fn component_provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
         chain![
             [&self.scheduler_component as &dyn ComponentProver<SimdBackend>],
-            self.round_components
-                .iter()
-                .map(|c| c as &dyn ComponentProver<SimdBackend>),
+            self.round_components.iter().map(|c| c as &dyn ComponentProver<SimdBackend>),
             [
                 &self.xor12 as &dyn ComponentProver<SimdBackend>,
                 &self.xor9 as &dyn ComponentProver<SimdBackend>,
@@ -277,10 +267,7 @@ where
     SimdBackend: BackendForChannel<MC>,
 {
     assert!(log_size >= LOG_N_LANES);
-    assert_eq!(
-        ROUND_LOG_SPLIT.map(|x| (1 << x)).into_iter().sum::<u32>() as usize,
-        N_ROUNDS
-    );
+    assert_eq!(ROUND_LOG_SPLIT.map(|x| (1 << x)).into_iter().sum::<u32>() as usize, N_ROUNDS);
 
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
@@ -380,19 +367,15 @@ where
         &all_elements.blake_elements,
     );
 
-    let (round_traces, round_claimed_sums): (Vec<_>, Vec<_>) = multiunzip(
-        ROUND_LOG_SPLIT
-            .iter()
-            .zip(round_lookup_data)
-            .map(|(l, lookup_data)| {
-                round::generate_interaction_trace(
-                    log_size + l,
-                    lookup_data,
-                    &all_elements.xor_elements,
-                    &all_elements.round_elements,
-                )
-            }),
-    );
+    let (round_traces, round_claimed_sums): (Vec<_>, Vec<_>) =
+        multiunzip(ROUND_LOG_SPLIT.iter().zip(round_lookup_data).map(|(l, lookup_data)| {
+            round::generate_interaction_trace(
+                log_size + l,
+                lookup_data,
+                &all_elements.xor_elements,
+                &all_elements.round_elements,
+            )
+        }));
 
     let (xor_trace12, xor12_claimed_sum) = xor_table::xor12::generate_interaction_trace(
         xor_lookup_data12,
@@ -456,20 +439,12 @@ where
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
     let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
 
-    BlakeProof {
-        stmt0,
-        stmt1,
-        stark_proof,
-    }
+    BlakeProof { stmt0, stmt1, stark_proof }
 }
 
 #[allow(unused)]
 pub fn verify_blake<MC: MerkleChannel>(
-    BlakeProof {
-        stmt0,
-        stmt1,
-        stark_proof,
-    }: BlakeProof<MC::H>,
+    BlakeProof { stmt0, stmt1, stark_proof }: BlakeProof<MC::H>,
 ) -> Result<(), VerificationError> {
     // TODO(alonf): Consider mixing the config into the channel.
     let channel = &mut MC::C::default();
@@ -507,12 +482,7 @@ pub fn verify_blake<MC: MerkleChannel>(
     // TODO(shahars): Add inputs to sum, and constraint them.
     assert_eq!(claimed_sum, SecureField::zero());
 
-    verify(
-        &components.components(),
-        channel,
-        commitment_scheme,
-        stark_proof,
-    )
+    verify(&components.components(), channel, commitment_scheme, stark_proof)
 }
 
 #[cfg(test)]
@@ -534,10 +504,8 @@ mod tests {
         //   test_simd_blake_prove -- --nocapture --ignored
 
         // Get from environment variable:
-        let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "6".to_string())
-            .parse::<u32>()
-            .unwrap();
+        let log_n_instances =
+            env::var("LOG_N_INSTANCES").unwrap_or_else(|_| "6".to_string()).parse::<u32>().unwrap();
         let config = PcsConfig::default();
 
         // Prove.

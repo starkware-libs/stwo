@@ -28,16 +28,12 @@ impl CircleDomain {
     }
 
     pub fn iter(&self) -> CircleDomainIterator {
-        self.half_coset
-            .iter()
-            .chain(self.half_coset.conjugate().iter())
+        self.half_coset.iter().chain(self.half_coset.conjugate().iter())
     }
 
     /// Iterates over point indices.
     pub fn iter_indices(&self) -> CircleDomainIndexIterator {
-        self.half_coset
-            .iter_indices()
-            .chain(self.half_coset.conjugate().iter_indices())
+        self.half_coset.iter_indices().chain(self.half_coset.conjugate().iter_indices())
     }
 
     /// Returns the size of the domain.
@@ -80,9 +76,7 @@ impl CircleDomain {
             self.half_coset.initial_index,
             self.half_coset.log_size - log_parts,
         ));
-        let shifts = (0..1 << log_parts)
-            .map(|i| self.half_coset.step_size * i)
-            .collect_vec();
+        let shifts = (0..1 << log_parts).map(|i| self.half_coset.step_size * i).collect_vec();
         (subdomain, shifts)
     }
 

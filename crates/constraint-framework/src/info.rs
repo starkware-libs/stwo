@@ -4,17 +4,17 @@ use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use hashbrown::HashMap;
 use num_traits::{One, Zero};
-use std_shims::{vec, Rc, String, Vec};
+use std_shims::{Rc, String, Vec, vec};
+use stwo::core::Fraction;
+use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::TreeVec;
 use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
-use stwo::core::Fraction;
 
 use super::logup::LogupAtRow;
 use super::preprocessed_columns::PreProcessedColumnId;
-use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, INTERACTION_TRACE_IDX, Relation, RelationEntry};
 
 /// Collects information about the constraints.
 /// This includes mask offsets and columns at each interaction, the number of constraints and number
@@ -99,10 +99,7 @@ impl EvalAtRow for InfoEvaluator {
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
         self.logup_counts.inc(entry.relation.get_name());
-        let frac = Fraction::new(
-            entry.multiplicity.clone(),
-            entry.relation.combine(entry.values),
-        );
+        let frac = Fraction::new(entry.multiplicity.clone(), entry.relation.combine(entry.values));
         self.write_logup_frac(frac);
     }
 
@@ -402,16 +399,11 @@ pub struct LogupCountPerRow {
 }
 impl LogupCountPerRow {
     pub fn new() -> Self {
-        Self {
-            data: HashMap::new(),
-        }
+        Self { data: HashMap::new() }
     }
 
     pub fn inc(&mut self, relation: &str) {
-        *self
-            .data
-            .entry(std_shims::ToString::to_string(relation))
-            .or_insert(0) += 1;
+        *self.data.entry(std_shims::ToString::to_string(relation)).or_insert(0) += 1;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &usize)> {
@@ -427,7 +419,7 @@ mod tests {
 
     use super::{ExtensionFieldCounter, InfoEvaluator};
     use crate::info::{ArithmeticCounts, FieldCounter};
-    use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
+    use crate::{EvalAtRow, FrameworkEval, RelationEntry, relation};
 
     #[test]
     fn test_arithmetic_counter() {
@@ -532,10 +524,7 @@ mod tests {
 
     #[test]
     fn test_logup_count_per_row() {
-        let eval = TestEval {
-            relation: TestRelation::dummy(),
-            relation2: TestRelation2::dummy(),
-        };
+        let eval = TestEval { relation: TestRelation::dummy(), relation2: TestRelation2::dummy() };
         let info = eval.evaluate(InfoEvaluator::empty());
 
         assert_eq!(info.logup_counts.data["TestRelation"], 1);

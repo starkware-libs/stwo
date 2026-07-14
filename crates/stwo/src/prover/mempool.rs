@@ -19,9 +19,7 @@ pub struct BaseColumnPool<B: ColumnOps<BaseField>> {
 impl<B: ColumnOps<BaseField>> BaseColumnPool<B> {
     /// Creates a new empty base column pool.
     pub fn new() -> Self {
-        Self {
-            pools: DashMap::new(),
-        }
+        Self { pools: DashMap::new() }
     }
 
     /// Pre-allocates `count` zero-initialized buffers of size `1 << log_size`.
@@ -38,12 +36,9 @@ impl<B: ColumnOps<BaseField>> BaseColumnPool<B> {
     ///
     /// Panics if no buffer of the requested size is available.
     pub fn take(&self, log_size: u32) -> Col<B, BaseField> {
-        self.pools
-            .get_mut(&log_size)
-            .and_then(|mut pool| pool.pop())
-            .unwrap_or_else(|| {
-                panic!("BaseColumnPool: no buffer available for log_size={log_size}")
-            })
+        self.pools.get_mut(&log_size).and_then(|mut pool| pool.pop()).unwrap_or_else(|| {
+            panic!("BaseColumnPool: no buffer available for log_size={log_size}")
+        })
     }
 
     /// Takes a buffer from the pool, or allocates a new zero-initialized one if none is available.

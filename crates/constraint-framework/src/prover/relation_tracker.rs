@@ -3,18 +3,18 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use stwo::core::Fraction;
 use stwo::core::fields::m31::{BaseField, M31};
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::TreeVec;
 use stwo::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
-use stwo::core::Fraction;
 use stwo::prover::backend::Column;
 
 use crate::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry, INTERACTION_TRACE_IDX,
-    MAX_N_INTERACTIONS, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS,
+    PREPROCESSED_TRACE_IDX, Relation, RelationEntry,
 };
 
 #[derive(Debug)]
@@ -32,9 +32,8 @@ pub fn add_to_relation_entries<E: FrameworkEval>(
 
     // Deref the sub-tree. Only copies the references.
     // Interaction trace is no needed for relation tracker.
-    let mut sub_tree = trace
-        .sub_tree(&component.trace_locations[..INTERACTION_TRACE_IDX])
-        .map_cols(|col| *col);
+    let mut sub_tree =
+        trace.sub_tree(&component.trace_locations[..INTERACTION_TRACE_IDX]).map_cols(|col| *col);
 
     // Aggregating the preprocessed columns. This information does not propagate from
     // "next_interaction_mask", hence requires special treatment.
@@ -135,11 +134,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
         let values = entry.values.to_vec();
         let mult = entry.multiplicity.to_m31_array()[0];
 
-        self.entries.push(RelationTrackerEntry {
-            relation: relation.clone(),
-            mult,
-            values,
-        });
+        self.entries.push(RelationTrackerEntry { relation: relation.clone(), mult, values });
     }
 }
 
@@ -151,10 +146,7 @@ impl RelationSummary {
     pub fn summarize_relations(entries: &[RelationTrackerEntry]) -> Self {
         let mut entry_by_relation = HashMap::new();
         for entry in entries {
-            entry_by_relation
-                .entry(entry.relation.clone())
-                .or_insert_with(Vec::new)
-                .push(entry);
+            entry_by_relation.entry(entry.relation.clone()).or_insert_with(Vec::new).push(entry);
         }
         let mut summary = vec![];
         for (relation, entries) in entry_by_relation {
@@ -176,10 +168,7 @@ impl RelationSummary {
     }
 
     pub fn get_relation_info(&self, relation: &str) -> Option<&[(Vec<M31>, M31)]> {
-        self.0
-            .iter()
-            .find(|(name, _)| name == relation)
-            .map(|(_, entries)| entries.as_slice())
+        self.0.iter().find(|(name, _)| name == relation).map(|(_, entries)| entries.as_slice())
     }
 
     /// Cleans up the summary by removing zero-sum entries, only keeping the non-zero ones.

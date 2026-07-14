@@ -17,21 +17,13 @@ impl From<Blake3Hash> for Vec<u8> {
 
 impl From<Vec<u8>> for Blake3Hash {
     fn from(value: Vec<u8>) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting Vec<u8> to Blake3Hash Type!"),
-        )
+        Self(value.try_into().expect("Failed converting Vec<u8> to Blake3Hash Type!"))
     }
 }
 
 impl From<&[u8]> for Blake3Hash {
     fn from(value: &[u8]) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting &[u8] to Blake3Hash Type!"),
-        )
+        Self(value.try_into().expect("Failed converting &[u8] to Blake3Hash Type!"))
     }
 }
 
@@ -63,9 +55,7 @@ pub struct Blake3Hasher {
 
 impl Blake3Hasher {
     pub fn new() -> Self {
-        Self {
-            state: blake3::Hasher::new(),
-        }
+        Self { state: blake3::Hasher::new() }
     }
     pub fn update(&mut self, data: &[u8]) {
         self.state.update(data);

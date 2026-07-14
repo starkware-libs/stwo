@@ -3,16 +3,16 @@ use std::collections::BTreeMap;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use super::ops::MerkleOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::core::vcs::MerkleHasher;
 use crate::core::vcs::utils::{next_decommitment_node, option_flatten_peekable};
 use crate::core::vcs::verifier::{
     ExtendedMerkleDecommitment, MerkleDecommitment, MerkleDecommitmentAux,
 };
-use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, Column};
 
 pub struct MerkleProver<B: MerkleOps<H>, H: MerkleHasher> {
@@ -39,24 +39,18 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
         let _span = span!(Level::TRACE, "Merkle", class = "MerkleCommitment").entered();
         if columns.is_empty() {
-            return Self {
-                layers: vec![B::commit_on_layer(0, None, &[])],
-            };
+            return Self { layers: vec![B::commit_on_layer(0, None, &[])] };
         }
 
-        let columns = &mut columns
-            .into_iter()
-            .sorted_by_key(|c| Reverse(c.len()))
-            .peekable();
+        let columns = &mut columns.into_iter().sorted_by_key(|c| Reverse(c.len())).peekable();
 
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
 
         let max_log_size = columns.peek().unwrap().len().ilog2();
         for log_size in (0..=max_log_size).rev() {
             // Take columns of the current log_size.
-            let layer_columns = columns
-                .peek_take_while(|column| column.len().ilog2() == log_size)
-                .collect_vec();
+            let layer_columns =
+                columns.peek_take_while(|column| column.len().ilog2() == log_size).collect_vec();
 
             layers.push(B::commit_on_layer(log_size, layers.last(), &layer_columns));
         }
@@ -89,10 +83,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
         let mut all_node_values: Vec<HashMap<usize, <H as MerkleHasher>::Hash>> = vec![];
 
         // Sort columns by layer.
-        let mut columns_by_layer = columns
-            .iter()
-            .sorted_by_key(|c| Reverse(c.len()))
-            .peekable();
+        let mut columns_by_layer = columns.iter().sorted_by_key(|c| Reverse(c.len())).peekable();
 
         let mut last_layer_queries = vec![];
         for layer_log_size in (0..self.layers.len() as u32).rev() {
@@ -123,23 +114,16 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
                     // Copy values to all_node_values.
                     all_node_values_for_layer
                         .insert(2 * node_index, previous_layer_hashes.at(2 * node_index));
-                    all_node_values_for_layer.insert(
-                        2 * node_index + 1,
-                        previous_layer_hashes.at(2 * node_index + 1),
-                    );
+                    all_node_values_for_layer
+                        .insert(2 * node_index + 1, previous_layer_hashes.at(2 * node_index + 1));
 
                     // If the left child was not computed, add it to the witness.
                     if prev_layer_queries.next_if_eq(&(2 * node_index)).is_none() {
-                        decommitment
-                            .hash_witness
-                            .push(previous_layer_hashes.at(2 * node_index));
+                        decommitment.hash_witness.push(previous_layer_hashes.at(2 * node_index));
                     }
 
                     // If the right child was not computed, add it to the witness.
-                    if prev_layer_queries
-                        .next_if_eq(&(2 * node_index + 1))
-                        .is_none()
-                    {
+                    if prev_layer_queries.next_if_eq(&(2 * node_index + 1)).is_none() {
                         decommitment
                             .hash_witness
                             .push(previous_layer_hashes.at(2 * node_index + 1));

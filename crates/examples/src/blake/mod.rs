@@ -7,12 +7,12 @@ use std::simd::u32x16;
 
 use num_traits::One;
 use stwo::core::channel::Channel;
-use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::m31::BaseField;
 use stwo::prover::backend::simd::m31::PackedBaseField;
 use stwo::prover::backend::simd::qm31::PackedSecureField;
-use stwo_constraint_framework::{relation, EvalAtRow, Relation, RelationEntry};
-use xor_table::{xor12, xor4, xor7, xor8, xor9};
+use stwo_constraint_framework::{EvalAtRow, Relation, RelationEntry, relation};
+use xor_table::{xor4, xor7, xor8, xor9, xor12};
 
 mod air;
 mod preprocessed_columns;
@@ -156,8 +156,7 @@ where
 
 /// Utility for splitting a u32 into 2 field elements in trace generation.
 fn to_felts(x: &u32x16) -> [PackedBaseField; 2] {
-    [
-        unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) },
-        unsafe { PackedBaseField::from_simd_unchecked(x >> 16) },
-    ]
+    [unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) }, unsafe {
+        PackedBaseField::from_simd_unchecked(x >> 16)
+    }]
 }

@@ -1,13 +1,13 @@
-use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, Vec};
+use std_shims::{Vec, vec};
 use thiserror::Error;
 
+use crate::core::ColumnVec;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::core::ColumnVec;
 
 /// The log number of consecutive QM31s packed into a single Merkle leaf.
 ///
@@ -25,9 +25,7 @@ pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
 
 impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
     pub const fn empty() -> Self {
-        Self {
-            hash_witness: Vec::new(),
-        }
+        Self { hash_witness: Vec::new() }
     }
 }
 
@@ -62,11 +60,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     pub fn new(root: H::Hash, column_log_sizes: Vec<u32>, min_lifting_log_size: u32) -> Self {
         let max_column_log_size = column_log_sizes.iter().copied().max().unwrap_or_default();
         let height = min_lifting_log_size.max(max_column_log_size);
-        Self {
-            root,
-            column_log_sizes,
-            height,
-        }
+        Self { root, column_log_sizes, height }
     }
 
     /// Verifies the decommitment of the columns.
@@ -163,9 +157,8 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
                 // witness.
                 let (idx_0, hash_0) = chunk[0];
                 let children = if chunk.len() == 1 {
-                    let witness = hash_witness
-                        .next()
-                        .ok_or(MerkleVerificationError::WitnessTooShort)?;
+                    let witness =
+                        hash_witness.next().ok_or(MerkleVerificationError::WitnessTooShort)?;
                     match idx_0 & 1 {
                         0 => (hash_0, witness),
                         1 => (witness, hash_0),
@@ -312,8 +305,6 @@ mod tests {
         let queries = vec![13, 3, 7, 3, 1];
         let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect());
         let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes, 0);
-        verifier
-            .verify(&queries, values, decommitment.decommitment)
-            .unwrap();
+        verifier.verify(&queries, values, decommitment.decommitment).unwrap();
     }
 }

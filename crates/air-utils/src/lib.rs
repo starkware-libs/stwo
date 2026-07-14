@@ -15,9 +15,6 @@ pub mod trace;
 pub(crate) fn ensure_rayon_pool() {
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = rayon::ThreadPoolBuilder::new()
-            .num_threads(1)
-            .use_current_thread()
-            .build_global();
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(1).use_current_thread().build_global();
     }
 }

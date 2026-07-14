@@ -1,4 +1,4 @@
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use num_traits::One;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
@@ -24,46 +24,14 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
         let input_v = v.clone();
         let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
 
-        self.g(
-            v.get_disjoint_mut([0, 4, 8, 12]).unwrap(),
-            m[0].clone(),
-            m[1].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([1, 5, 9, 13]).unwrap(),
-            m[2].clone(),
-            m[3].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([2, 6, 10, 14]).unwrap(),
-            m[4].clone(),
-            m[5].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([3, 7, 11, 15]).unwrap(),
-            m[6].clone(),
-            m[7].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([0, 5, 10, 15]).unwrap(),
-            m[8].clone(),
-            m[9].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([1, 6, 11, 12]).unwrap(),
-            m[10].clone(),
-            m[11].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([2, 7, 8, 13]).unwrap(),
-            m[12].clone(),
-            m[13].clone(),
-        );
-        self.g(
-            v.get_disjoint_mut([3, 4, 9, 14]).unwrap(),
-            m[14].clone(),
-            m[15].clone(),
-        );
+        self.g(v.get_disjoint_mut([0, 4, 8, 12]).unwrap(), m[0].clone(), m[1].clone());
+        self.g(v.get_disjoint_mut([1, 5, 9, 13]).unwrap(), m[2].clone(), m[3].clone());
+        self.g(v.get_disjoint_mut([2, 6, 10, 14]).unwrap(), m[4].clone(), m[5].clone());
+        self.g(v.get_disjoint_mut([3, 7, 11, 15]).unwrap(), m[6].clone(), m[7].clone());
+        self.g(v.get_disjoint_mut([0, 5, 10, 15]).unwrap(), m[8].clone(), m[9].clone());
+        self.g(v.get_disjoint_mut([1, 6, 11, 12]).unwrap(), m[10].clone(), m[11].clone());
+        self.g(v.get_disjoint_mut([2, 7, 8, 13]).unwrap(), m[12].clone(), m[13].clone());
+        self.g(v.get_disjoint_mut([3, 4, 9, 14]).unwrap(), m[14].clone(), m[15].clone());
 
         // Yield `Round(input_v, output_v, message)`.
         self.eval.add_to_relation(RelationEntry::new(
@@ -107,12 +75,10 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
         let sh = self.eval.next_trace_mask();
 
         let carry_l = (a.l + b.l - sl.clone()) * E::F::from(INV16);
-        self.eval
-            .add_constraint(carry_l.clone() * carry_l.clone() - carry_l.clone());
+        self.eval.add_constraint(carry_l.clone() * carry_l.clone() - carry_l.clone());
 
         let carry_h = (a.h + b.h + carry_l - sh.clone()) * E::F::from(INV16);
-        self.eval
-            .add_constraint(carry_h.clone() * carry_h.clone() - carry_h.clone());
+        self.eval.add_constraint(carry_h.clone() * carry_h.clone() - carry_h.clone());
 
         Fu32 { l: sl, h: sh }
     }
@@ -135,10 +101,7 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
             carry_h.clone() * (carry_h.clone() - E::F::one()) * (carry_h.clone() - E::F::from(TWO)),
         );
 
-        Fu32 {
-            l: sl,
-            h: sh.clone(),
-        }
+        Fu32 { l: sl, h: sh.clone() }
     }
 
     /// Splits a felt at r.

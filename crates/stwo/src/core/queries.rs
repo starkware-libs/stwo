@@ -40,10 +40,7 @@ impl Queries {
     /// Creates a [Queries] instance from the given unsorted `raw_positions`.
     pub fn new(raw_positions: &[usize], log_domain_size: u32) -> Self {
         Self {
-            positions: BTreeSet::from_iter(raw_positions.iter())
-                .into_iter()
-                .cloned()
-                .collect(),
+            positions: BTreeSet::from_iter(raw_positions.iter()).into_iter().cloned().collect(),
             log_domain_size,
         }
     }
@@ -62,10 +59,7 @@ impl Queries {
     pub fn from_positions(positions: Vec<usize>, log_domain_size: u32) -> Self {
         assert!(positions.is_sorted());
         assert!(positions.iter().all(|p| *p < (1 << log_domain_size)));
-        Self {
-            positions,
-            log_domain_size,
-        }
+        Self { positions, log_domain_size }
     }
 }
 
@@ -83,7 +77,7 @@ mod tests {
 
     use crate::core::channel::Blake2sChannel;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::queries::{draw_queries, Queries};
+    use crate::core::queries::{Queries, draw_queries};
     use crate::core::utils::bit_reverse;
 
     #[test]
@@ -113,23 +107,16 @@ mod tests {
         bit_reverse(&mut folded_values);
 
         // Generate all possible queries.
-        let queries = Queries {
-            positions: (0..1 << log_domain_size).collect(),
-            log_domain_size,
-        };
+        let queries = Queries { positions: (0..1 << log_domain_size).collect(), log_domain_size };
         let n_folds = log_domain_size - log_folded_domain_size;
         let ratio = 1 << n_folds;
 
         let folded_queries = queries.fold(n_folds);
-        let repeated_folded_queries = folded_queries
-            .iter()
-            .flat_map(|q| core::iter::repeat_n(q, ratio));
+        let repeated_folded_queries =
+            folded_queries.iter().flat_map(|q| core::iter::repeat_n(q, ratio));
         for (query, folded_query) in queries.iter().zip(repeated_folded_queries) {
             // Check only the x coordinate since folding might give you the conjugate point.
-            assert_eq!(
-                values[*query].repeated_double(n_folds).x,
-                folded_values[*folded_query].x
-            );
+            assert_eq!(values[*query].repeated_double(n_folds).x, folded_values[*folded_query].x);
         }
     }
 }
