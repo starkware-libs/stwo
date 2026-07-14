@@ -149,12 +149,12 @@ add_library(
         constraints/evaluate_triple_xor_32.cu
         constraints/evaluate_blake_round_sigma.cu
         constraints/evaluate_memory_address_to_id.cu
-        # gate_air MAIN component kernel (grover-tax leaf): co-compiled here ONLY so its device code
-        # device-links with fields/evaluate_common. NOT wired into the generic eval_id dispatch — it
-        # is reached solely via the standalone `evaluate_gate_air_entry` (gate_air_entry.cu) that the
-        # downstream gate-air-cuda-kernel crate declares. The generic Rust backend stays gate_air-free.
-        constraints/evaluate_gate_air.cu
-        constraints/gate_air_entry.cu
+        # NOTE: the gate_air MAIN component kernel (evaluate_gate_air.cu + gate_air_entry.cu) was
+        # EXTRACTED to the downstream gate-air-cuda-kernel crate (grover-tax-v02), which compiles it
+        # into its own libgate_air_cuda.a and HOST-LINKS against this libstwo_cuda. Its only cross-lib
+        # device symbol, `generic_constraint_quotients_finalize_kernel` (evaluate_common.cu), is a
+        # plain external `__global__` that gate_air HOST-launches, so it resolves at host-link — no
+        # `-rdc`/relocatable-archive against this lib is needed. This generic backend is gate_air-free.
         constraints/evaluate_memory_id_to_big.cu
         constraints/evaluate_blake_round.cu
         #opcode

@@ -70,7 +70,8 @@ use super::component_prover::{
     accumulate_pointwise_cpu, get_constraint_quotient_inputs, ConstraintQuotientInputs,
 };
 use super::cuda_constraint_kernel::{
-    gpu_constraints_opt_in, registered_gpu_constraint_kernel, GpuConstraintDispatch,
+    gpu_constraints_opt_in, registered_expected_kernel_guard, registered_gpu_constraint_kernel,
+    GpuConstraintDispatch,
 };
 use super::SimdDomainEvaluator;
 use crate::{
@@ -92,34 +93,36 @@ fn cpu_fallback_forced() -> bool {
     )
 }
 
-/// PANIC (no silent fallback) when the big gate_air MAIN component falls to the host-delegate
-/// constraint path on `CudaBackend`. That path runs composition_eval ~60x slower than the GPU
-/// kernel, so silently taking it turns a GPU prove into a benchmark of the WRONG (slow) code — the
-/// exact regression that let a stale kernel be measured undetected. On the GPU/CudaBackend path the
-/// gate_air kernel is REQUIRED, so reaching the host delegate for the MAIN component is a hard
-/// error.
+/// PANIC (no silent fallback) when a component that a downstream plugin declared "expected on GPU"
+/// falls to the host-delegate constraint path on `CudaBackend`. That path runs composition_eval
+/// ~60x slower than the GPU kernel, so silently taking it turns a GPU prove into a benchmark of the
+/// WRONG (slow) code — the exact regression that let a stale kernel be measured undetected. When a
+/// plugin has registered its kernel it is REQUIRED for that plugin's MAIN component, so reaching
+/// the host delegate for it is a hard error.
 ///
-/// STRUCTURAL FINGERPRINT: fires for the gate_air MAIN component ONLY (large AND many constraints),
-/// never for the small fixed-size table components (rc / program / boundary), whose host-delegation
-/// is normal (they have no GPU kernel). A table is EITHER small (rc 2^16, program ~2^4) OR — if
-/// sample-scaled (boundary = n_shots*512) — carries only a handful of constraints (booleanity +
-/// finalize_logup). The gate_air MAIN component is the only one that is BOTH large (>= 2^18 rows;
-/// ~2^22-2^25 in the benchmark) AND carries many constraints (the 22-col chain-lookup AIR: 15
-/// algebraic + 7 LogUp = 22). Requiring BOTH `n_constraints >= 15` AND `log_n_rows >= 18` separates
-/// MAIN from every table with wide margin (tables have <= ~3 constraints), and neither bound is
-/// tied to the exact column count, so it survives AIR-shape churn. NOTE the old `n_constraints >
-/// 50` warning threshold was a stale relic of the 188-col AIR (157 constraints); the 26->22-col
-/// reduction dropped MAIN to 22 constraints, so `22 > 50` went false and the warning silently died,
-/// which is exactly how the slow host-delegate run went unnoticed. `>= 15` sits below the 22-col
-/// AIR and far above any table.
+/// This backend is CIRCUIT-AGNOSTIC: it does NOT know which component is "big enough that a missing
+/// kernel is a bug". That gate_air-shaped knowledge lives in a DOWNSTREAM plugin, which installs a
+/// predicate via `set_expected_kernel_guard`. This function consults the registered guard:
+///   * No guard registered (`None`) => a generic backend with no plugin => NEVER force-panic (a
+///     host-delegate is always a sanctioned path). This is the new default.
+///   * A guard registered => panic iff the guard returns `true` for this component (its MAIN AIR)
+///     AND the operator did not explicitly opt into a host run.
+///
+/// The plugin's guard is the sole owner of the fingerprint (e.g. gate-air-cuda-kernel installs
+/// `|nc, lr| nc >= 15 && lr >= 18`, separating the large many-constraint gate_air MAIN from every
+/// small fixed-size table component, which host-delegates normally).
 ///
 /// ESCAPE HATCH: honored ONLY when the operator has EXPLICITLY forced the host path via
-/// `CUDA_CONSTRAINT_CPU_FALLBACK=1` (the intentional CPU-vs-GPU composition byte-identity diff), in
-/// which case the host delegate is the deliberate path and must not panic. This function is only
-/// reachable from `ComponentProver<CudaBackend>`, so the CPU/SimdBackend build never calls it.
+/// `CUDA_CONSTRAINT_CPU_FALLBACK=1` (the intentional CPU-vs-GPU composition byte-identity diff), or
+/// opted out of the GPU constraint path entirely (`CUDA_GPU_CONSTRAINTS=0`); both are sanctioned
+/// host runs. This function is only reachable from `ComponentProver<CudaBackend>`, so the
+/// CPU/SimdBackend build never calls it.
 fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
-    let is_gate_air_main = n_constraints >= 15 && log_n_rows >= 18;
-    if !is_gate_air_main {
+    // No downstream plugin registered an "expected-on-GPU" guard -> generic backend, never panic.
+    let Some(guard) = registered_expected_kernel_guard() else {
+        return;
+    };
+    if !guard(n_constraints, log_n_rows) {
         return;
     }
     // Deliberate host-delegate — the operator explicitly asked for it, either by forcing the CPU
@@ -129,12 +132,12 @@ fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
         return;
     }
     panic!(
-        "gate_air MAIN component fell to the audited HOST-DELEGATE constraint path on CudaBackend \
-         (the fast gate_air GPU constraint kernel did NOT engage) — composition_eval would run \
-         ~60x slower, benchmarking the WRONG path. The kernel either was not registered \
-         (gate_air_cuda_kernel::register), declined on a structural mismatch (is_gate_air_main \
-         decline-guard constants stale vs the AIR), or its drawn relation was not installed \
-         (set_gate_air_relation). Refusing to silently fall back. \
+        "A plugin-declared MAIN component (expected-kernel guard matched) fell to the audited \
+         HOST-DELEGATE constraint path on CudaBackend (its fast GPU constraint kernel did NOT \
+         engage) — composition_eval would run ~60x slower, benchmarking the WRONG path. The kernel \
+         either was not registered (plugin `register()`), declined on a structural mismatch (the \
+         kernel's own decline-guard constants stale vs the AIR), or its drawn relation was not \
+         installed. Refusing to silently fall back. \
          (n_constraints={n_constraints}, log_n_rows={log_n_rows}). \
          To intentionally run the host delegate (e.g. the CPU-vs-GPU byte-identity diff), set \
          CUDA_CONSTRAINT_CPU_FALLBACK=1."

@@ -33,8 +33,9 @@ pub use prover::{
 // exposes the registration hook + the inputs the generic prover builds.
 #[cfg(feature = "cuda")]
 pub use prover::{
-    get_constraint_quotient_inputs, gpu_constraints_opt_in, set_gpu_constraint_kernel,
-    ConstraintQuotientInputs, GpuConstraintDispatch, GpuConstraintKernel,
+    get_constraint_quotient_inputs, gpu_constraints_opt_in, set_expected_kernel_guard,
+    set_gpu_constraint_kernel, ConstraintQuotientInputs, ExpectedKernelGuard,
+    GpuConstraintDispatch, GpuConstraintKernel,
 };
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
