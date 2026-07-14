@@ -7,7 +7,6 @@ mod fri;
 pub mod fused_commit;
 mod lookups;
 pub mod poly;
-pub mod poseidon252;
 mod quotient;
 mod secure_column;
 

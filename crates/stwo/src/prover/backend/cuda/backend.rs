@@ -2,13 +2,10 @@ use bytemuck::cast_slice;
 use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
-use crate::core::channel::{
-    Blake2sChannel, Blake2sChannelGeneric, Blake2sM31Channel, Poseidon252Channel,
-};
+use crate::core::channel::{Blake2sChannel, Blake2sChannelGeneric, Blake2sM31Channel};
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
 use crate::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
-use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Backend, BackendForChannel};
 use crate::stwo_cuda::bindings;
@@ -48,11 +45,3 @@ impl GrindOps<Blake2sM31Channel> for CudaBackend {
 }
 
 impl BackendForChannel<Blake2sM31MerkleChannel> for CudaBackend {}
-
-impl GrindOps<Poseidon252Channel> for CudaBackend {
-    fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
-        SimdBackend::grind(channel, pow_bits)
-    }
-}
-
-impl BackendForChannel<Poseidon252MerkleChannel> for CudaBackend {}
