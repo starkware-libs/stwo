@@ -108,6 +108,68 @@ void cuda_get_blake_2s_hash(Blake2sHash *device_ptr, Blake2sHash *host_ptr, size
     cuda_mem_copy_device_to_host<Blake2sHash>(device_ptr + index, host_ptr, 1);
 }
 
+// Option B (pinned minimal-latency single-root read).
+//
+// The FRI-layer and tree-commit chains are intrinsically serial (each root is mixed to draw the
+// challenge the next step consumes), so this does NOT parallelize anything — it only makes the
+// single 32-byte root D2H cheaper. `cuda_get_blake_2s_hash` above routes through the pageable
+// `cuda_mem_copy_device_to_host` (a cudaMemcpyAsync on the DEFAULT stream that, for pageable host
+// memory, blocks the host until the copy completes). This variant instead copies into a PINNED
+// staging buffer on a dedicated non-blocking COPY STREAM and synchronizes ONLY that stream, then
+// memcpys the 32 bytes to the caller's host output. Lower launch/serialization latency, and the
+// copy stream doesn't drag the default stream.
+//
+// The per-thread copy stream + 32-byte pinned staging buffer are created lazily and kept for the
+// thread's lifetime. thread_local (not global) so, under the multi-GPU producer model, each commit
+// thread's stream/buffer live on the device that thread is bound to when it first reads a root — a
+// device-N reader never syncs device-M's stream. For the default single-GPU / single-thread path
+// there is exactly one stream + one pinned buffer, created on device 0.
+//
+// ORDERING: the layer-build kernels that produce the root are enqueued on the DEFAULT stream (as in
+// the pageable path). We record an event on the default stream and make the copy stream wait on it,
+// so the D2H cannot run before the root bytes are computed — then sync the copy stream so the bytes
+// have fully arrived before we return them. This preserves exactly what value is read (byte
+// identical) and when it is available to the caller.
+static thread_local cudaStream_t g_root_copy_stream = nullptr;
+static thread_local Blake2sHash *g_root_pinned = nullptr;
+static thread_local cudaEvent_t g_root_ready_event = nullptr;
+
+void cuda_get_blake_2s_hash_pinned(Blake2sHash *device_ptr, Blake2sHash *host_ptr, size_t index) {
+    if (g_root_copy_stream == nullptr) {
+        // Dedicated non-blocking copy stream (does not implicitly sync the default stream).
+        cudaError_t serr = cudaStreamCreateWithFlags(&g_root_copy_stream, cudaStreamNonBlocking);
+        if (serr != cudaSuccess) {
+            printf("cuda_get_blake_2s_hash_pinned: stream create failed: %s\n", cudaGetErrorString(serr));
+            // Fail-safe: fall back to the pageable blocking read so we never return garbage.
+            cuda_mem_copy_device_to_host<Blake2sHash>(device_ptr + index, host_ptr, 1);
+            return;
+        }
+    }
+    if (g_root_pinned == nullptr) {
+        cudaError_t herr = cudaHostAlloc((void**)&g_root_pinned, sizeof(Blake2sHash), cudaHostAllocDefault);
+        if (herr != cudaSuccess || g_root_pinned == nullptr) {
+            printf("cuda_get_blake_2s_hash_pinned: pinned alloc failed: %s\n", cudaGetErrorString(herr));
+            cuda_mem_copy_device_to_host<Blake2sHash>(device_ptr + index, host_ptr, 1);
+            return;
+        }
+    }
+    if (g_root_ready_event == nullptr) {
+        cudaEventCreateWithFlags(&g_root_ready_event, cudaEventDisableTiming);
+    }
+
+    // Order the copy stream AFTER all default-stream work that produced the root, then copy on the
+    // copy stream and sync only it.
+    if (g_root_ready_event != nullptr) {
+        cudaEventRecord(g_root_ready_event, 0);
+        cudaStreamWaitEvent(g_root_copy_stream, g_root_ready_event, 0);
+    }
+    cudaMemcpyAsync(g_root_pinned, device_ptr + index, sizeof(Blake2sHash),
+                    cudaMemcpyDeviceToHost, g_root_copy_stream);
+    cudaStreamSynchronize(g_root_copy_stream);
+
+    *host_ptr = *g_root_pinned;
+}
+
 // Kernel: Batch get Blake2s hashes from device memory by indices
 __global__ void batch_get_blake2s_kernel(
     const Blake2sHash* src,

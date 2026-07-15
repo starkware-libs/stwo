@@ -259,6 +259,21 @@ extern "C" {
         result: *mut CudaSecureField,
     );
 
+    // Option A (batched OODS): one call launches all `n` independent dot-product kernels (no interior
+    // sync), does a single terminal device sync + single bulk D2H, then the same per-column CPU
+    // reduction the single wrapper does. `evals`/`weights` are arrays of `n` device pointers, `sizes`
+    // an array of `n` domain sizes; `results` (len `n`) receives one value per eval. Byte-identical
+    // to calling `barycentric_eval_at_point_cuda` `n` times; only the schedule changes. The caller
+    // MUST keep any rehydrated `evals[e]` temporaries alive until this returns (the terminal sync
+    // guarantees all kernels have consumed their inputs by then).
+    pub fn barycentric_eval_at_point_batched_cuda(
+        evals: *const *const u32,
+        weights: *const *const u32,
+        sizes: *const i32,
+        n: i32,
+        results: *mut CudaSecureField,
+    );
+
     pub fn sort_values_and_permute_with_bit_reverse_order(
         from: *const u32,
         size: usize,
@@ -400,6 +415,15 @@ extern "C" {
     );
 
     pub fn cuda_get_blake_2s_hash(
+        device_ptr: *const Blake2sHash,
+        host_ptr: *const Blake2sHash,
+        index: usize,
+    );
+
+    // Option B: pinned minimal-latency single-root read. Byte-identical value to
+    // `cuda_get_blake_2s_hash`; copies via a pinned staging buffer on a dedicated copy stream and
+    // syncs only that stream, instead of the pageable blocking default-stream read. See utils.cu.
+    pub fn cuda_get_blake_2s_hash_pinned(
         device_ptr: *const Blake2sHash,
         host_ptr: *const Blake2sHash,
         index: usize,

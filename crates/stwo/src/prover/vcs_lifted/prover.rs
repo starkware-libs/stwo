@@ -109,11 +109,14 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         for col in columns.iter() {
             let log_size = col.len().ilog2() as usize;
             let shift = max_log_size - log_size;
-            let res: Vec<_> = query_positions
+            // Map each query position to its column index (unchanged formula), then gather all in a
+            // single batched read. `batch_at` returns values in the SAME order as these indices, so
+            // `res[k]` equals the previous `col.at(idx_k)` for every `k` — byte-identical.
+            let indices: Vec<usize> = query_positions
                 .iter()
-                .map(|pos| col.at((pos >> (shift + 1) << 1) + (pos & 1)))
+                .map(|pos| (pos >> (shift + 1) << 1) + (pos & 1))
                 .collect();
-            queried_values.push(res);
+            queried_values.push(col.batch_at(&indices));
         }
 
         let mut prev_layer_queries: Vec<usize> =
@@ -133,22 +136,40 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             let prev_layer_hashes = self.layers.get(layer_log_size + 1).unwrap();
             // All chunks have either length 1 (only one child is present) or 2 (both children are
             // present).
-            for queries_chunk in prev_layer_queries.as_slice().chunk_by(|a, b| a ^ 1 == *b) {
+            let chunks: Vec<&[usize]> =
+                prev_layer_queries.as_slice().chunk_by(|a, b| a ^ 1 == *b).collect();
+            // PASS 1: collect the hash indices to read, in the EXACT order the original per-element
+            // loop read them — per chunk: optionally `first ^ 1` (the witness sibling, only for a
+            // length-1 chunk), then `2 * curr_index`, then `2 * curr_index + 1`. A single batched
+            // read then replaces one device->host copy per element with one per layer.
+            let mut read_indices: Vec<usize> = Vec::new();
+            for queries_chunk in &chunks {
+                let first = queries_chunk[0];
+                if queries_chunk.len() == 1 {
+                    read_indices.push(first ^ 1);
+                }
+                let curr_index = first >> 1;
+                read_indices.push(2 * curr_index);
+                read_indices.push(2 * curr_index + 1);
+            }
+            let hashes = prev_layer_hashes.batch_at(&read_indices);
+            // PASS 2: replay the original loop, consuming `hashes` in the same order they were
+            // requested. `hash_witness` push order and the `all_node_values` (key -> hash) contents
+            // are therefore identical to the per-element path (the map is order-insensitive, and the
+            // witness pushes happen in the same chunk order with the same values).
+            let mut hashes_iter = hashes.into_iter();
+            for queries_chunk in &chunks {
                 let first = queries_chunk[0];
                 // If the brother of `first` was not queried before, add its hash to the witness.
                 if queries_chunk.len() == 1 {
-                    decommitment
-                        .hash_witness
-                        .push(prev_layer_hashes.at(first ^ 1))
+                    decommitment.hash_witness.push(hashes_iter.next().unwrap())
                 }
                 let curr_index = first >> 1;
                 curr_layer_queries.push(curr_index);
 
                 // Add the previous layer hashes to all_node_values.
-                all_node_values_for_layer
-                    .insert(2 * curr_index, prev_layer_hashes.at(2 * curr_index));
-                all_node_values_for_layer
-                    .insert(2 * curr_index + 1, prev_layer_hashes.at(2 * curr_index + 1));
+                all_node_values_for_layer.insert(2 * curr_index, hashes_iter.next().unwrap());
+                all_node_values_for_layer.insert(2 * curr_index + 1, hashes_iter.next().unwrap());
             }
             // Propagate queries to the next layer.
             prev_layer_queries = curr_layer_queries;
@@ -165,7 +186,10 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     }
 
     pub fn root(&self) -> H::Hash {
-        self.layers.first().unwrap().at(0)
+        // Option B: the root is read then immediately mixed into the channel to draw the next
+        // challenge (serial commit/FRI chain), so this single read is latency-critical. Use the
+        // pinned minimal-latency read (Cuda overrides it; CPU/SIMD default to `at`, byte-identical).
+        self.layers.first().unwrap().at_root_pinned(0)
     }
 }
 

@@ -75,6 +75,21 @@ impl Blake2sHashVec {
         host_value
     }
 
+    /// Option B: single-hash read via a pinned staging buffer on a dedicated copy stream (syncing
+    /// only that stream), for the latency-critical serial root-read path. Returns the SAME 32 bytes
+    /// as `get_data` for the same `index`; only the transfer path differs.
+    pub fn get_data_pinned(&self, index: usize) -> Blake2sHash {
+        let host_value = Blake2sHash([0u8; 32]);
+        unsafe {
+            bindings::cuda_get_blake_2s_hash_pinned(
+                self.device_ptr,
+                &host_value as *const Blake2sHash,
+                index,
+            )
+        };
+        host_value
+    }
+
     /// Batch get multiple Blake2s hashes by indices
     ///
     /// # Arguments

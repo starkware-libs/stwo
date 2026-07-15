@@ -283,6 +283,11 @@ void copy_blake_2s_hash_vec_from_device_to_device(Blake2sHash *from, Blake2sHash
 extern "C"
 void cuda_get_blake_2s_hash(Blake2sHash *device_ptr, Blake2sHash *host_ptr, size_t index);
 
+// Option B: pinned minimal-latency single-root read (see utils.cu). Byte-identical value to
+// `cuda_get_blake_2s_hash`; only the transfer path (pinned staging + copy-stream sync) differs.
+extern "C"
+void cuda_get_blake_2s_hash_pinned(Blake2sHash *device_ptr, Blake2sHash *host_ptr, size_t index);
+
 extern "C"
 void cuda_batch_get_blake_2s_hash(
     Blake2sHash *device_ptr,

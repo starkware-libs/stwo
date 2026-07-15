@@ -24,4 +24,16 @@ void barycentric_eval_at_point_cuda(
     qm31 *host_result
 );
 
+// Option A (batched OODS): launch all n dot-product kernels with NO interior sync, one terminal
+// device sync, one bulk D2H, then the same per-column CPU reduction. evals[e]/weights[e]/sizes[e]
+// describe eval e; host_results[e] receives eval e's value. Byte-identical to n single calls.
+extern "C"
+void barycentric_eval_at_point_batched_cuda(
+    m31 **evals,
+    qm31 **weights,
+    const int *sizes,
+    int n,
+    qm31 *host_results
+);
+
 #endif // BARYCENTRIC_H

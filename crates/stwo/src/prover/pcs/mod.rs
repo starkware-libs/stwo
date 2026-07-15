@@ -23,7 +23,7 @@ use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::mempool::BaseColumnPool;
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
+use crate::prover::poly::circle::{BarycentricEvalWork, CircleCoefficients, CircleEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
@@ -197,7 +197,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         };
 
         // Lambda that evaluates a polynomial on a collection of circle points and returns a vector
-        // of point samples.
+        // of point samples. Used for the coefficients path (`store_polynomials_coefficients`), which
+        // never touches the barycentric weights map.
         let eval_at_points = |(poly, points): (&Poly<B>, &Vec<CirclePoint<SecureField>>)| {
             points
                 .iter()
@@ -211,16 +212,97 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 .collect_vec()
         };
 
-        #[cfg(not(feature = "parallel"))]
-        let samples: TreeVec<Vec<Vec<PointSample>>> = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .map_cols(eval_at_points);
-        #[cfg(feature = "parallel")]
-        let samples: TreeVec<Vec<Vec<PointSample>>> = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .par_map_cols(eval_at_points);
+        // Option A is gated to backends that set `USE_BATCHED_OODS` (Cuda). CPU/SIMD keep
+        // `USE_BATCHED_OODS == false` and fall through to the original `map_cols`/`par_map_cols`
+        // closure path below, byte-identical AND with their existing column-parallelism intact.
+        let use_batched_oods = B::USE_BATCHED_OODS && weights_hash_map.is_some();
+        let samples: TreeVec<Vec<Vec<PointSample>>> = if let Some(weights_hash_map) =
+            use_batched_oods.then(|| weights_hash_map.as_ref().unwrap())
+        {
+            // BARYCENTRIC PATH (Option A): the polynomials have no stored coefficients, so every
+            // (column x mask-point) sample is a barycentric dot product. These are all independent
+            // and the transcript observes them only ONCE (the single `mix_felts` below), so we batch
+            // them through `B::barycentric_eval_at_points_batched` instead of one sync + D2H per
+            // eval. The Cuda backend overrides that method to enqueue all kernels + one terminal sync
+            // + one bulk D2H; the CPU/SIMD default maps the pre-existing per-point path, so their
+            // output is byte-identical.
+            //
+            // ORDER PRESERVED: we walk trees -> columns -> points (the exact order `map_cols` +
+            // `flatten_cols` produce) to build one flat work list, evaluate it, then re-chunk the
+            // results back into the same nested [tree][col][point] shape. So `sampled_values` and the
+            // `mix_felts` argument are element-for-element identical to the per-point path.
+            let polys = self.polynomials();
+
+            // Hold the weights-map guards for the whole batched call so the `&Col` references stay
+            // valid, and collect the (evals, weights) work plus the ORIGINAL points (for
+            // `PointSample.point`) in tree->col->point order. `shape[tree][col]` = #points, used to
+            // re-chunk.
+            let mut weight_guards = Vec::new();
+            let mut shape: Vec<Vec<usize>> = Vec::with_capacity(polys.len());
+            let mut orig_points: Vec<CirclePoint<SecureField>> = Vec::new();
+            let mut evals_refs: Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>> = Vec::new();
+            for (tree_polys, tree_points) in polys.iter().zip(sampled_points.iter()) {
+                let mut tree_shape = Vec::with_capacity(tree_polys.len());
+                for (poly, points) in tree_polys.iter().zip(tree_points.iter()) {
+                    let log_size = poly.evals.domain.log_size();
+                    for &point in points.iter() {
+                        let folded = point.repeated_double(lifting_log_size - log_size);
+                        let guard = weights_hash_map
+                            .get(&(log_size, folded))
+                            .expect("weights should exist for all sampled points");
+                        weight_guards.push(guard);
+                        orig_points.push(point);
+                        evals_refs.push(&poly.evals);
+                    }
+                    tree_shape.push(points.len());
+                }
+                shape.push(tree_shape);
+            }
+
+            let work: Vec<BarycentricEvalWork<'_, B>> = evals_refs
+                .iter()
+                .zip(weight_guards.iter())
+                .map(|(&evals, guard)| (evals, guard.value()))
+                .collect();
+
+            let values = B::barycentric_eval_at_points_batched(&work);
+            drop(weight_guards);
+
+            // Re-chunk the flat results into [tree][col][point], pairing each with its original
+            // point — the exact structure the per-point path produces.
+            let mut it = values.into_iter().zip(orig_points);
+            TreeVec(
+                shape
+                    .into_iter()
+                    .map(|tree_shape| {
+                        tree_shape
+                            .into_iter()
+                            .map(|n_points| {
+                                (0..n_points)
+                                    .map(|_| {
+                                        let (value, point) = it.next().unwrap();
+                                        PointSample { point, value }
+                                    })
+                                    .collect()
+                            })
+                            .collect()
+                    })
+                    .collect(),
+            )
+        } else {
+            // COEFFICIENTS PATH: unchanged per-column map (no barycentric weights).
+            #[cfg(not(feature = "parallel"))]
+            let samples: TreeVec<Vec<Vec<PointSample>>> = self
+                .polynomials()
+                .zip_cols(&sampled_points)
+                .map_cols(eval_at_points);
+            #[cfg(feature = "parallel")]
+            let samples: TreeVec<Vec<Vec<PointSample>>> = self
+                .polynomials()
+                .zip_cols(&sampled_points)
+                .par_map_cols(eval_at_points);
+            samples
+        };
 
         span.exit();
         let sampled_values = samples

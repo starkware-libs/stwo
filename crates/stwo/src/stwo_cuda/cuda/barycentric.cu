@@ -2,6 +2,7 @@
 #include "batch_inverse.cuh"
 #include "point.cuh"
 #include "utils.cuh"
+#include <vector>
 
 // Duplicated from quotients.cu to avoid cross-file dependencies.
 // These are small inline helper functions.
@@ -256,6 +257,74 @@ void barycentric_eval_at_point_cuda(
     }
 
     *host_result = final_sum;
+
+    cuda_free_memory(partial_sums);
+}
+
+// Host wrapper: barycentric_eval_at_point_batched_cuda (Option A — batched OODS)
+//
+// Batches the OODS barycentric evals that the single-eval wrapper above did one at a time. The
+// (column x mask-point) dot products are all INDEPENDENT and the transcript observes them only once
+// (a single mix_felts AFTER the whole loop), so the per-eval cudaDeviceSynchronize + 4KB D2H in the
+// single wrapper is incidental serialization, not a Fiat-Shamir dependency.
+//
+// This entry point:
+//   1. Launches ALL n dot-product kernels back-to-back with NO interior device sync. Each eval e
+//      writes its DOT_NUM_BLOCKS partial sums into its own slot partial_sums[e*DOT_NUM_BLOCKS ..].
+//   2. Does ONE terminal cudaDeviceSynchronize after the whole launch phase.
+//   3. Does ONE bulk D2H of the entire partial_sums buffer.
+//   4. Runs the SAME per-column CPU reduction as the single wrapper, writing host_results[e].
+//
+// BYTE-IDENTITY: the kernel, its inputs (evals[e], weights[e], sizes[e]), the block/grid dims, and
+// the per-column CPU reduction (fold DOT_NUM_BLOCKS QM31 partials, mod p per coordinate) are all
+// bit-identical to the single wrapper; only the SCHEDULE (batched launch + single sync + single
+// D2H) changes. Result e is therefore identical to calling the single wrapper on eval e.
+//
+// LIFETIME (rehydrate temporaries): the caller owns evals[e] and must keep every rehydrated
+// temporary alive until this call RETURNS — the terminal sync here guarantees every kernel has
+// consumed its evals[e] before we return, after which the caller may drop the temporaries.
+void barycentric_eval_at_point_batched_cuda(
+    m31 **evals,
+    qm31 **weights,
+    const int *sizes,
+    int n,
+    qm31 *host_results
+) {
+    if (n <= 0) {
+        return;
+    }
+
+    // One contiguous device output buffer: n slots of DOT_NUM_BLOCKS QM31 each.
+    unsigned int total_blocks = (unsigned int)n * DOT_NUM_BLOCKS;
+    qm31 *partial_sums = cuda_malloc<qm31>(total_blocks);
+
+    // 1. Enqueue ALL kernels, no interior sync. Each writes into its own slot.
+    for (int e = 0; e < n; e++) {
+        m31_qm31_dot_product_kernel<<<DOT_NUM_BLOCKS, DOT_BLOCK_DIM>>>(
+            evals[e], weights[e], sizes[e], partial_sums + (size_t)e * DOT_NUM_BLOCKS
+        );
+    }
+
+    // 2. ONE terminal sync for the whole launch phase.
+    ASSERT_CUDA_SUCCESS(cudaDeviceSynchronize());
+    ASSERT_CUDA_SUCCESS(cudaGetLastError());
+
+    // 3. ONE bulk D2H of the whole partial-sums buffer.
+    std::vector<qm31> host_partial(total_blocks);
+    cuda_mem_copy_device_to_host(partial_sums, host_partial.data(), total_blocks);
+
+    // 4. Per-column CPU reduction — identical arithmetic to the single wrapper.
+    for (int e = 0; e < n; e++) {
+        const qm31 *slot = host_partial.data() + (size_t)e * DOT_NUM_BLOCKS;
+        qm31 final_sum = {cm31{m31{0}, m31{0}}, cm31{m31{0}, m31{0}}};
+        for (int i = 0; i < DOT_NUM_BLOCKS; i++) {
+            final_sum.a.a = (uint32_t)(((uint64_t)final_sum.a.a + (uint64_t)slot[i].a.a) % 2147483647ULL);
+            final_sum.a.b = (uint32_t)(((uint64_t)final_sum.a.b + (uint64_t)slot[i].a.b) % 2147483647ULL);
+            final_sum.b.a = (uint32_t)(((uint64_t)final_sum.b.a + (uint64_t)slot[i].b.a) % 2147483647ULL);
+            final_sum.b.b = (uint32_t)(((uint64_t)final_sum.b.b + (uint64_t)slot[i].b.b) % 2147483647ULL);
+        }
+        host_results[e] = final_sum;
+    }
 
     cuda_free_memory(partial_sums);
 }

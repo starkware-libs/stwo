@@ -178,6 +178,10 @@ pub fn cuda_batch_eval_at_point(
 impl PolyOps for CudaBackend {
     type Twiddles = BaseFieldVec;
 
+    // Option A: route OODS through the batched barycentric path (see
+    // `barycentric_eval_at_points_batched` below).
+    const USE_BATCHED_OODS: bool = true;
+
     // fn new_canonical_ordered(
     //     coset: CanonicCoset,
     //     values: Col<Self, BaseField>,
@@ -442,6 +446,74 @@ impl PolyOps for CudaBackend {
             );
         }
         SecureField::from(result)
+    }
+
+    /// Option A (batched OODS): evaluate ALL (column x mask-point) barycentric dot products with a
+    /// single batched launch instead of one tiny kernel + full-device sync + 4 KB D2H per eval.
+    ///
+    /// Schedule change ONLY. For each pair we rehydrate the (streaming-committed) column if it was
+    /// dehydrated — exactly as the single `barycentric_eval_at_point` does — then hand all the device
+    /// pointers to `barycentric_eval_at_point_batched_cuda`, which launches every kernel with no
+    /// interior sync, does ONE terminal device sync, ONE bulk D2H, and the SAME per-column CPU
+    /// reduction. The values returned are bit-identical to calling the single wrapper per pair,
+    /// preserving the OODS `mix_felts` content and order.
+    ///
+    /// SHARP EDGE (rehydrate lifetime): a rehydrated `tmp` owns a fresh device buffer that its kernel
+    /// reads. All `tmp`s are held in `rehydrated` across the WHOLE enqueue phase and only dropped
+    /// after `barycentric_eval_at_point_batched_cuda` RETURNS — i.e. after its terminal sync, by
+    /// which point every kernel has consumed its input. So no temporary is freed while a kernel still
+    /// needs it. Non-staged columns keep their own resident buffer alive via `evals` (borrowed for
+    /// the whole call), so their pointers stay valid too.
+    fn barycentric_eval_at_points_batched(
+        work: &[crate::prover::poly::circle::BarycentricEvalWork<'_, Self>],
+    ) -> Vec<SecureField> {
+        if work.is_empty() {
+            return Vec::new();
+        }
+
+        // ENQUEUE-PHASE STATE. `rehydrated` keeps each staged column's temporary device buffer alive
+        // (index-aligned with a Some entry) until after the terminal sync inside the FFI call.
+        let mut rehydrated: Vec<Option<BaseFieldVec>> = Vec::with_capacity(work.len());
+        let mut eval_ptrs: Vec<*const u32> = Vec::with_capacity(work.len());
+        let mut weight_ptrs: Vec<*const u32> = Vec::with_capacity(work.len());
+        let mut sizes: Vec<i32> = Vec::with_capacity(work.len());
+
+        for (evals, weights) in work {
+            let eval_ptr = if fused_commit::is_staged(&evals.values) {
+                // Same rehydrate the single path does; the temporary is bit-identical to the
+                // committed column, so the OODS value is identical to the resident path.
+                let tmp = fused_commit::rehydrate_owned(&evals.values);
+                let ptr = tmp.device_ptr;
+                rehydrated.push(Some(tmp));
+                ptr
+            } else {
+                rehydrated.push(None);
+                evals.values.device_ptr
+            };
+            eval_ptrs.push(eval_ptr);
+            weight_ptrs.push(weights.device_ptr);
+            sizes.push(evals.domain.size() as i32);
+        }
+
+        let mut results: Vec<CudaSecureField> =
+            (0..work.len()).map(|_| CudaSecureField::zero()).collect();
+
+        // Batched launch: all kernels, one terminal sync, one bulk D2H, per-column CPU reduction.
+        unsafe {
+            interface::bindings::barycentric_eval_at_point_batched_cuda(
+                eval_ptrs.as_ptr(),
+                weight_ptrs.as_ptr(),
+                sizes.as_ptr(),
+                work.len() as i32,
+                results.as_mut_ptr(),
+            );
+        }
+
+        // The terminal sync inside the FFI call has completed, so every kernel has consumed its
+        // input; the rehydrated temporaries may now be dropped.
+        drop(rehydrated);
+
+        results.into_iter().map(SecureField::from).collect()
     }
 
     fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {

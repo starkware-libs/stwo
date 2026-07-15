@@ -105,6 +105,20 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
         Self::get_data(self, index)
     }
 
+    /// Bulk gather: one device→host copy for all `indices` instead of one per `at`. Returns the
+    /// SAME values in the SAME order as `indices.iter().map(|&i| self.at(i))` — the only change vs.
+    /// the default trait impl is that the read is batched, so the produced bytes are identical.
+    ///
+    /// Routes exactly like `at`: a host-staged column (freed device buffer, bytes in the streaming
+    /// stash) is served from the stash via `host_batch_get`; a resident column is served by the
+    /// device batch-gather kernel. Both preserve `indices` order.
+    fn batch_at(&self, indices: &[usize]) -> Vec<BaseField> {
+        if crate::prover::backend::cuda::fused_commit::is_staged(self) {
+            return crate::prover::backend::cuda::fused_commit::host_batch_get(self, indices);
+        }
+        self.batch_get(indices)
+    }
+
     fn set(&mut self, _index: usize, _value: BaseField) {
         Self::set_data(self, _index, _value);
     }
@@ -247,6 +261,23 @@ impl Column<Blake2sHash> for Blake2sHashVec {
 
     fn at(&self, index: usize) -> Blake2sHash {
         Self::get_data(self, index)
+    }
+
+    /// Option B: pinned minimal-latency root read. Same 32 bytes as `at(index)`; the transfer uses a
+    /// pinned staging buffer + copy-stream sync instead of the pageable blocking default-stream D2H.
+    /// Merkle-tree hash layers are always device-resident (never host-staged), so there is no stash
+    /// path here.
+    fn at_root_pinned(&self, index: usize) -> Blake2sHash {
+        Self::get_data_pinned(self, index)
+    }
+
+    /// Bulk gather: one device→host copy for all `indices` (each hash is 32 bytes) instead of one
+    /// per `at`. Returns the SAME hashes in the SAME order as
+    /// `indices.iter().map(|&i| self.at(i))`; the only change vs. the default trait impl is that the
+    /// read is batched. Merkle-tree hash layers are always device-resident (never host-staged), so
+    /// there is no stash path here.
+    fn batch_at(&self, indices: &[usize]) -> Vec<Blake2sHash> {
+        self.batch_get(indices)
     }
 
     fn set(&mut self, _index: usize, _value: Blake2sHash) {
