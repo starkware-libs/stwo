@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 
 // Max CUDA devices supported for in-process multi-GPU base proving ("option A"). GPUs 0..7 on the
 // target box; sized generously.
@@ -45,9 +46,10 @@ T* cuda_mem_pool_allocate(size_t count) {
             // (e.g., old drivers, restricted environments)
             cudaError_t aerr = cudaMalloc((void**)&ptr, size);
             if (aerr != cudaSuccess) {
-                printf("Failed to initialize memory pool: %s\n", cudaGetErrorString(init_err));
-                printf("Also failed to fallback cudaMalloc(%zu): %s\n", size, cudaGetErrorString(aerr));
-                return nullptr;
+                fprintf(stderr, "FATAL: failed to initialize memory pool: %s\n", cudaGetErrorString(init_err));
+                fprintf(stderr, "FATAL: OOM allocating %zu bytes (fallback cudaMalloc) at %s:%d: %s\n",
+                        size, __FILE__, __LINE__, cudaGetErrorString(aerr));
+                exit(1);
             }
             return ptr;
         }
@@ -56,12 +58,13 @@ T* cuda_mem_pool_allocate(size_t count) {
     // Allocate from pool; on failure, fallback to cudaMalloc
     cudaError_t err = cudaMallocFromPoolAsync((void**)&ptr, size, g_mem_pool, 0);
     if (err != cudaSuccess) {
-        printf("Failed to allocate %zu bytes from pool: %s\n", size, cudaGetErrorString(err));
+        fprintf(stderr, "Failed to allocate %zu bytes from pool: %s\n", size, cudaGetErrorString(err));
         // Fallback
         cudaError_t aerr = cudaMalloc((void**)&ptr, size);
         if (aerr != cudaSuccess) {
-            printf("Also failed to fallback cudaMalloc(%zu): %s\n", size, cudaGetErrorString(aerr));
-            return nullptr;
+            fprintf(stderr, "FATAL: OOM allocating %zu bytes (pool + fallback cudaMalloc) at %s:%d: %s\n",
+                    size, __FILE__, __LINE__, cudaGetErrorString(aerr));
+            exit(1);
         }
         return ptr;
     }

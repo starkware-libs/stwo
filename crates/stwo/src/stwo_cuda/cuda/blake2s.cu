@@ -434,6 +434,12 @@ blake2s_finalize_all_kernel(
 // Host function: allocate and init Blake2s states on GPU
 void* blake2s_alloc_init_states(int count) {
     Blake2sState *states = cuda_malloc<Blake2sState>(count);
+    if (states == nullptr) {
+        fprintf(stderr,
+                "FATAL: OOM allocating %zu bytes for %d Blake2sState at %s:%d\n",
+                sizeof(Blake2sState) * (size_t)count, count, __FILE__, __LINE__);
+        exit(1);
+    }
     Blake2sState init_state;
     const uint32_t IV[8] = {
         0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
@@ -462,6 +468,12 @@ void blake2s_lift_states(
 ) {
     Blake2sState *prev_states = (Blake2sState*)prev_states_ptr;
     Blake2sState *next_states = cuda_malloc<Blake2sState>(next_size);
+    if (next_states == nullptr) {
+        fprintf(stderr,
+                "FATAL: OOM allocating %zu bytes for %d Blake2sState at %s:%d\n",
+                sizeof(Blake2sState) * (size_t)next_size, next_size, __FILE__, __LINE__);
+        exit(1);
+    }
     int block_dim = BLAKE2S_LIFTED_BLK;
     int num_blocks = (next_size + block_dim - 1) / block_dim;
     blake2s_lift_states_kernel<<<num_blocks, block_dim>>>(
