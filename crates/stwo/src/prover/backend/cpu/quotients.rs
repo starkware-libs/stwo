@@ -8,16 +8,16 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
-    accumulate_row_partial_numerators, denominator_inverses, quotient_constants, ColumnSampleBatch,
+    ColumnSampleBatch, accumulate_row_partial_numerators, denominator_inverses, quotient_constants,
 };
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
+use crate::prover::QuotientOps;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::QuotientOps;
 
 impl QuotientOps for CpuBackend {
     fn accumulate_numerators(

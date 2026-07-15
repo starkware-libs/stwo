@@ -105,10 +105,8 @@ pub fn prove_batch<O: MultivariatePolyOracle>(
 
         let challenge = channel.draw_secure_felt();
 
-        claims = this_round_polys
-            .iter()
-            .map(|round_poly| round_poly.eval_at_point(challenge))
-            .collect();
+        claims =
+            this_round_polys.iter().map(|round_poly| round_poly.eval_at_point(challenge)).collect();
 
         multivariate_polys = multivariate_polys
             .into_iter()
@@ -135,9 +133,7 @@ fn random_linear_combination(
     polys: &[UnivariatePoly<SecureField>],
     alpha: SecureField,
 ) -> UnivariatePoly<SecureField> {
-    polys
-        .iter()
-        .rfold(Zero::zero(), |acc, poly| acc * alpha + poly.clone())
+    polys.iter().rfold(Zero::zero(), |acc, poly| acc * alpha + poly.clone())
 }
 
 /// Partially verifies a sum-check proof.
@@ -191,11 +187,7 @@ pub enum SumcheckError {
     #[error("degree of the polynomial in round {round} is too high")]
     DegreeInvalid { round: RoundIndex },
     #[error("sum does not match the claim in round {round} (sum {sum}, claim {claim})")]
-    SumInvalid {
-        claim: SecureField,
-        sum: SecureField,
-        round: RoundIndex,
-    },
+    SumInvalid { claim: SecureField, sum: SecureField, round: RoundIndex },
 }
 
 /// Sum-check round index where 0 corresponds to the first round.
@@ -207,8 +199,8 @@ mod tests {
     use num_traits::One;
 
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
+    use crate::core::fields::qm31::SecureField;
     use crate::prover::backend::CpuBackend;
     use crate::prover::lookups::mle::Mle;
     use crate::prover::lookups::sumcheck::{partially_verify, prove_batch};

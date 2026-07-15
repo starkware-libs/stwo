@@ -8,7 +8,7 @@ use super::degree::NamedExprs;
 use super::{BaseExpr, ExtExpr};
 use crate::expr::ColumnExpr;
 use crate::preprocessed_columns::PreProcessedColumnId;
-use crate::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
+use crate::{EvalAtRow, INTERACTION_TRACE_IDX, Relation, RelationEntry};
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
@@ -44,18 +44,13 @@ fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseEx
     const ALPHA_SUFFIX: &str = "_alpha";
 
     let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
-    assert!(
-        relation.get_size() >= values.len(),
-        "Not enough alpha powers to combine values"
-    );
+    assert!(relation.get_size() >= values.len(), "Not enough alpha powers to combine values");
     let alpha_powers = (0..relation.get_size())
         .map(|i| ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
     values
         .iter()
         .zip(alpha_powers)
-        .fold(ExtExpr::zero(), |acc, (value, power)| {
-            acc + power * value.clone()
-        })
+        .fold(ExtExpr::zero(), |acc, (value, power)| acc + power * value.clone())
         - z
 }
 
@@ -95,11 +90,7 @@ impl ExprEvaluator {
             .iter()
             .map(|name| {
                 if self.intermediates.contains_key(name) {
-                    format!(
-                        "let {} = {};",
-                        name,
-                        self.intermediates[name].simplify_and_format()
-                    )
+                    format!("let {} = {};", name, self.intermediates[name].simplify_and_format())
                 } else if self.ext_intermediates.contains_key(name) {
                     format!(
                         "let {} = {};",
@@ -131,19 +122,13 @@ impl ExprEvaluator {
 
     pub fn constraint_degree_bounds(&self) -> Vec<usize> {
         let named_exprs = NamedExprs::new(
-            self.intermediates
-                .iter()
-                .map(|(name, expr)| (name.clone(), expr.clone()))
-                .collect(),
+            self.intermediates.iter().map(|(name, expr)| (name.clone(), expr.clone())).collect(),
             self.ext_intermediates
                 .iter()
                 .map(|(name, expr)| (name.clone(), expr.clone()))
                 .collect(),
         );
-        self.constraints
-            .iter()
-            .map(|c| c.degree_bound(&named_exprs))
-            .collect()
+        self.constraints.iter().map(|c| c.degree_bound(&named_exprs)).collect()
     }
 
     /// Collects all the variables used in the constraints and intermediates. Excludes the
@@ -153,16 +138,8 @@ impl ExprEvaluator {
             .constraints
             .iter()
             .map(|expr| expr.collect_variables())
-            .chain(
-                self.intermediates
-                    .values()
-                    .map(|expr| expr.collect_variables()),
-            )
-            .chain(
-                self.ext_intermediates
-                    .values()
-                    .map(|expr| expr.collect_variables()),
-            )
+            .chain(self.intermediates.values().map(|expr| expr.collect_variables()))
+            .chain(self.ext_intermediates.values().map(|expr| expr.collect_variables()))
             .sum::<ExprVariables>();
         let intermediate_vars = self
             .ordered_intermediates
@@ -179,13 +156,9 @@ impl ExprEvaluator {
         let mut assignment = self.collect_variables().random_assignment(0);
         for intermediate in self.ordered_intermediates.clone() {
             if let Some(expr) = self.intermediates.get(&intermediate) {
-                assignment
-                    .1
-                    .insert(intermediate.clone(), expr.assign(&assignment));
+                assignment.1.insert(intermediate.clone(), expr.assign(&assignment));
             } else if let Some(expr) = self.ext_intermediates.get(&intermediate) {
-                assignment
-                    .2
-                    .insert(intermediate.clone(), expr.assign(&assignment));
+                assignment.2.insert(intermediate.clone(), expr.assign(&assignment));
             } else {
                 panic!(
                     "Intermediate {intermediate} not found in intermediates or ext_intermediates"
@@ -241,10 +214,8 @@ impl EvalAtRow for ExprEvaluator {
     }
 
     fn add_intermediate(&mut self, expr: Self::F) -> Self::F {
-        let name = format!(
-            "intermediate{}",
-            self.intermediates.len() + self.ext_intermediates.len()
-        );
+        let name =
+            format!("intermediate{}", self.intermediates.len() + self.ext_intermediates.len());
         let intermediate = BaseExpr::Param(name.clone());
         self.intermediates.insert(name.clone(), expr);
         self.ordered_intermediates.push(name);
@@ -252,10 +223,8 @@ impl EvalAtRow for ExprEvaluator {
     }
 
     fn add_extension_intermediate(&mut self, expr: Self::EF) -> Self::EF {
-        let name = format!(
-            "intermediate{}",
-            self.intermediates.len() + self.ext_intermediates.len()
-        );
+        let name =
+            format!("intermediate{}", self.intermediates.len() + self.ext_intermediates.len());
         let intermediate = ExtExpr::Param(name.clone());
         self.ext_intermediates.insert(name.clone(), expr);
         self.ordered_intermediates.push(name);
@@ -292,30 +261,29 @@ mod tests {
     use stwo::core::fields::FieldExpOps;
 
     use crate::expr::{ExprEvaluator, ExtExpr};
-    use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
+    use crate::{EvalAtRow, FrameworkEval, RelationEntry, relation};
 
     #[test]
     fn test_expr_evaluator() {
         let test_struct = TestStruct {};
         let eval = test_struct.evaluate(ExprEvaluator::new());
-        let expected = "let intermediate0 = (trace_1_column_1_offset_0) * (trace_1_column_2_offset_0);
+        let expected =
+            "let intermediate0 = (trace_1_column_1_offset_0) * (trace_1_column_2_offset_0);
 
-\
-        let intermediate1 = (TestRelation_alpha0) * (trace_1_column_0_offset_0) \
-            + (TestRelation_alpha1) * (trace_1_column_1_offset_0) \
-            + (TestRelation_alpha2) * (trace_1_column_2_offset_0) \
-            - (TestRelation_z);
+let intermediate1 = (TestRelation_alpha0) * (trace_1_column_0_offset_0) + (TestRelation_alpha1) * \
+             (trace_1_column_1_offset_0) + (TestRelation_alpha2) * (trace_1_column_2_offset_0) - \
+             (TestRelation_z);
 
-\
-        let constraint_0 = ((trace_1_column_0_offset_0) * (intermediate0)) * (1 / (trace_1_column_0_offset_0 + trace_1_column_1_offset_0));
+let constraint_0 = ((trace_1_column_0_offset_0) * (intermediate0)) * (1 / \
+             (trace_1_column_0_offset_0 + trace_1_column_1_offset_0));
 
-\
-        let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
-            - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1])) \
-                + (claimed_sum) * (1 / (column_size))) \
-            * (intermediate1) \
-            - (qm31(1, 0, 0, 0));"
-            .to_string();
+let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, \
+             trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) - \
+             (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, \
+             trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, \
+             trace_2_column_6_offset_neg_1])) + (claimed_sum) * (1 / (column_size))) * \
+             (intermediate1) - (qm31(1, 0, 0, 0));"
+                .to_string();
 
         assert_eq!(eval.format_constraints(), expected);
     }
@@ -326,11 +294,8 @@ mod tests {
         let eval = test_struct.evaluate(ExprEvaluator::new());
 
         let assignment = eval.random_assignment();
-        let constraint_regression = eval
-            .constraints
-            .iter()
-            .map(|c| c.assign(&assignment))
-            .collect::<Vec<_>>();
+        let constraint_regression =
+            eval.constraints.iter().map(|c| c.assign(&assignment)).collect::<Vec<_>>();
 
         let equiv_struct = EquivTestStruct {};
         let eval = equiv_struct.evaluate(ExprEvaluator::new());
@@ -338,10 +303,7 @@ mod tests {
         let assignment = eval.random_assignment();
         assert_eq!(
             constraint_regression,
-            eval.constraints
-                .iter()
-                .map(|c| c.assign(&assignment))
-                .collect::<Vec<_>>()
+            eval.constraints.iter().map(|c| c.assign(&assignment)).collect::<Vec<_>>()
         );
     }
 
@@ -352,11 +314,8 @@ mod tests {
         let eval = test_struct.evaluate(ExprEvaluator::new());
 
         let assignment = eval.random_assignment();
-        let constraint_regression = eval
-            .constraints
-            .iter()
-            .map(|c| c.assign(&assignment))
-            .collect::<Vec<_>>();
+        let constraint_regression =
+            eval.constraints.iter().map(|c| c.assign(&assignment)).collect::<Vec<_>>();
 
         let other_struct = TestStructWithDiffLookup {};
         let eval = other_struct.evaluate(ExprEvaluator::new());
@@ -364,10 +323,7 @@ mod tests {
         let assignment = eval.random_assignment();
         assert_eq!(
             constraint_regression,
-            eval.constraints
-                .iter()
-                .map(|c| c.assign(&assignment))
-                .collect::<Vec<_>>()
+            eval.constraints.iter().map(|c| c.assign(&assignment)).collect::<Vec<_>>()
         );
     }
 

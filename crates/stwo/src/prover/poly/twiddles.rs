@@ -1,5 +1,5 @@
-use super::circle::PolyOps;
 use super::BitReversedOrder;
+use super::circle::PolyOps;
 use crate::core::circle::Coset;
 
 /// Precomputed twiddles for a specific coset tower.
@@ -88,9 +88,7 @@ mod tests {
         let subdomain_log_size = 4;
 
         let committed_domain = CanonicCoset::new(committed_log_size).circle_domain();
-        let subdomain = committed_domain
-            .split(committed_log_size - subdomain_log_size)
-            .0;
+        let subdomain = committed_domain.split(committed_log_size - subdomain_log_size).0;
 
         // Precompute twiddles for the committed domain and extract subdomain twiddles.
         let committed_twiddles = slow_precompute_twiddles(committed_domain.half_coset);
@@ -105,10 +103,7 @@ mod tests {
 
         // Compare all layers (excluding the padding element).
         assert_eq!(extracted.len(), expected.len());
-        assert_eq!(
-            extracted[..extracted.len() - 1],
-            expected[..expected.len() - 1]
-        );
+        assert_eq!(extracted[..extracted.len() - 1], expected[..expected.len() - 1]);
     }
 
     /// Tests extraction when the twiddle buffer is larger than the committed domain.
@@ -120,9 +115,7 @@ mod tests {
 
         let root_domain = CanonicCoset::new(root_log_size).circle_domain();
         let committed_domain = CanonicCoset::new(committed_log_size).circle_domain();
-        let subdomain = committed_domain
-            .split(committed_log_size - subdomain_log_size)
-            .0;
+        let subdomain = committed_domain.split(committed_log_size - subdomain_log_size).0;
 
         // Precompute twiddles for the root (larger) domain and extract subdomain twiddles.
         let root_twiddles = slow_precompute_twiddles(root_domain.half_coset);
@@ -137,9 +130,6 @@ mod tests {
 
         // Compare all layers (excluding the padding element).
         assert_eq!(extracted.len(), expected.len());
-        assert_eq!(
-            extracted[..extracted.len() - 1],
-            expected[..expected.len() - 1]
-        );
+        assert_eq!(extracted[..extracted.len() - 1], expected[..expected.len() - 1]);
     }
 }

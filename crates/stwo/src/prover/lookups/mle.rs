@@ -2,8 +2,8 @@ use std::ops::{Deref, DerefMut};
 
 use educe::Educe;
 
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
+use crate::core::fields::qm31::SecureField;
 use crate::prover::backend::{Col, Column, ColumnOps};
 
 pub trait MleOps<F: Field>: ColumnOps<F> + Sized {

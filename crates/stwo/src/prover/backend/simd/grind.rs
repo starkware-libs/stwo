@@ -5,7 +5,7 @@ use std::simd::u32x16;
 use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use super::SimdBackend;
 use crate::core::channel::{Blake2sChannelGeneric, Channel, Keccak256Channel};
@@ -13,7 +13,7 @@ use crate::core::fields::m31::P;
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
 use crate::prover::backend::simd::blake2s::hash_16;
-use crate::prover::backend::simd::m31::{PackedM31, N_LANES};
+use crate::prover::backend::simd::m31::{N_LANES, PackedM31};
 
 // Note: GRIND_LOW_BITS is a cap on how much extra time we need to wait for all threads to finish.
 // It must be <= 30 if we want to guarantee that the lowest 32 bits of the nonce are < 2^31 - 1.
@@ -77,11 +77,7 @@ fn grind_blake<const IS_M31_OUTPUT: bool>(digest: &[u32], hi: u32, pow_bits: u32
             _ => zero,
         });
         let res = hash_16(msgs, (DIGEST_SIZE + NONCE_SIZE) as u64);
-        let res0 = if IS_M31_OUTPUT {
-            PackedM31::reduce_simd(res[0]).into_simd()
-        } else {
-            res[0]
-        };
+        let res0 = if IS_M31_OUTPUT { PackedM31::reduce_simd(res[0]).into_simd() } else { res[0] };
         let success_mask = res0.trailing_zeros().simd_ge(pow_bits);
         if success_mask.any() {
             let i = success_mask.to_array().iter().position(|&x| x).unwrap();
@@ -245,9 +241,7 @@ mod tests {
         let mut channel = C::default();
         channel.mix_u64(0);
 
-        let results = (0..n_attempts)
-            .map(|_| SimdBackend::grind(&channel, pow_bits))
-            .collect_vec();
+        let results = (0..n_attempts).map(|_| SimdBackend::grind(&channel, pow_bits)).collect_vec();
 
         assert!(results.iter().all(|r| r == &results[0]));
     }

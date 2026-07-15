@@ -2,17 +2,17 @@ use std::iter::Sum;
 use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::ptr;
-use std::simd::{u32x16, Simd};
+use std::simd::{Simd, u32x16};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 use rand::distr::{Distribution, StandardUniform};
 
-use super::qm31::PackedQM31;
 use super::PACKED_M31_BATCH_INVERSE_CHUNK_SIZE;
-use crate::core::fields::m31::{pow2147483645, BaseField, M31, MODULUS_BITS, P};
+use super::qm31::PackedQM31;
+use crate::core::fields::m31::{BaseField, M31, MODULUS_BITS, P, pow2147483645};
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::core::fields::{FieldExpOps, batch_inverse_chunked};
 use crate::core::utils;
 
 pub const LOG_N_LANES: u32 = 4;
@@ -141,9 +141,7 @@ impl PackedM31 {
     }
 
     pub fn reduce_simd(value: Simd<u32, N_LANES>) -> Self {
-        unsafe { Self::from_simd_unchecked(value) }
-            .reduce()
-            .reduce()
+        unsafe { Self::from_simd_unchecked(value) }.reduce().reduce()
     }
 }
 
@@ -638,13 +636,13 @@ mod tests {
     use std::array;
     use std::simd::u32x16;
 
-    use aligned::{Aligned, A64};
+    use aligned::{A64, Aligned};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::PackedM31;
-    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::prover::backend::simd::m31::reduce_to_m31_simd;
 
     #[test]

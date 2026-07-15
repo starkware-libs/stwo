@@ -19,9 +19,7 @@ impl MerkleHasherLifted for Keccak256Hasher {
     }
 
     fn update_leaf(&mut self, column_values: &[BaseField]) {
-        column_values
-            .iter()
-            .for_each(|x| self.update(&x.0.to_be_bytes()));
+        column_values.iter().for_each(|x| self.update(&x.0.to_be_bytes()));
     }
 
     fn finalize(self) -> Self::Hash {

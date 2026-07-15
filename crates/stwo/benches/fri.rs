@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
@@ -24,11 +24,7 @@ fn folding_benchmark(c: &mut Criterion) {
     let twiddles = CpuBackend::precompute_twiddles(domain.coset());
     c.bench_function("fold_line", |b| {
         b.iter(|| {
-            black_box(CpuBackend::fold_line(
-                black_box(&evals),
-                black_box(&[alpha]),
-                &twiddles,
-            ));
+            black_box(CpuBackend::fold_line(black_box(&evals), black_box(&[alpha]), &twiddles));
         })
     });
 }

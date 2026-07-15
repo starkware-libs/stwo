@@ -3,18 +3,18 @@ use num_traits::{One, Zero};
 use stwo::core::air::Component;
 use stwo::core::channel::Channel;
 use stwo::core::fields::m31::{BaseField, M31};
-use stwo::core::fields::qm31::{SecureField, QM31};
+use stwo::core::fields::qm31::{QM31, SecureField};
 use stwo::core::pcs::TreeVec;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::CircleEvaluation;
-use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::ComponentProver;
-use stwo_constraint_framework::relation_tracker::{add_to_relation_entries, RelationTrackerEntry};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo_constraint_framework::relation_tracker::{RelationTrackerEntry, add_to_relation_entries};
 use stwo_constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
-    PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX,
+    RelationEntry, relation,
 };
 
 const LOG_CONSTRAINT_DEGREE: u32 = 1;
@@ -49,11 +49,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         let mut output_state = input_state.clone();
         output_state[COORDINATE] += E::F::one();
 
-        eval.add_to_relation(RelationEntry::new(
-            &self.lookup_elements,
-            E::EF::one(),
-            &input_state,
-        ));
+        eval.add_to_relation(RelationEntry::new(&self.lookup_elements, E::EF::one(), &input_state));
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
             -E::EF::one(),
@@ -72,14 +68,8 @@ pub struct StateMachineStatement0 {
 impl StateMachineStatement0 {
     pub fn log_sizes(&self) -> TreeVec<Vec<u32>> {
         let sizes = vec![
-            state_transition_info::<0>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.n),
-            state_transition_info::<1>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.m),
+            state_transition_info::<0>().mask_offsets.as_cols_ref().map_cols(|_| self.n),
+            state_transition_info::<1>().mask_offsets.as_cols_ref().map_cols(|_| self.m),
         ];
         let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
         log_sizes[PREPROCESSED_TRACE_IDX] = vec![];
@@ -117,10 +107,7 @@ pub struct StateMachineComponents {
 
 impl StateMachineComponents {
     pub fn components(&self) -> Vec<&dyn Component> {
-        vec![
-            &self.component0 as &dyn Component,
-            &self.component1 as &dyn Component,
-        ]
+        vec![&self.component0 as &dyn Component, &self.component1 as &dyn Component]
     }
 
     pub fn component_provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
@@ -133,19 +120,13 @@ impl StateMachineComponents {
 
 pub fn track_state_machine_relations(
     trace: &TreeVec<Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-    StateMachineComponents {
-        component0,
-        component1,
-    }: &StateMachineComponents,
+    StateMachineComponents { component0, component1 }: &StateMachineComponents,
 ) -> Vec<RelationTrackerEntry> {
     let trace = trace.as_ref().map_cols(|col| col.to_cpu().values);
     let trace = &trace.as_cols_ref();
 
-    chain!(
-        add_to_relation_entries(component0, trace),
-        add_to_relation_entries(component1, trace)
-    )
-    .collect()
+    chain!(add_to_relation_entries(component0, trace), add_to_relation_entries(component1, trace))
+        .collect()
 }
 
 pub struct StateMachineProof<H: MerkleHasherLifted> {

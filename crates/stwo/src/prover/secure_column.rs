@@ -4,7 +4,7 @@ use std::iter::zip;
 use itertools::zip_eq;
 
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 
 /// A column major array of `SECURE_EXTENSION_DEGREE` base field columns, that represents a column
@@ -25,16 +25,12 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     }
 
     pub fn zeros(len: usize) -> Self {
-        Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
-        }
+        Self { columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)) }
     }
 
     /// # Safety
     pub unsafe fn uninitialized(len: usize) -> Self {
-        Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)),
-        }
+        Self { columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)) }
     }
 
     /// Creates a secure column from a base field column. Each base field element is embedded as
@@ -42,11 +38,7 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     /// coordinates.
     pub fn from_base_field_col(column: &Col<B, BaseField>) -> Self {
         let columns = array::from_fn(|i| {
-            if i == 0 {
-                column.clone()
-            } else {
-                Col::<B, BaseField>::zeros(column.len())
-            }
+            if i == 0 { column.clone() } else { Col::<B, BaseField>::zeros(column.len()) }
         });
         Self { columns }
     }
@@ -60,9 +52,7 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     }
 
     pub fn to_cpu(&self) -> SecureColumnByCoords<CpuBackend> {
-        SecureColumnByCoords {
-            columns: self.columns.clone().map(|c| c.to_cpu()),
-        }
+        SecureColumnByCoords { columns: self.columns.clone().map(|c| c.to_cpu()) }
     }
 
     pub fn set(&mut self, index: usize, value: SecureField) {
@@ -94,10 +84,7 @@ impl<'a> IntoIterator for &'a SecureColumnByCoords<CpuBackend> {
     type IntoIter = SecureColumnByCoordsIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SecureColumnByCoordsIter {
-            column: self,
-            index: 0,
-        }
+        SecureColumnByCoordsIter { column: self, index: 0 }
     }
 }
 impl FromIterator<SecureField> for SecureColumnByCoords<CpuBackend> {

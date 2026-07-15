@@ -4,10 +4,10 @@ use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
-use super::m31::{PackedM31, N_LANES};
 use super::PACKED_CM31_BATCH_INVERSE_CHUNK_SIZE;
+use super::m31::{N_LANES, PackedM31};
 use crate::core::fields::cm31::CM31;
-use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::core::fields::{FieldExpOps, batch_inverse_chunked};
 use crate::core::utils;
 
 /// SIMD implementation of [`CM31`].

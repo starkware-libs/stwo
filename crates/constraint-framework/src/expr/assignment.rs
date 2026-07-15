@@ -4,9 +4,9 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Sub};
 
 use itertools::sorted;
+use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::fields::FieldExpOps;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
 use crate::{AssertEvaluator, EvalAtRow};
@@ -255,12 +255,12 @@ mod tests {
     use std::collections::HashMap;
 
     use num_traits::One;
+    use stwo::core::fields::FieldExpOps;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
-    use stwo::core::fields::FieldExpOps;
 
-    use crate::expr::utils::*;
     use crate::AssertEvaluator;
+    use crate::expr::utils::*;
 
     #[test]
     fn test_eval_expr() {

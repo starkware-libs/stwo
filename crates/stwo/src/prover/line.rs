@@ -1,8 +1,8 @@
 use itertools::Itertools;
 
 use crate::core::fft::ibutterfly;
-use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
+use crate::core::fields::m31::BaseField;
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::prover::backend::{ColumnOps, CpuBackend};
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -144,10 +144,7 @@ mod tests {
         let domain = LineDomain::new(coset);
         let evals = LineEvaluation::<CpuBackend>::new(
             domain,
-            (0..1 << LOG_SIZE)
-                .map(BaseField::from)
-                .map(|x| x.into())
-                .collect(),
+            (0..1 << LOG_SIZE).map(BaseField::from).map(|x| x.into()).collect(),
         );
         let poly = evals.clone().interpolate();
 

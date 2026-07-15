@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use itertools::Itertools;
 use tracing::span::Attributes;
 use tracing::{Id, Subscriber};
+use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 
 pub struct SpanData {
     class: String,
@@ -36,12 +36,8 @@ impl SpanAccumulator {
     /// - Duration_ms: The total time spent in spans with that label, in milliseconds
     pub fn export_csv(&self) -> String {
         let mut out = String::from("Label,Duration_ms\n");
-        for (label, duration) in self
-            .results
-            .lock()
-            .unwrap()
-            .iter()
-            .sorted_by_key(|(label, _)| *label)
+        for (label, duration) in
+            self.results.lock().unwrap().iter().sorted_by_key(|(label, _)| *label)
         {
             out.push_str(&format!("{},{}\n", label, duration.as_secs_f64() * 1000.0));
         }
@@ -109,8 +105,8 @@ impl tracing::field::Visit for ClassFieldVisitor {
 
 #[cfg(test)]
 mod tests {
-    use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Registry;
+    use tracing_subscriber::layer::SubscriberExt;
 
     use super::*;
 

@@ -4,10 +4,10 @@ use std::ops::{Add, Mul};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::simd::column::SecureColumn;
 use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::simd::qm31::PackedSecureField;
-use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Column, CpuBackend};
 use crate::prover::lookups::mle::{Mle, MleOps};
 

@@ -2,7 +2,7 @@ use core::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, BTreeSet, Vec};
+use std_shims::{BTreeSet, Vec, vec};
 use thiserror::Error;
 
 use super::TreeSubspan;
@@ -70,12 +70,7 @@ impl<T> Default for TreeVec<T> {
 
 impl<T> TreeVec<ColumnVec<T>> {
     pub fn map_cols<U, F: FnMut(T) -> U>(self, mut f: F) -> TreeVec<ColumnVec<U>> {
-        TreeVec(
-            self.0
-                .into_iter()
-                .map(|column| column.into_iter().map(&mut f).collect())
-                .collect(),
-        )
+        TreeVec(self.0.into_iter().map(|column| column.into_iter().map(&mut f).collect()).collect())
     }
 
     #[cfg(feature = "parallel")]
@@ -169,12 +164,7 @@ impl<T> TreeVec<ColumnVec<T>> {
 
 impl<T> TreeVec<&ColumnVec<T>> {
     pub fn map_cols<U, F: FnMut(&T) -> U>(self, mut f: F) -> TreeVec<ColumnVec<U>> {
-        TreeVec(
-            self.0
-                .into_iter()
-                .map(|column| column.iter().map(&mut f).collect())
-                .collect(),
-        )
+        TreeVec(self.0.into_iter().map(|column| column.iter().map(&mut f).collect()).collect())
     }
 }
 
@@ -213,7 +203,10 @@ pub fn prepare_preprocessed_query_positions(
 }
 
 #[derive(Clone, Copy, Debug, Error)]
-#[error("Minimum lifting log size is too small ({min_lifting_log_size}). It must be at least the log size of the preprocessed trace ({preprocessed_log_size}).")]
+#[error(
+    "Minimum lifting log size is too small ({min_lifting_log_size}). It must be at least the log \
+     size of the preprocessed trace ({preprocessed_log_size})."
+)]
 pub struct InvalidMinLiftingLogSizeError {
     pub min_lifting_log_size: u32,
     pub preprocessed_log_size: u32,

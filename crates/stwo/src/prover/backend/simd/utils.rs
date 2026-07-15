@@ -158,7 +158,7 @@ pub mod swizzle {
 
     #[cfg(test)]
     mod tests {
-        use std::simd::{u32x4, Swizzle};
+        use std::simd::{Swizzle, u32x4};
 
         use super::{InterleaveEvens, InterleaveOdds};
 

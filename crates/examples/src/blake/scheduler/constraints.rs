@@ -1,4 +1,4 @@
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use num_traits::{One, Zero};
 use stwo::prover::backend::simd::blake2s::SIGMA;
 use stwo_constraint_framework::{EvalAtRow, RelationEntry};
@@ -30,16 +30,8 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             ]
             .collect_vec()
         });
-        eval.add_to_relation(RelationEntry::new(
-            round_lookup_elements,
-            E::EF::one(),
-            &elems_i,
-        ));
-        eval.add_to_relation(RelationEntry::new(
-            round_lookup_elements,
-            E::EF::one(),
-            &elems_j,
-        ));
+        eval.add_to_relation(RelationEntry::new(round_lookup_elements, E::EF::one(), &elems_i));
+        eval.add_to_relation(RelationEntry::new(round_lookup_elements, E::EF::one(), &elems_j));
     }
 
     let input_state = &states[0];

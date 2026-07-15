@@ -1,13 +1,13 @@
 use itertools::Itertools;
-use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::FieldExpOps;
-use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::m31::PackedBaseField;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::m31::PackedBaseField;
 use stwo::prover::backend::{Backend, Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
@@ -29,9 +29,7 @@ pub fn generate_trace<const N: usize, B: Backend>(
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
     assert!(inputs.len().is_power_of_two());
     let log_size = inputs.len().ilog2();
-    let mut trace = (0..N)
-        .map(|_| Col::<B, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace = (0..N).map(|_| Col::<B, BaseField>::zeros(1 << log_size)).collect_vec();
     for (vec_index, input) in inputs.iter().enumerate() {
         let mut a = input.a;
         let mut b = input.b;
@@ -54,9 +52,8 @@ pub fn generate_trace_simd<const N: usize>(
     log_size: u32,
     inputs: &[FibInputSimd],
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    let mut trace = (0..N)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace =
+        (0..N).map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size)).collect_vec();
     for (vec_index, input) in inputs.iter().enumerate() {
         let mut a = input.a;
         let mut b = input.b;
@@ -120,22 +117,19 @@ mod tests {
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::{Column, CpuBackend};
     use stwo::prover::poly::circle::PolyOps;
-    use stwo::prover::{prove, CommitmentSchemeProver};
+    use stwo::prover::{CommitmentSchemeProver, prove};
     use stwo_constraint_framework::{
-        assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
+        AssertEvaluator, FrameworkEval, TraceLocationAllocator, assert_constraints_on_polys,
     };
 
     use super::WideFibonacciEval;
-    use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
+    use crate::wide_fibonacci::{FibInput, WideFibonacciComponent, generate_trace};
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
 
     fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
         (0..1 << log_n_instances)
-            .map(|i| FibInput {
-                a: BaseField::one(),
-                b: BaseField::from_u32_unchecked(i as u32),
-            })
+            .map(|i| FibInput { a: BaseField::one(), b: BaseField::from_u32_unchecked(i as u32) })
             .collect_vec()
     }
 
@@ -218,9 +212,7 @@ mod tests {
             // Prove constraints.
             let component = WideFibonacciComponent::new(
                 &mut TraceLocationAllocator::default(),
-                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 
@@ -281,9 +273,7 @@ mod tests {
 
             let component = WideFibonacciComponent::new(
                 &mut TraceLocationAllocator::default(),
-                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 
@@ -311,11 +301,7 @@ mod tests {
         for log_n_instances in 4..=8 {
             let mut config = PcsConfig::default();
             // Test different steps.
-            config.fri_config.fold_step = if (4..6).contains(&log_n_instances) {
-                2
-            } else {
-                3
-            };
+            config.fri_config.fold_step = if (4..6).contains(&log_n_instances) { 2 } else { 3 };
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
                 CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
@@ -345,9 +331,7 @@ mod tests {
             // Prove constraints.
             let component = WideFibonacciComponent::new(
                 &mut TraceLocationAllocator::default(),
-                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 
@@ -404,9 +388,7 @@ mod tests {
         // Prove constraints.
         let component = WideFibonacciComponent::new(
             &mut TraceLocationAllocator::default(),
-            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                log_n_rows: LOG_N_INSTANCES,
-            },
+            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: LOG_N_INSTANCES },
             SecureField::zero(),
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
@@ -469,16 +451,12 @@ mod tests {
         let mut trace_alloc = TraceLocationAllocator::default();
         let component0 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_COLS_LONG_COMPONENT> {
-                log_n_rows: LOG_SIZE_LONG,
-            },
+            WideFibonacciEval::<N_COLS_LONG_COMPONENT> { log_n_rows: LOG_SIZE_LONG },
             SecureField::zero(),
         );
         let component1 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_COLS_SHORT_COMPONENT> {
-                log_n_rows: LOG_SIZE_SHORT,
-            },
+            WideFibonacciEval::<N_COLS_SHORT_COMPONENT> { log_n_rows: LOG_SIZE_SHORT },
             SecureField::zero(),
         );
 
@@ -505,12 +483,9 @@ mod tests {
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
 
-        assert!(verify(
-            &[&component0, &component1],
-            verifier_channel,
-            commitment_scheme,
-            proof,
-        )
-        .is_ok());
+        assert!(
+            verify(&[&component0, &component1], verifier_channel, commitment_scheme, proof,)
+                .is_ok()
+        );
     }
 }

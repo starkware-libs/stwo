@@ -1,9 +1,9 @@
 use num_traits::One;
 
 use crate::core::fields::qm31::SecureField;
+use crate::prover::AccumulationOps;
 use crate::prover::backend::cpu::CpuBackend;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::AccumulationOps;
 
 impl AccumulationOps for CpuBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
@@ -54,17 +54,17 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs_lifted::test_utils::lift_poly;
+    use crate::prover::AccumulationOps;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::{Column, CpuBackend};
-    use crate::prover::poly::circle::CircleEvaluation;
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::CircleEvaluation;
     use crate::prover::secure_column::SecureColumnByCoords;
-    use crate::prover::AccumulationOps;
     use crate::qm31;
     #[test]
     fn generate_secure_powers_works() {
@@ -106,10 +106,8 @@ mod tests {
             .collect();
         // Compute the lifted evaluations and accumulate them by hand.
         let lifted_log_size = polys.iter().map(|p| p.log_size()).max().unwrap();
-        let lifted_evals: Vec<CircleEvaluation<_, M31, BitReversedOrder>> = polys
-            .iter()
-            .map(|p| lift_poly(p, lifted_log_size))
-            .collect();
+        let lifted_evals: Vec<CircleEvaluation<_, M31, BitReversedOrder>> =
+            polys.iter().map(|p| lift_poly(p, lifted_log_size)).collect();
         let mut expected = SecureColumnByCoords::<CpuBackend>::zeros(1 << lifted_log_size);
         for idx in 0..expected.len() {
             let res = lifted_evals

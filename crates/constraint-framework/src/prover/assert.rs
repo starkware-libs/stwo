@@ -2,14 +2,14 @@ use itertools::Itertools;
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo::core::Fraction;
 use stwo::core::fields::m31::{BaseField, M31};
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
-use stwo::core::Fraction;
 use stwo::parallel_iter;
 use stwo::prover::backend::{Backend, Column};
 use stwo::prover::poly::circle::CircleCoefficients;

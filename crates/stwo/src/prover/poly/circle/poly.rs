@@ -4,8 +4,8 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CircleDomain;
 use crate::prover::backend::{Col, Column, ColumnOps};
-use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::poly::twiddles::TwiddleTree;
 
 /// Coefficients of a polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
@@ -114,9 +114,6 @@ mod tests {
         let extended = poly.clone().extend(8);
         let random_point = CirclePoint::get_point(21903);
 
-        assert_eq!(
-            poly.eval_at_point(random_point),
-            extended.eval_at_point(random_point)
-        );
+        assert_eq!(poly.eval_at_point(random_point), extended.eval_at_point(random_point));
     }
 }

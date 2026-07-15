@@ -5,18 +5,10 @@ use super::{BaseExpr, ColumnExpr, ExtExpr};
 impl BaseExpr {
     pub fn format_expr(&self) -> String {
         match self {
-            BaseExpr::Col(ColumnExpr {
-                interaction,
-                idx,
-                offset,
-            }) => {
+            BaseExpr::Col(ColumnExpr { interaction, idx, offset }) => {
                 let offset_str = {
                     let offset_abs = offset.abs();
-                    if *offset >= 0 {
-                        offset.to_string()
-                    } else {
-                        format!("neg_{offset_abs}")
-                    }
+                    if *offset >= 0 { offset.to_string() } else { format!("neg_{offset_abs}") }
                 };
                 format!("trace_{interaction}_column_{idx}_offset_{offset_str}")
             }

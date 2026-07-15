@@ -1,18 +1,18 @@
 //! Inverse fft.
 
-use std::simd::{simd_swizzle, u32x16, u32x2, u32x4};
+use std::simd::{simd_swizzle, u32x2, u32x4, u32x16};
 
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use super::{
-    compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
+    CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE, compute_first_twiddles, mul_twiddle, transpose_vecs,
 };
 use crate::core::circle::Coset;
 use crate::core::utils::bit_reverse;
 use crate::parallel_iter;
-use crate::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::prover::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
 use crate::prover::backend::simd::utils::UnsafeMut;
 
 /// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
@@ -192,11 +192,8 @@ pub unsafe fn ifft_vecwise_loop(
             std::array::from_fn(|i| *twiddle_dbl[1].get_unchecked(index * 4 + i)),
             std::array::from_fn(|i| *twiddle_dbl[2].get_unchecked(index * 2 + i)),
         );
-        (val0, val1) = simd_ibutterfly(
-            val0,
-            val1,
-            u32x16::splat(*twiddle_dbl[3].get_unchecked(index)),
-        );
+        (val0, val1) =
+            simd_ibutterfly(val0, val1, u32x16::splat(*twiddle_dbl[3].get_unchecked(index)));
         val0.store(values.add(index * 32));
         val1.store(values.add(index * 32 + 16));
     }
@@ -357,18 +354,14 @@ pub fn vecwise_ibutterflies(
     (val0, val1) = val0.deinterleave(val1);
     (val0, val1) = simd_ibutterfly(val0, val1, t1);
 
-    let t = simd_swizzle!(
-        u32x4::from(twiddle2_dbl),
-        [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
-    );
+    let t =
+        simd_swizzle!(u32x4::from(twiddle2_dbl), [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]);
     // Apply the permutation, resulting in indexing b:cdia.
     (val0, val1) = val0.deinterleave(val1);
     (val0, val1) = simd_ibutterfly(val0, val1, t);
 
-    let t = simd_swizzle!(
-        u32x2::from(twiddle3_dbl),
-        [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
-    );
+    let t =
+        simd_swizzle!(u32x2::from(twiddle3_dbl), [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]);
     // Apply the permutation, resulting in indexing a:bcid.
     (val0, val1) = val0.deinterleave(val1);
     (val0, val1) = simd_ibutterfly(val0, val1, t);
@@ -381,13 +374,7 @@ pub fn vecwise_ibutterflies(
 pub fn get_itwiddle_dbls(mut coset: Coset) -> Vec<Vec<u32>> {
     let mut res = vec![];
     for _ in 0..coset.log_size() {
-        res.push(
-            coset
-                .iter()
-                .take(coset.size() / 2)
-                .map(|p| p.x.inverse().0 * 2)
-                .collect_vec(),
-        );
+        res.push(coset.iter().take(coset.size() / 2).map(|p| p.x.inverse().0 * 2).collect_vec());
         bit_reverse(res.last_mut().unwrap());
         coset = coset.double();
     }
@@ -548,17 +535,17 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{
-        get_itwiddle_dbls, ifft, ifft3, ifft_lower_with_vecwise, simd_ibutterfly,
+        get_itwiddle_dbls, ifft, ifft_lower_with_vecwise, ifft3, simd_ibutterfly,
         vecwise_ibutterflies,
     };
     use crate::core::fft::ibutterfly as ground_truth_ibutterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+    use crate::prover::backend::Column;
     use crate::prover::backend::cpu::CpuCircleEvaluation;
     use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
-    use crate::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-    use crate::prover::backend::Column;
+    use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, transpose_vecs};
+    use crate::prover::backend::simd::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
 
     #[test]
     fn test_ibutterfly() {
@@ -581,9 +568,7 @@ mod tests {
     #[test]
     fn test_ifft3() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng
-            .random::<[BaseField; 8]>()
-            .map(PackedBaseField::broadcast);
+        let values = rng.random::<[BaseField; 8]>().map(PackedBaseField::broadcast);
         let twiddles0: [BaseField; 4] = rng.random();
         let twiddles1: [BaseField; 2] = rng.random();
         let twiddles2: [BaseField; 1] = rng.random();
@@ -632,11 +617,7 @@ mod tests {
             (expected[i], expected[j]) = (v0, v1);
         }
         for i in 0..8 {
-            assert_eq!(
-                res[i].to_array(),
-                [expected[i]; N_LANES],
-                "mismatch at i={i}"
-            );
+            assert_eq!(res[i].to_array(), [expected[i]; N_LANES], "mismatch at i={i}");
         }
     }
 

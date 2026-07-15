@@ -20,21 +20,13 @@ impl From<Blake2sHash> for Vec<u8> {
 
 impl From<Vec<u8>> for Blake2sHash {
     fn from(value: Vec<u8>) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting Vec<u8> to Blake2Hash type"),
-        )
+        Self(value.try_into().expect("Failed converting Vec<u8> to Blake2Hash type"))
     }
 }
 
 impl From<&[u8]> for Blake2sHash {
     fn from(value: &[u8]) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting &[u8] to Blake2sHash Type!"),
-        )
+        Self(value.try_into().expect("Failed converting &[u8] to Blake2sHash Type!"))
     }
 }
 
@@ -86,9 +78,7 @@ pub struct Blake2sHasherGeneric<const IS_M31_OUTPUT: bool> {
 
 impl<const IS_M31_OUTPUT: bool> Blake2sHasherGeneric<IS_M31_OUTPUT> {
     pub fn new() -> Self {
-        Self {
-            state: Blake2s256::new(),
-        }
+        Self { state: Blake2s256::new() }
     }
 
     pub fn update(&mut self, data: &[u8]) {

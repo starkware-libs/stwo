@@ -2,11 +2,11 @@ use bytemuck::Zeroable;
 use itertools::Itertools;
 use stwo::core::fields::m31::M31;
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::prover::backend::simd::column::BaseColumn;
-use stwo::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{LOG_N_LANES, N_LANES, PackedM31};
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 
 use super::row_iterator::{ParRowIterMut, RowIterMut};
 
@@ -66,10 +66,7 @@ impl<const N: usize> ComponentTrace<N> {
     ///
     /// if log_size < 4.
     pub fn zeroed(log_size: u32) -> Self {
-        assert!(
-            log_size >= LOG_N_LANES,
-            "log_size < LOG_N_LANES not supported!"
-        );
+        assert!(log_size >= LOG_N_LANES, "log_size < LOG_N_LANES not supported!");
         let n_simd_elems = 1 << (log_size - LOG_N_LANES);
         let data = [(); N].map(|_| vec![PackedM31::zeroed(); n_simd_elems]);
         Self { data, log_size }
@@ -87,10 +84,7 @@ impl<const N: usize> ComponentTrace<N> {
     /// if `log_size` < 4.
     #[allow(clippy::uninit_vec)]
     pub unsafe fn uninitialized(log_size: u32) -> Self {
-        assert!(
-            log_size >= LOG_N_LANES,
-            "log_size < LOG_N_LANES not supported!"
-        );
+        assert!(log_size >= LOG_N_LANES, "log_size < LOG_N_LANES not supported!");
         let n_simd_elems = 1 << (log_size - LOG_N_LANES);
         let data = [(); N].map(|_| {
             let mut vec = Vec::with_capacity(n_simd_elems);
@@ -106,23 +100,13 @@ impl<const N: usize> ComponentTrace<N> {
 
     pub fn iter_mut(&mut self) -> RowIterMut<'_, N> {
         RowIterMut::new(
-            self.data
-                .iter_mut()
-                .map(|col| col.as_mut_slice())
-                .collect_vec()
-                .try_into()
-                .unwrap(),
+            self.data.iter_mut().map(|col| col.as_mut_slice()).collect_vec().try_into().unwrap(),
         )
     }
 
     pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_, N> {
         ParRowIterMut::new(
-            self.data
-                .iter_mut()
-                .map(|col| col.as_mut_slice())
-                .collect_vec()
-                .try_into()
-                .unwrap(),
+            self.data.iter_mut().map(|col| col.as_mut_slice()).collect_vec().try_into().unwrap(),
         )
     }
 
@@ -143,18 +127,16 @@ impl<const N: usize> ComponentTrace<N> {
         assert!(row < 1 << self.log_size);
         let packed_row = row / N_LANES;
         let idx_in_simd_vector = row % N_LANES;
-        self.data
-            .each_ref()
-            .map(|column| column[packed_row].to_array()[idx_in_simd_vector])
+        self.data.each_ref().map(|column| column[packed_row].to_array()[idx_in_simd_vector])
     }
 }
 
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use stwo::core::fields::m31::M31;
     use stwo::core::fields::FieldExpOps;
-    use stwo::prover::backend::simd::m31::{PackedM31, N_LANES};
+    use stwo::core::fields::m31::M31;
+    use stwo::prover::backend::simd::m31::{N_LANES, PackedM31};
 
     #[test]
     fn test_parallel_trace() {
@@ -177,24 +159,16 @@ mod tests {
             })
             .multiunzip();
 
-        trace
-            .par_iter_mut()
-            .zip(arr.par_chunks(N_LANES))
-            .chunks(CHUNK_SIZE)
-            .for_each(|chunk| {
-                chunk.into_iter().for_each(|(row, input)| {
-                    *row[0] = PackedM31::from_array(input.try_into().unwrap());
-                    *row[1] = *row[0] + PackedM31::broadcast(M31(1));
-                    *row[2] = row[0].square() + row[1].square();
-                });
+        trace.par_iter_mut().zip(arr.par_chunks(N_LANES)).chunks(CHUNK_SIZE).for_each(|chunk| {
+            chunk.into_iter().for_each(|(row, input)| {
+                *row[0] = PackedM31::from_array(input.try_into().unwrap());
+                *row[1] = *row[0] + PackedM31::broadcast(M31(1));
+                *row[2] = row[0].square() + row[1].square();
             });
+        });
         let actual = trace
             .data
-            .map(|c| {
-                c.into_iter()
-                    .flat_map(|packed| packed.to_array())
-                    .collect_vec()
-            })
+            .map(|c| c.into_iter().flat_map(|packed| packed.to_array()).collect_vec())
             .into_iter()
             .next_tuple()
             .unwrap();

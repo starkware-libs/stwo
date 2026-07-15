@@ -63,10 +63,7 @@ impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
         &'a mut self,
         predicate: P,
     ) -> PeekTakeWhile<'a, I, P> {
-        PeekTakeWhile {
-            iter: self,
-            predicate,
-        }
+        PeekTakeWhile { iter: self, predicate }
     }
 }
 
@@ -199,11 +196,7 @@ pub const fn circle_domain_index_to_coset_index(
     log_domain_size: u32,
 ) -> usize {
     let n = 1 << log_domain_size;
-    if circle_index < n / 2 {
-        circle_index * 2
-    } else {
-        (n - 1 - circle_index) * 2 + 1
-    }
+    if circle_index < n / 2 { circle_index * 2 } else { (n - 1 - circle_index) * 2 + 1 }
 }
 
 /// Converts an index within a [`Coset`] to the corresponding index in a [`CircleDomain`].
@@ -313,10 +306,7 @@ mod tests {
             .map(|index| {
                 let prev_index =
                     previous_bit_reversed_circle_domain_index(index, log_size - 3, log_size);
-                (
-                    bit_reversed_evaluation[index],
-                    bit_reversed_evaluation[prev_index],
-                )
+                (bit_reversed_evaluation[index], bit_reversed_evaluation[prev_index])
             })
             .sorted()
             .collect_vec();

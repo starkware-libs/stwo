@@ -157,8 +157,8 @@ mod tests {
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
 
-    use crate::expr::utils::*;
     use crate::AssertEvaluator;
+    use crate::expr::utils::*;
 
     #[test]
     fn test_simplify_expr() {
@@ -197,21 +197,15 @@ mod tests {
                 * (minus_one.clone() * c0.clone());
 
         let expr = (qzero.clone()
-            + secure_col!(
-                base_expr.clone(),
-                base_expr.clone(),
-                zero.clone(),
-                one.clone()
-            )
+            + secure_col!(base_expr.clone(), base_expr.clone(), zero.clone(), one.clone())
             - qzero.clone())
             * qone.clone()
             * b.clone()
             * qminus_one.clone();
 
         let full_eval = expr.eval_expr::<AssertEvaluator<'_>, _, _, _>(&columns, &vars, &ext_vars);
-        let simplified_eval = expr
-            .simplify()
-            .eval_expr::<AssertEvaluator<'_>, _, _, _>(&columns, &vars, &ext_vars);
+        let simplified_eval =
+            expr.simplify().eval_expr::<AssertEvaluator<'_>, _, _, _>(&columns, &vars, &ext_vars);
 
         assert_eq!(full_eval, simplified_eval);
     }

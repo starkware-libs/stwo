@@ -1,14 +1,14 @@
 use core::iter::zip;
 
-use std_shims::{vec, Vec};
+use std_shims::{Vec, vec};
 
-use super::accumulation::PointEvaluationAccumulator;
 use super::Component;
+use super::accumulation::PointEvaluationAccumulator;
+use crate::core::ColumnVec;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
-use crate::core::ColumnVec;
 
 pub struct Components<'a> {
     pub components: Vec<&'a dyn Component>,

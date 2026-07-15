@@ -1,9 +1,9 @@
-use std::simd::{simd_swizzle, u32x2, Simd};
+use std::simd::{Simd, simd_swizzle, u32x2};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::m31::{PackedM31, LOG_N_LANES};
+use super::m31::{LOG_N_LANES, PackedM31};
 use crate::core::circle::{CirclePoint, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::M31;
 use crate::core::poly::circle::CircleDomain;
@@ -38,30 +38,18 @@ impl CircleDomainBitRevIterator {
                 - domain.half_coset.step.mul(prev_mul as u128);
             flips[i as usize] = flip;
         }
-        Self {
-            domain,
-            i: 0,
-            current,
-            flips,
-        }
+        Self { domain, i: 0, current, flips }
     }
 
     pub fn start_at(&self, i: usize) -> Self {
         let current = std::array::from_fn(|j| {
-            self.domain.at(bit_reverse_index(
-                (i << LOG_N_LANES) + j,
-                self.domain.log_size(),
-            ))
+            self.domain.at(bit_reverse_index((i << LOG_N_LANES) + j, self.domain.log_size()))
         });
         let current = CirclePoint {
             x: PackedM31::from_array(current.each_ref().map(|p| p.x)),
             y: PackedM31::from_array(current.each_ref().map(|p| p.y)),
         };
-        Self {
-            i,
-            current,
-            ..*self
-        }
+        Self { i, current, ..*self }
     }
 
     #[cfg(feature = "parallel")]
@@ -115,10 +103,7 @@ mod tests {
         crate::core::utils::bit_reverse(&mut expected);
         let actual = CircleDomainBitRevIterator::new(domain)
             .flat_map(|c| -> [_; 16] {
-                std::array::from_fn(|i| CirclePoint {
-                    x: c.x.to_array()[i],
-                    y: c.y.to_array()[i],
-                })
+                std::array::from_fn(|i| CirclePoint { x: c.x.to_array()[i], y: c.y.to_array()[i] })
             })
             .collect::<Vec<_>>();
         assert_eq!(actual, expected);

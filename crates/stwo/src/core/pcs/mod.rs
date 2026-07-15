@@ -47,17 +47,9 @@ impl PcsConfig {
     }
 
     pub fn mix_into(&self, channel: &mut impl Channel) {
-        let PcsConfig {
-            pow_bits,
-            fri_config,
-            min_lifting_log_size,
-        } = self;
-        let FriConfig {
-            log_blowup_factor,
-            n_queries,
-            log_last_layer_degree_bound,
-            fold_step,
-        } = fri_config;
+        let PcsConfig { pow_bits, fri_config, min_lifting_log_size } = self;
+        let FriConfig { log_blowup_factor, n_queries, log_last_layer_degree_bound, fold_step } =
+            fri_config;
 
         channel.mix_felts(&[
             SecureField::from_u32_unchecked(
@@ -73,11 +65,7 @@ impl PcsConfig {
 
 impl Default for PcsConfig {
     fn default() -> Self {
-        Self {
-            pow_bits: 10,
-            fri_config: FriConfig::new(0, 1, 3, 1),
-            min_lifting_log_size: 0,
-        }
+        Self { pow_bits: 10, fri_config: FriConfig::new(0, 1, 3, 1), min_lifting_log_size: 0 }
     }
 }
 

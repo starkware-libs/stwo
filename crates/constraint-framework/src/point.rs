@@ -1,8 +1,8 @@
 use core::ops::Mul;
 
-use std_shims::{vec, Vec};
+use std_shims::{Vec, vec};
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::TreeVec;
 use stwo::core::{ColumnVec, Fraction};
 
@@ -54,8 +54,7 @@ impl EvalAtRow for PointEvaluator<'_> {
     where
         Self::EF: Mul<G, Output = Self::EF>,
     {
-        self.evaluation_accumulator
-            .accumulate(self.denom_inverse * constraint);
+        self.evaluation_accumulator.accumulate(self.denom_inverse * constraint);
     }
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_partial_evals(values)

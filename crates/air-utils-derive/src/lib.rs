@@ -3,7 +3,7 @@ mod iter_mut;
 mod iterable_field;
 mod par_iter;
 use iterable_field::to_iterable_fields;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(Uninitialized)]
 pub fn derive_uninitialized(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

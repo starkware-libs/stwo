@@ -7,9 +7,9 @@ use std_shims::Vec;
 
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::{BaseField, M31};
+use crate::core::vcs::MerkleHasher;
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::utils::add_length_padding;
-use crate::core::vcs::MerkleHasher;
 
 pub const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -44,10 +44,7 @@ impl MerkleHasher for Poseidon252MerkleHasher {
 // Performs felt252 = felt252 << 31 + limb.
 const fn append_m31(felt: &mut [u128; 2], limb: M31) {
     // Felt = Felt << 31 + limb.
-    *felt = [
-        felt[0] << 31 | limb.0 as u128,
-        felt[1] << 31 | felt[0] >> (128 - 31),
-    ];
+    *felt = [felt[0] << 31 | limb.0 as u128, felt[1] << 31 | felt[0] >> (128 - 31)];
 }
 
 /// Constructs a felt252 from a slice of m31s.
@@ -86,13 +83,13 @@ mod tests {
     use starknet_ff::FieldElement as FieldElement252;
 
     use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::vcs::MerkleHasher;
     use crate::core::vcs::poseidon252_merkle::{
-        construct_felt252_from_m31s, Poseidon252MerkleHasher, ELEMENTS_IN_BLOCK,
+        ELEMENTS_IN_BLOCK, Poseidon252MerkleHasher, construct_felt252_from_m31s,
     };
     use crate::core::vcs::test_utils::prepare_merkle;
     use crate::core::vcs::utils::add_length_padding;
     use crate::core::vcs::verifier::MerkleVerificationError;
-    use crate::core::vcs::MerkleHasher;
     use crate::m31;
 
     #[test]
@@ -215,10 +212,8 @@ mod tests {
             })
             .collect_vec();
 
-        let result = random_values
-            .chunks(ELEMENTS_IN_BLOCK)
-            .map(construct_felt252_from_m31s)
-            .collect_vec();
+        let result =
+            random_values.chunks(ELEMENTS_IN_BLOCK).map(construct_felt252_from_m31s).collect_vec();
 
         assert_eq!(expected, result);
     }

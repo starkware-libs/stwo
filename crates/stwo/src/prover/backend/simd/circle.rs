@@ -8,20 +8,20 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
-use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use super::qm31::PackedSecureField;
 use super::SimdBackend;
+use super::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE, ifft, rfft};
+use super::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
+use super::qm31::PackedSecureField;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{batch_inverse, Field, FieldExpOps};
+use crate::core::fields::{Field, FieldExpOps, batch_inverse};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
-use crate::core::utils::{bit_reverse_index, SliceExt};
+use crate::core::utils::{SliceExt, bit_reverse_index};
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
@@ -29,9 +29,9 @@ use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::fri::FriOps;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 
 impl SimdBackend {
     // TODO(Ohad): optimize.
@@ -108,13 +108,9 @@ impl SimdBackend {
 
         let mut steps = vec![mappings[0]];
 
-        mappings
-            .iter()
-            .skip(1)
-            .zip(denom_inverses.iter())
-            .for_each(|(m, d)| {
-                steps.push(*m * *d);
-            });
+        mappings.iter().skip(1).zip(denom_inverses.iter()).for_each(|(m, d)| {
+            steps.push(*m * *d);
+        });
         steps.push(F::one());
         steps
     }
@@ -197,11 +193,7 @@ impl PolyOps for SimdBackend {
                                  offset: usize| {
             let mut sum = PackedSecureField::zeroed();
             let mut twiddle_high = Self::twiddle_at(&mappings, offset * N_LANES);
-            for (i, coeff_chunk) in coeff_chunk
-                .checked_as_chunks::<N_LANES>()
-                .iter()
-                .enumerate()
-            {
+            for (i, coeff_chunk) in coeff_chunk.checked_as_chunks::<N_LANES>().iter().enumerate() {
                 // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
                 // Multiply it by every mid twiddle factor to get the factors for the current chunk.
                 let high_twiddle_factors =
@@ -301,28 +293,17 @@ impl PolyOps for SimdBackend {
         // weights_vec_len is even because domain.size() is a power of 2 (we already dealt with the
         // case where domain.size() < N_LANES).
         let si_i_vn_p = PackedSecureField::from_array(std::array::from_fn(|i| {
-            if i.is_multiple_of(2) {
-                si_0 * vn_p
-            } else {
-                -si_0 * vn_p
-            }
+            if i.is_multiple_of(2) { si_0 * vn_p } else { -si_0 * vn_p }
         }));
 
         #[cfg(not(feature = "parallel"))]
-        let weights = (0..weights_vec_len)
-            .map(|i| vi_p_inverse[i] * si_i_vn_p)
-            .collect_vec();
+        let weights = (0..weights_vec_len).map(|i| vi_p_inverse[i] * si_i_vn_p).collect_vec();
 
         #[cfg(feature = "parallel")]
-        let weights: Vec<PackedSecureField> = (0..weights_vec_len)
-            .into_par_iter()
-            .map(|i| vi_p_inverse[i] * si_i_vn_p)
-            .collect();
+        let weights: Vec<PackedSecureField> =
+            (0..weights_vec_len).into_par_iter().map(|i| vi_p_inverse[i] * si_i_vn_p).collect();
 
-        Col::<Self, SecureField> {
-            data: weights,
-            length: domain.size(),
-        }
+        Col::<Self, SecureField> { data: weights, length: domain.size() }
     }
 
     fn barycentric_eval_at_point(
@@ -339,10 +320,9 @@ impl PolyOps for SimdBackend {
         #[cfg(feature = "parallel")]
         return (0..evals.domain.size().div_ceil(N_LANES))
             .into_par_iter()
-            .fold(
-                PackedSecureField::zero,
-                |acc: PackedSecureField, i: usize| acc + (weights.data[i] * evals.values.data[i]),
-            )
+            .fold(PackedSecureField::zero, |acc: PackedSecureField, i: usize| {
+                acc + (weights.data[i] * evals.values.data[i])
+            })
             .sum::<PackedSecureField>()
             .to_array()
             .into_par_iter()
@@ -370,8 +350,7 @@ impl PolyOps for SimdBackend {
 
     fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {
         // TODO(shahars): Get rid of extends.
-        poly.evaluate(CanonicCoset::new(log_size).circle_domain())
-            .interpolate()
+        poly.evaluate(CanonicCoset::new(log_size).circle_domain()).interpolate()
     }
 
     fn evaluate(
@@ -393,10 +372,7 @@ impl PolyOps for SimdBackend {
         let _span = span!(Level::TRACE, "", class = "rFFT").entered();
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
-        assert!(
-            log_size >= fft_log_size,
-            "Can only evaluate on larger domains"
-        );
+        assert!(log_size >= fft_log_size, "Can only evaluate on larger domains");
         assert_eq!(buffer.len(), domain.size());
 
         if fft_log_size < MIN_FFT_LOG_SIZE {
@@ -462,9 +438,7 @@ impl PolyOps for SimdBackend {
         // Handle cosets smaller than `N_LANES`.
         let remaining_twiddles = slow_precompute_twiddles(coset);
 
-        twiddles.push(PackedM31::from_array(
-            remaining_twiddles.try_into().unwrap(),
-        ));
+        twiddles.push(PackedM31::from_array(remaining_twiddles.try_into().unwrap()));
 
         let itwiddles = PackedBaseField::batch_inverse(&twiddles);
 
@@ -477,11 +451,7 @@ impl PolyOps for SimdBackend {
             .flat_map(|x| (x.into_simd() * Simd::splat(2)).to_array())
             .collect();
 
-        TwiddleTree {
-            root_coset,
-            twiddles: dbl_twiddles,
-            itwiddles: dbl_itwiddles,
-        }
+        TwiddleTree { root_coset, twiddles: dbl_twiddles, itwiddles: dbl_itwiddles }
     }
 
     fn split_at_mid(
@@ -535,14 +505,8 @@ impl PolyOps for SimdBackend {
         let right_length = length - left_length;
 
         (
-            CircleCoefficients::new(BaseColumn {
-                data: poly.coeffs.data,
-                length: left_length,
-            }),
-            CircleCoefficients::new(BaseColumn {
-                data: second,
-                length: right_length,
-            }),
+            CircleCoefficients::new(BaseColumn { data: poly.coeffs.data, length: left_length }),
+            CircleCoefficients::new(BaseColumn { data: second, length: right_length }),
         )
     }
 }
@@ -552,11 +516,7 @@ fn compute_small_coset_twiddles(coset: Coset) -> TwiddleTree<SimdBackend> {
 
     let dbl_twiddles = twiddles.iter().map(|x| x.0 * 2).collect();
     let dbl_itwiddles = twiddles.iter().map(|x| x.inverse().0 * 2).collect();
-    TwiddleTree {
-        root_coset: coset,
-        twiddles: dbl_twiddles,
-        itwiddles: dbl_itwiddles,
-    }
+    TwiddleTree { root_coset: coset, twiddles: dbl_twiddles, itwiddles: dbl_itwiddles }
 }
 
 /// Computes the twiddles of the coset in bit-reversed order. Optimized for SIMD.
@@ -627,11 +587,11 @@ mod tests {
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::simd::circle::slow_eval_at_point;
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::prover::backend::simd::m31::LOG_N_LANES;
-    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
     use crate::prover::poly::{BitReversedOrder, NaturalOrder};
@@ -686,11 +646,7 @@ mod tests {
 
                 let eval = poly.eval_at_point(p.into_ef());
 
-                assert_eq!(
-                    eval,
-                    BaseField::from(i).into(),
-                    "log_size={log_size}, i={i}"
-                );
+                assert_eq!(eval, BaseField::from(i).into(), "log_size={log_size}, i={i}");
             }
         }
     }
@@ -711,10 +667,8 @@ mod tests {
             CirclePoint::get_point(13),
             CirclePoint::get_point(346752),
         ];
-        let sampled_values = sampled_points
-            .iter()
-            .map(|point| poly.eval_at_point(*point))
-            .collect_vec();
+        let sampled_values =
+            sampled_points.iter().map(|point| poly.eval_at_point(*point)).collect_vec();
 
         let sampled_folding_values = sampled_points
             .iter()
@@ -735,9 +689,8 @@ mod tests {
             );
             let eval0 = poly.evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
-            let eval1 = poly
-                .extend(log_size + 2)
-                .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
+            let eval1 =
+                poly.extend(log_size + 2).evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
             assert_eq!(eval0.values.to_cpu(), eval1.values.to_cpu());
         }
@@ -771,11 +724,7 @@ mod tests {
 
         assert_eq!(
             twiddles.twiddles,
-            expected_twiddles
-                .twiddles
-                .iter()
-                .map(|x| x.0 * 2)
-                .collect_vec()
+            expected_twiddles.twiddles.iter().map(|x| x.0 * 2).collect_vec()
         );
     }
     #[test]
@@ -840,10 +789,8 @@ mod tests {
             CirclePoint::get_point(13),
             CirclePoint::get_point(346752),
         ];
-        let sampled_values = sampled_points
-            .iter()
-            .map(|point| poly.eval_at_point(*point))
-            .collect_vec();
+        let sampled_values =
+            sampled_points.iter().map(|point| poly.eval_at_point(*point)).collect_vec();
 
         let sampled_barycentric_values = sampled_points
             .iter()
@@ -889,11 +836,8 @@ mod tests {
             })
             .collect_vec();
 
-        cpu_weights
-            .iter()
-            .zip(simd_weights.iter())
-            .for_each(|(cpu_weights, simd_weights)| {
-                assert_eq!(*cpu_weights, simd_weights.to_cpu());
-            });
+        cpu_weights.iter().zip(simd_weights.iter()).for_each(|(cpu_weights, simd_weights)| {
+            assert_eq!(*cpu_weights, simd_weights.to_cpu());
+        });
     }
 }

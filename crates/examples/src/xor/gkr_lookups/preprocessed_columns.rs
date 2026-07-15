@@ -4,8 +4,8 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
 /// A column with `1` at every `2^log_step` positions, `0` elsewhere, shifted by offset.
@@ -17,11 +17,7 @@ pub struct IsStepWithOffset {
 }
 impl IsStepWithOffset {
     pub const fn new(log_size: u32, log_step: u32, offset: usize) -> Self {
-        Self {
-            log_size,
-            log_step,
-            offset,
-        }
+        Self { log_size, log_step, offset }
     }
 
     // TODO(andrew): Consider optimizing. Is a quotients of two coset_vanishing (use succinct rep

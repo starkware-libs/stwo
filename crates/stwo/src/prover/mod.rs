@@ -1,9 +1,9 @@
 use thiserror::Error;
-use tracing::{info, instrument, span, Level};
+use tracing::{Level, info, instrument, span};
 
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::core::pcs::utils::InvalidMinLiftingLogSizeError;
 use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
@@ -41,25 +41,17 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
     include_all_preprocessed_columns: bool,
 ) -> Result<ExtendedStarkProof<MC::H>, ProvingError> {
-    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-        .polynomials
-        .len();
-    let component_provers = ComponentProvers {
-        components: components.to_vec(),
-        n_preprocessed_columns,
-    };
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX].polynomials.len();
+    let component_provers =
+        ComponentProvers { components: components.to_vec(), n_preprocessed_columns };
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_secure_felt();
 
     let span = span!(Level::INFO, "Composition", class = "Composition").entered();
-    let span1 = span!(
-        Level::INFO,
-        "Generation",
-        class = "CompositionPolynomialGeneration"
-    )
-    .entered();
+    let span1 =
+        span!(Level::INFO, "Generation", class = "CompositionPolynomialGeneration").entered();
 
     let composition_poly = component_provers.compute_composition_polynomial(
         random_coeff,
@@ -82,29 +74,18 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
-    let split_composition_log_size = commitment_scheme
-        .trees
-        .last()
-        .unwrap()
-        .commitment
-        .layers
-        .len() as u32
-        - 1;
+    let split_composition_log_size =
+        commitment_scheme.trees.last().unwrap().commitment.layers.len() as u32 - 1;
 
     // The effective lifting size is at least the length of the split composition polynomials'
     // domain (in particular, a `min_lifting_log_size` of 0 lifts each tree to its largest column).
-    let lifting_log_size = commitment_scheme
-        .config
-        .min_lifting_log_size
-        .max(split_composition_log_size);
+    let lifting_log_size =
+        commitment_scheme.config.min_lifting_log_size.max(split_composition_log_size);
     if include_all_preprocessed_columns {
         // If all the preprocessed columns are included, the lifting log size must be greater than
         // or equal to the preprocessed log size.
-        let preprocessed_log_size = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-            .commitment
-            .layers
-            .len() as u32
-            - 1;
+        let preprocessed_log_size =
+            commitment_scheme.trees[PREPROCESSED_TRACE_IDX].commitment.layers.len() as u32 - 1;
         if lifting_log_size < preprocessed_log_size {
             Err(InvalidMinLiftingLogSizeError {
                 min_lifting_log_size: lifting_log_size,
@@ -132,25 +113,18 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
-    if proof
-        .extract_composition_oods_eval(oods_point, max_log_degree_bound)
-        .unwrap()
-        != component_provers
-            .components()
-            .eval_composition_polynomial_at_point(
-                oods_point,
-                &proof.sampled_values,
-                random_coeff,
-                max_log_degree_bound,
-            )
+    if proof.extract_composition_oods_eval(oods_point, max_log_degree_bound).unwrap()
+        != component_provers.components().eval_composition_polynomial_at_point(
+            oods_point,
+            &proof.sampled_values,
+            random_coeff,
+            max_log_degree_bound,
+        )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
 
-    Ok(ExtendedStarkProof {
-        proof,
-        aux: commitment_scheme_proof.aux,
-    })
+    Ok(ExtendedStarkProof { proof, aux: commitment_scheme_proof.aux })
 }
 
 #[derive(Clone, Copy, Debug, Error)]

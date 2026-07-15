@@ -1,19 +1,19 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use stwo::core::ColumnVec;
 use stwo::core::fields::m31::M31;
 use stwo::core::fields::qm31::QM31;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::BaseColumn;
-use stwo::prover::backend::simd::m31::{PackedM31, LOG_N_LANES};
-use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedM31};
+use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::{LogupTraceGenerator, Relation};
 
-use super::components::{State, StateMachineElements, STATE_SIZE};
+use super::components::{STATE_SIZE, State, StateMachineElements};
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
 // `inc_index` dimension.
@@ -24,9 +24,7 @@ pub fn gen_trace(
     inc_index: usize,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>> {
     let domain = CanonicCoset::new(log_size).circle_domain();
-    let mut trace = (0..STATE_SIZE)
-        .map(|_| vec![M31::zero(); 1 << log_size])
-        .collect_vec();
+    let mut trace = (0..STATE_SIZE).map(|_| vec![M31::zero(); 1 << log_size]).collect_vec();
     let mut curr_state = initial_state;
 
     // Add the states in bit reversed circle domain order.
@@ -55,10 +53,7 @@ pub fn gen_interaction_trace(
     trace: &ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
     inc_index: usize,
     lookup_elements: &StateMachineElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
-    QM31,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>, QM31) {
     let log_size = trace[0].domain.log_size();
 
     let ones = PackedM31::broadcast(M31::one());
@@ -66,20 +61,12 @@ pub fn gen_interaction_trace(
     let mut col_gen = logup_gen.new_col();
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-        let mut packed_state: [PackedM31; STATE_SIZE] = trace
-            .iter()
-            .map(|col| col.data[vec_row])
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let mut packed_state: [PackedM31; STATE_SIZE] =
+            trace.iter().map(|col| col.data[vec_row]).collect_vec().try_into().unwrap();
         let input_denom: PackedQM31 = lookup_elements.combine(&packed_state);
         packed_state[inc_index] += ones;
         let output_denom: PackedQM31 = lookup_elements.combine(&packed_state);
-        col_gen.write_frac(
-            vec_row,
-            output_denom - input_denom,
-            input_denom * output_denom,
-        );
+        col_gen.write_frac(vec_row, output_denom - input_denom, input_denom * output_denom);
     }
     col_gen.finalize_col();
 
@@ -88,9 +75,9 @@ pub fn gen_interaction_trace(
 
 #[cfg(test)]
 mod tests {
+    use stwo::core::fields::FieldExpOps;
     use stwo::core::fields::m31::M31;
     use stwo::core::fields::qm31::{QM31, SECURE_EXTENSION_DEGREE};
-    use stwo::core::fields::FieldExpOps;
     use stwo::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
     use stwo::prover::backend::Column;
     use stwo_constraint_framework::Relation;
@@ -135,9 +122,6 @@ mod tests {
             gen_interaction_trace(&trace, inc_index, &lookup_elements);
 
         assert_eq!(interaction_trace.len(), SECURE_EXTENSION_DEGREE); // One extension column.
-        assert_eq!(
-            claimed_sum,
-            first_state_comb.inverse() - last_state_comb.inverse()
-        );
+        assert_eq!(claimed_sum, first_state_comb.inverse() - last_state_comb.inverse());
     }
 }

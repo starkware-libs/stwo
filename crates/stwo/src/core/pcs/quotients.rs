@@ -1,17 +1,18 @@
 use core::ops::Add;
 
-use itertools::{izip, zip_eq, Itertools};
+use itertools::{Itertools, izip, zip_eq};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 use std_shims::Vec;
 
 use super::TreeVec;
+use crate::core::ColumnVec;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::complex_conjugate_line_coeffs;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 use crate::core::fri::{FriProof, FriProofAux};
 use crate::core::pcs::PcsConfig;
 use crate::core::poly::circle::CanonicCoset;
@@ -19,7 +20,6 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux};
 use crate::core::verifier::VerificationError;
-use crate::core::ColumnVec;
 // Used for no_std support.
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, core::hash::BuildHasherDefault<fnv::FnvHasher>>;
 
@@ -80,22 +80,16 @@ impl ColumnSampleBatch {
         let mut grouped_samples = IndexMap::default();
         for (column_index, samples) in samples_with_rand.iter().enumerate() {
             for (sample, rand_pow) in samples.iter() {
-                grouped_samples
-                    .entry(sample.point)
-                    .or_insert_with(Vec::new)
-                    .push(NumeratorData {
-                        column_index,
-                        sample_value: sample.value,
-                        random_coeff: *rand_pow,
-                    });
+                grouped_samples.entry(sample.point).or_insert_with(Vec::new).push(NumeratorData {
+                    column_index,
+                    sample_value: sample.value,
+                    random_coeff: *rand_pow,
+                });
             }
         }
         grouped_samples
             .into_iter()
-            .map(|(point, cols_vals_randpows)| ColumnSampleBatch {
-                point,
-                cols_vals_randpows,
-            })
+            .map(|(point, cols_vals_randpows)| ColumnSampleBatch { point, cols_vals_randpows })
             .collect()
     }
 }
@@ -126,16 +120,12 @@ pub fn fri_answers(
     lifting_log_size: u32,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let queried_values = queried_values.flatten();
-    assert!(queried_values
-        .iter()
-        .all(|queries_per_col| queries_per_col.len() == query_positions.len()));
+    assert!(
+        queried_values.iter().all(|queries_per_col| queries_per_col.len() == query_positions.len())
+    );
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         &samples,
-        column_log_sizes
-            .0
-            .into_iter()
-            .map(|x| x.into_iter())
-            .collect(),
+        column_log_sizes.0.into_iter().map(|x| x.into_iter()).collect(),
         lifting_log_size,
         random_coeff,
     );
@@ -168,11 +158,9 @@ pub fn accumulate_row_quotients(
     let sample_points = sample_batches.iter().map(|b| b.point).collect_vec();
     let denominator_inverses = denominator_inverses(&sample_points, domain_point);
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, denominator_inverse) in izip!(
-        sample_batches,
-        &quotient_constants.line_coeffs,
-        denominator_inverses
-    ) {
+    for (sample_batch, line_coeffs, denominator_inverse) in
+        izip!(sample_batches, &quotient_constants.line_coeffs, denominator_inverses)
+    {
         let mut numerator = SecureField::zero();
         for (NumeratorData { column_index, .. }, (a, b, c)) in
             zip_eq(&sample_batch.cols_vals_randpows, line_coeffs)
@@ -229,19 +217,10 @@ pub fn column_line_coeffs(
             sample_batch
                 .cols_vals_randpows
                 .iter()
-                .map(
-                    |NumeratorData {
-                         column_index: _,
-                         sample_value,
-                         random_coeff,
-                     }| {
-                        let sample = PointSample {
-                            point: sample_batch.point,
-                            value: *sample_value,
-                        };
-                        complex_conjugate_line_coeffs(&sample, *random_coeff)
-                    },
-                )
+                .map(|NumeratorData { column_index: _, sample_value, random_coeff }| {
+                    let sample = PointSample { point: sample_batch.point, value: *sample_value };
+                    complex_conjugate_line_coeffs(&sample, *random_coeff)
+                })
                 .collect()
         })
         .collect()
@@ -276,9 +255,7 @@ pub fn denominator_inverses(
 }
 
 pub fn quotient_constants(sample_batches: &[ColumnSampleBatch]) -> QuotientConstants {
-    QuotientConstants {
-        line_coeffs: column_line_coeffs(sample_batches),
-    }
+    QuotientConstants { line_coeffs: column_line_coeffs(sample_batches) }
 }
 
 /// Holds the precomputed constant values used in each quotient evaluation.

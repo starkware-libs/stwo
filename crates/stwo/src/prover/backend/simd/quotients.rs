@@ -1,30 +1,30 @@
 use std::iter::zip;
 
-use itertools::{zip_eq, Itertools};
+use itertools::{Itertools, zip_eq};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
+use super::SimdBackend;
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
-use super::m31::{PackedBaseField, LOG_N_LANES};
+use super::m31::{LOG_N_LANES, PackedBaseField};
 use super::qm31::PackedSecureField;
-use super::SimdBackend;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::FieldExpOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
+use crate::core::pcs::quotients::{ColumnSampleBatch, quotient_constants};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::prover::QuotientOps;
+use crate::prover::backend::CpuBackend;
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::utils::to_lifted_simd;
-use crate::prover::backend::CpuBackend;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -291,18 +291,18 @@ mod tests {
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::quotients::{
-        build_samples_with_randomness_and_periodicity, ColumnSampleBatch, PointSample,
-    };
     use crate::core::pcs::TreeVec;
+    use crate::core::pcs::quotients::{
+        ColumnSampleBatch, PointSample, build_samples_with_randomness_and_periodicity,
+    };
     use crate::core::poly::circle::CanonicCoset;
-    use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::backend::CpuBackend;
-    use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-    use crate::prover::poly::circle::CircleEvaluation;
-    use crate::prover::poly::BitReversedOrder;
     use crate::prover::QuotientOps;
+    use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
+    use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::CircleEvaluation;
     use crate::qm31;
 
     #[test]
@@ -369,18 +369,14 @@ mod tests {
             LOG_BLOWUP_FACTOR,
         );
 
-        accumulated_numerators_vec_simd
-            .iter()
-            .zip_eq(accumulated_numerators_vec_cpu)
-            .for_each(|(acc_simd, acc_cpu)| {
-                assert_eq!(
-                    acc_simd.first_linear_term_acc,
-                    acc_cpu.first_linear_term_acc
-                );
+        accumulated_numerators_vec_simd.iter().zip_eq(accumulated_numerators_vec_cpu).for_each(
+            |(acc_simd, acc_cpu)| {
+                assert_eq!(acc_simd.first_linear_term_acc, acc_cpu.first_linear_term_acc);
                 assert_eq!(
                     acc_simd.partial_numerators_acc.to_cpu().columns,
                     acc_cpu.partial_numerators_acc.columns
                 );
-            });
+            },
+        );
     }
 }

@@ -1,15 +1,15 @@
 use std::iter::zip;
 use std::ops::{AddAssign, Sub};
 
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use num_traits::Zero;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::{
-    bit_reverse, circle_domain_order_to_coset_order, coset_order_to_circle_domain_order, SliceExt,
+    SliceExt, bit_reverse, circle_domain_order_to_coset_order, coset_order_to_circle_domain_order,
 };
-use crate::prover::backend::simd::m31::{PackedBaseField, N_LANES};
 use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::simd::m31::{N_LANES, PackedBaseField};
 use crate::prover::backend::{Col, Column};
 
 /// Performs a inclusive prefix sum on values in `Coset` order when provided
@@ -59,11 +59,8 @@ pub fn inclusive_prefix_sum(
     let mut chunk_size = half_coset0_sums.len() / 2;
     while chunk_size > 1 {
         let (lows, highs) = half_coset0_sums.split_at_mut(chunk_size);
-        zip(
-            lows.checked_as_chunks_mut::<2>().iter_mut(),
-            highs.checked_as_chunks::<2>().iter(),
-        )
-        .for_each(|([lo, _], [hi, _])| up_sweep_val(lo, *hi));
+        zip(lows.checked_as_chunks_mut::<2>().iter_mut(), highs.checked_as_chunks::<2>().iter())
+            .for_each(|([lo, _], [hi, _])| up_sweep_val(lo, *hi));
         chunk_size /= 2;
     }
     // Up sweep the last SIMD vector.
@@ -158,9 +155,9 @@ mod tests {
     use test_log::test;
 
     use super::inclusive_prefix_sum;
+    use crate::prover::backend::Column;
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
-    use crate::prover::backend::Column;
 
     #[test]
     fn exclusive_prefix_sum_simd_with_log_size_3_works() {

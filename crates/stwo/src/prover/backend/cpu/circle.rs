@@ -7,17 +7,17 @@ use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, poin
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
+use crate::core::fields::{ExtensionOf, batch_inverse_in_place};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
-use crate::core::utils::{bit_reverse, bit_reverse_index, SliceExt};
+use crate::core::utils::{SliceExt, bit_reverse, bit_reverse_index};
 use crate::prover::backend::{Col, Column};
 use crate::prover::fri::FriOps;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{
     CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
 };
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
 impl PolyOps for CpuBackend {
@@ -105,9 +105,8 @@ impl PolyOps for CpuBackend {
 
         let (si_i, vi_p): (Vec<_>, Vec<_>) = (0..domain.size())
             .map(|i| {
-                let coset_point = domain
-                    .at(bit_reverse_index(i, domain.log_size()))
-                    .into_ef::<SecureField>();
+                let coset_point =
+                    domain.at(bit_reverse_index(i, domain.log_size())).into_ef::<SecureField>();
                 let minus_two_coset_point_y = coset_point.y * SecureField::from(-2);
                 (
                     minus_two_coset_point_y
@@ -120,23 +119,18 @@ impl PolyOps for CpuBackend {
             })
             .unzip();
 
-        let vn_p: SecureField = coset_vanishing(
-            CanonicCoset::new(domain.log_size()).coset,
-            p.into_ef::<SecureField>(),
-        );
+        let vn_p: SecureField =
+            coset_vanishing(CanonicCoset::new(domain.log_size()).coset, p.into_ef::<SecureField>());
 
-        (0..domain.size())
-            .map(|i| vn_p / (si_i[i] * vi_p[i]))
-            .collect_vec()
+        (0..domain.size()).map(|i| vn_p / (si_i[i] * vi_p[i])).collect_vec()
     }
 
     fn barycentric_eval_at_point(
         evals: &CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>,
         weights: &Col<CpuBackend, SecureField>,
     ) -> SecureField {
-        (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
-            acc + (evals.values[i] * weights[i])
-        })
+        (0..evals.domain.size())
+            .fold(SecureField::zero(), |acc, i| acc + (evals.values[i] * weights[i]))
     }
 
     fn eval_at_point_by_folding(
@@ -147,12 +141,8 @@ impl PolyOps for CpuBackend {
         let log_size = evals.domain.log_size();
         let mut folding_alphas = get_folding_alphas(point, log_size as usize);
 
-        let secure_field_values: Vec<SecureField> = evals
-            .values
-            .to_cpu()
-            .iter()
-            .map(|f| SecureField::from(*f))
-            .collect_vec();
+        let secure_field_values: Vec<SecureField> =
+            evals.values.to_cpu().iter().map(|f| SecureField::from(*f)).collect_vec();
 
         let mut layer_evaluation = CpuBackend::fold_circle_into_line(
             &SecureEvaluation::new(
@@ -252,11 +242,7 @@ impl PolyOps for CpuBackend {
         // Fallback to the non-chunked version if the domain is not big enough.
         if CHUNK_SIZE > root_coset.size() {
             let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
-            return TwiddleTree {
-                root_coset,
-                twiddles,
-                itwiddles,
-            };
+            return TwiddleTree { root_coset, twiddles, itwiddles };
         }
 
         let mut itwiddles = vec![BaseField::zero(); twiddles.len()];
@@ -268,21 +254,14 @@ impl PolyOps for CpuBackend {
                 batch_inverse_in_place(src, dst);
             });
 
-        TwiddleTree {
-            root_coset,
-            twiddles,
-            itwiddles,
-        }
+        TwiddleTree { root_coset, twiddles, itwiddles }
     }
 
     fn split_at_mid(
         mut poly: CircleCoefficients<Self>,
     ) -> (CircleCoefficients<Self>, CircleCoefficients<Self>) {
         let right = poly.coeffs.split_off(poly.coeffs.len() / 2);
-        (
-            CircleCoefficients::new(poly.coeffs),
-            CircleCoefficients::new(right),
-        )
+        (CircleCoefficients::new(poly.coeffs), CircleCoefficients::new(right))
     }
 }
 
@@ -290,13 +269,7 @@ pub fn slow_precompute_twiddles(mut coset: Coset) -> Vec<BaseField> {
     let mut twiddles = Vec::with_capacity(coset.size());
     for _ in 0..coset.log_size() {
         let i0 = twiddles.len();
-        twiddles.extend(
-            coset
-                .iter()
-                .take(coset.size() / 2)
-                .map(|p| p.x)
-                .collect::<Vec<_>>(),
-        );
+        twiddles.extend(coset.iter().take(coset.size() / 2).map(|p| p.x).collect::<Vec<_>>());
         bit_reverse(&mut twiddles[i0..]);
         coset = coset.double();
     }
@@ -340,10 +313,7 @@ fn circle_twiddles_from_line_twiddles(
     // points:
     //   [x, y]
     // Works also for inverse of the twiddles.
-    first_line_twiddles
-        .iter()
-        .array_chunks()
-        .flat_map(|[&x, &y]| [y, -y, -x, x])
+    first_line_twiddles.iter().array_chunks().flat_map(|[&x, &y]| [y, -y, -x, x])
 }
 
 impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
@@ -371,10 +341,10 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::CpuBackend;
-    use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::{CircleEvaluation, PolyOps};
 
     #[test]
     fn test_eval_at_point_with_4_coeffs() {
@@ -419,9 +389,7 @@ mod tests {
     #[test]
     fn test_cpu_eval_at_point_by_folding() {
         let poly = CpuCirclePoly::new(
-            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
-                .map(BaseField::from)
-                .to_vec(),
+            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068].map(BaseField::from).to_vec(),
         );
         let s = CanonicCoset::new(10);
         let domain = s.circle_domain();
@@ -434,10 +402,8 @@ mod tests {
             CirclePoint::get_point(13),
             CirclePoint::get_point(346752),
         ];
-        let sampled_values = sampled_points
-            .iter()
-            .map(|point| poly.eval_at_point(*point))
-            .collect_vec();
+        let sampled_values =
+            sampled_points.iter().map(|point| poly.eval_at_point(*point)).collect_vec();
 
         let sampled_folding_values = sampled_points
             .iter()
@@ -539,9 +505,7 @@ mod tests {
     #[test]
     fn test_cpu_barycentric_evaluation() {
         let poly = CpuCirclePoly::new(
-            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
-                .map(BaseField::from)
-                .to_vec(),
+            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068].map(BaseField::from).to_vec(),
         );
         let s = CanonicCoset::new(10);
         let domain = s.circle_domain();
@@ -552,10 +516,8 @@ mod tests {
             CirclePoint::get_point(13),
             CirclePoint::get_point(346752),
         ];
-        let sampled_values = sampled_points
-            .iter()
-            .map(|point| poly.eval_at_point(*point))
-            .collect_vec();
+        let sampled_values =
+            sampled_points.iter().map(|point| poly.eval_at_point(*point)).collect_vec();
 
         let sampled_barycentric_values = sampled_points
             .iter()

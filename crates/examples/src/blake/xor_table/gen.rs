@@ -38,10 +38,7 @@ macro_rules! xor_table_gen {
         >(
             lookup_data: XorTableLookupData<ELEM_BITS, EXPAND_BITS>,
             lookup_elements: &X,
-        ) -> (
-            ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-            SecureField,
-        ) {
+        ) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
             let limb_bits = XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
             let _span = span!(Level::INFO, "Xor interaction trace").entered();
             let offsets_vec = u32x16::from_array(std::array::from_fn(|i| i as u32));
@@ -50,12 +47,7 @@ macro_rules! xor_table_gen {
 
             // Iterate each pair of columns, to batch their lookup together.
             // There are 2^(2*EXPAND_BITS) column, for each combination of ah, bh.
-            let mut iter = lookup_data
-                .xor_accum
-                .mults
-                .iter()
-                .enumerate()
-                .array_chunks::<2>();
+            let mut iter = lookup_data.xor_accum.mults.iter().enumerate().array_chunks::<2>();
             for [(i0, mults0), (i1, mults1)] in &mut iter {
                 let mut col_gen = logup_gen.new_col();
 

@@ -70,16 +70,12 @@ impl LineDomain {
 
     /// Returns a new domain comprising of all points in current domain doubled.
     pub fn double(&self) -> Self {
-        Self {
-            coset: self.coset.double(),
-        }
+        Self { coset: self.coset.double() }
     }
 
     /// Returns a new domain comprising of all points in current domain doubled `n_doubles` times.
     pub fn repeated_double(&self, n_doubles: u32) -> Self {
-        Self {
-            coset: self.coset.repeated_double(n_doubles),
-        }
+        Self { coset: self.coset.repeated_double(n_doubles) }
     }
 
     /// Returns the domain's underlying coset.
@@ -100,9 +96,7 @@ impl IntoIterator for LineDomain {
 
 impl From<CircleDomain> for LineDomain {
     fn from(domain: CircleDomain) -> Self {
-        Self {
-            coset: domain.half_coset,
-        }
+        Self { coset: domain.half_coset }
     }
 }
 

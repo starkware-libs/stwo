@@ -3,10 +3,10 @@ use thiserror::Error;
 
 use super::sumcheck::{SumcheckError, SumcheckProof};
 use super::utils::{eq, fold_mle_evals, random_linear_combination};
+use crate::core::Fraction;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::Fraction;
 use crate::prover::lookups::sumcheck;
 
 /// Partially verifies a batch GKR proof.
@@ -19,11 +19,8 @@ pub fn partially_verify_batch(
     proof: &GkrBatchProof,
     channel: &mut impl Channel,
 ) -> Result<GkrArtifact, GkrError> {
-    let GkrBatchProof {
-        sumcheck_proofs,
-        layer_masks_by_instance,
-        output_claims_by_instance,
-    } = proof;
+    let GkrBatchProof { sumcheck_proofs, layer_masks_by_instance, output_claims_by_instance } =
+        proof;
 
     if layer_masks_by_instance.len() != output_claims_by_instance.len() {
         return Err(GkrError::MalformedProof);
@@ -95,10 +92,7 @@ pub fn partially_verify_batch(
             let gate = &gate_by_instance[instance];
             let gate_output = gate.eval(mask).map_err(|InvalidNumMaskColumnsError| {
                 let instance_layer = instance_n_layers(layer) - n_remaining_layers;
-                GkrError::InvalidMask {
-                    instance,
-                    instance_layer,
-                }
+                GkrError::InvalidMask { instance, instance_layer }
             })?;
             // TODO: Consider simplifying the code by just using the same eq eval for all instances
             // regardless of size.
@@ -136,10 +130,8 @@ pub fn partially_verify_batch(
         }
     }
 
-    let claims_to_verify_by_instance = claims_to_verify_by_instance
-        .into_iter()
-        .map(Option::unwrap)
-        .collect();
+    let claims_to_verify_by_instance =
+        claims_to_verify_by_instance.into_iter().map(Option::unwrap).collect();
 
     Ok(GkrArtifact {
         ood_point,
@@ -237,10 +229,7 @@ impl GkrMask {
 
     /// Returns all `p_i(x)` where `p_i` interpolates column `i` of the mask on `{0, 1}`.
     pub fn reduce_at_point(&self, x: SecureField) -> Vec<SecureField> {
-        self.columns
-            .iter()
-            .map(|&[v0, v1]| fold_mle_evals(x, v0, v1))
-            .collect()
+        self.columns.iter().map(|&[v0, v1]| fold_mle_evals(x, v0, v1)).collect()
     }
 }
 
@@ -263,17 +252,10 @@ pub enum GkrError {
     NumInstancesMismatch { given: usize, proof: usize },
     /// There was an error with one of the sumcheck proofs.
     #[error("sum-check invalid in layer {layer}: {source}")]
-    InvalidSumcheck {
-        layer: LayerIndex,
-        source: SumcheckError,
-    },
+    InvalidSumcheck { layer: LayerIndex, source: SumcheckError },
     /// The circuit polynomial the verifier evaluated doesn't match claim from sumcheck.
     #[error("circuit check failed in layer {layer} (calculated {output}, claim {claim})")]
-    CircuitCheckFailure {
-        claim: SecureField,
-        output: SecureField,
-        layer: LayerIndex,
-    },
+    CircuitCheckFailure { claim: SecureField, output: SecureField, layer: LayerIndex },
 }
 
 /// GKR layer index where 0 corresponds to the output layer.
@@ -281,12 +263,12 @@ pub type LayerIndex = usize;
 
 #[cfg(test)]
 mod tests {
-    use super::{partially_verify_batch, Gate, GkrArtifact, GkrError};
+    use super::{Gate, GkrArtifact, GkrError, partially_verify_batch};
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::core::test_utils::test_channel;
     use crate::prover::backend::CpuBackend;
-    use crate::prover::lookups::gkr_prover::{prove_batch, Layer};
+    use crate::prover::lookups::gkr_prover::{Layer, prove_batch};
     use crate::prover::lookups::mle::Mle;
 
     #[test]
@@ -297,17 +279,12 @@ mod tests {
         let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N));
         let product0 = col0.iter().product::<SecureField>();
         let product1 = col1.iter().product::<SecureField>();
-        let input_layers = vec![
-            Layer::GrandProduct(col0.clone()),
-            Layer::GrandProduct(col1.clone()),
-        ];
+        let input_layers =
+            vec![Layer::GrandProduct(col0.clone()), Layer::GrandProduct(col1.clone())];
         let (proof, _) = prove_batch(&mut test_channel(), input_layers);
 
-        let GkrArtifact {
-            ood_point,
-            claims_to_verify_by_instance,
-            n_variables_by_instance,
-        } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point, claims_to_verify_by_instance, n_variables_by_instance } =
+            partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
 
         assert_eq!(n_variables_by_instance, [LOG_N, LOG_N]);
         assert_eq!(proof.output_claims_by_instance.len(), 2);
@@ -330,17 +307,12 @@ mod tests {
         let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N1));
         let product0 = col0.iter().product::<SecureField>();
         let product1 = col1.iter().product::<SecureField>();
-        let input_layers = vec![
-            Layer::GrandProduct(col0.clone()),
-            Layer::GrandProduct(col1.clone()),
-        ];
+        let input_layers =
+            vec![Layer::GrandProduct(col0.clone()), Layer::GrandProduct(col1.clone())];
         let (proof, _) = prove_batch(&mut test_channel(), input_layers);
 
-        let GkrArtifact {
-            ood_point,
-            claims_to_verify_by_instance,
-            n_variables_by_instance,
-        } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
+        let GkrArtifact { ood_point, claims_to_verify_by_instance, n_variables_by_instance } =
+            partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
 
         assert_eq!(n_variables_by_instance, [LOG_N0, LOG_N1]);
         assert_eq!(proof.output_claims_by_instance.len(), 2);

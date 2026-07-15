@@ -6,28 +6,28 @@ use itertools::Itertools;
 use num_traits::One;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo::core::ColumnVec;
 use stwo::core::channel::Blake2sChannel;
+use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::BaseColumn;
-use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
+use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::{Col, Column};
-use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::{prove, CommitmentSchemeProver};
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::{CommitmentSchemeProver, prove};
 use stwo_constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, LogupTraceGenerator, Relation,
-    RelationEntry, TraceLocationAllocator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, LogupTraceGenerator, Relation, RelationEntry,
+    TraceLocationAllocator, relation,
 };
-use tracing::{info, span, Level};
+use tracing::{Level, info, span};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -94,12 +94,7 @@ where
 {
     // Applies circ(2M4, M4, M4, M4).
     for i in 0..4 {
-        [
-            state[4 * i],
-            state[4 * i + 1],
-            state[4 * i + 2],
-            state[4 * i + 3],
-        ] = apply_m4([
+        [state[4 * i], state[4 * i + 1], state[4 * i + 2], state[4 * i + 3]] = apply_m4([
             state[4 * i].clone(),
             state[4 * i + 1].clone(),
             state[4 * i + 2].clone(),
@@ -124,10 +119,7 @@ where
 {
     // TODO(shahars): Check that these coefficients are good according to section  5.3 of Poseidon2
     // paper.
-    let sum = state[1..]
-        .iter()
-        .cloned()
-        .fold(state[0].clone(), |acc, s| acc + s);
+    let sum = state[1..].iter().cloned().fold(state[0].clone(), |acc, s| acc + s);
     state.iter_mut().enumerate().for_each(|(i, s)| {
         // TODO(andrew): Change to rotations.
         *s = s.clone() * BaseField::from_u32_unchecked(1 << (i + 1)) + sum.clone();
@@ -187,11 +179,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         });
 
         // Provide state lookups.
-        eval.add_to_relation(RelationEntry::new(
-            lookup_elements,
-            E::EF::one(),
-            &initial_state,
-        ));
+        eval.add_to_relation(RelationEntry::new(lookup_elements, E::EF::one(), &initial_state));
         eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &state));
     }
 
@@ -204,15 +192,11 @@ pub struct LookupData {
 }
 pub fn gen_trace(
     log_size: u32,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    LookupData,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, LookupData) {
     let _span = span!(Level::INFO, "Generation").entered();
     assert!(log_size >= LOG_N_LANES);
-    let mut trace = (0..N_COLUMNS)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace =
+        (0..N_COLUMNS).map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size)).collect_vec();
     let mut lookup_data = LookupData {
         initial_state: std::array::from_fn(|_| {
             std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
@@ -284,10 +268,7 @@ pub fn gen_trace(
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
-    let trace = trace
-        .into_iter()
-        .map(|eval| CircleEvaluation::new(domain, eval))
-        .collect();
+    let trace = trace.into_iter().map(|eval| CircleEvaluation::new(domain, eval)).collect();
     (trace, lookup_data)
 }
 
@@ -295,25 +276,16 @@ pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: LookupData,
     lookup_elements: &PoseidonElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    SecureField,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = unsafe { LogupTraceGenerator::uninitialized(log_size) };
 
     for rep_i in 0..N_INSTANCES_PER_ROW {
         let frac_at_row = |vec_row: usize| {
-            let denom0: PackedSecureField = lookup_elements.combine(
-                &lookup_data.initial_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
-            let denom1: PackedSecureField = lookup_elements.combine(
-                &lookup_data.final_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
+            let denom0: PackedSecureField = lookup_elements
+                .combine(&lookup_data.initial_state[rep_i].each_ref().map(|s| s.data[vec_row]));
+            let denom1: PackedSecureField = lookup_elements
+                .combine(&lookup_data.final_state[rep_i].each_ref().map(|s| s.data[vec_row]));
             (denom1 - denom0, denom0 * denom1)
         };
         let range = 0..1 << (log_size - LOG_N_LANES);
@@ -380,11 +352,7 @@ pub fn prove_poseidon(
     // Prove constraints.
     let component = PoseidonComponent::new(
         &mut TraceLocationAllocator::default(),
-        PoseidonEval {
-            log_n_rows,
-            lookup_elements,
-            claimed_sum,
-        },
+        PoseidonEval { log_n_rows, lookup_elements, claimed_sum },
         claimed_sum,
     );
     info!("Poseidon component info:\n{}", component);
@@ -409,18 +377,15 @@ mod tests {
     use stwo_constraint_framework::assert_constraints_on_polys;
 
     use crate::poseidon::{
-        apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, PoseidonElements,
+        PoseidonElements, apply_internal_round_matrix, apply_m4, eval_poseidon_constraints,
+        gen_interaction_trace, gen_trace, prove_poseidon,
     };
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_poseidon_prove_wasm() {
         const LOG_N_INSTANCES: u32 = 10;
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64, 1),
-        };
+        let config = PcsConfig { pow_bits: 10, fri_config: FriConfig::new(5, 1, 64, 1) };
 
         // Prove.
         prove_poseidon(LOG_N_INSTANCES, config);
@@ -452,11 +417,7 @@ mod tests {
             *elem += M31((1 << (i + 1)) as u32);
         }
         let expected_state = internal_matrix.dot(&ndarray::arr2(&[state]).t());
-        let expected_state: [_; W] = expected_state
-            .into_raw_vec_and_offset()
-            .0
-            .try_into()
-            .unwrap();
+        let expected_state: [_; W] = expected_state.into_raw_vec_and_offset().0.try_into().unwrap();
 
         apply_internal_round_matrix(&mut state);
 
@@ -536,8 +497,8 @@ mod tests {
     #[test]
     fn trace_simd_poseidon_prove() {
         use stwo::tracing::SpanAccumulator;
-        use tracing_subscriber::layer::SubscriberExt;
         use tracing_subscriber::Registry;
+        use tracing_subscriber::layer::SubscriberExt;
 
         let collector = SpanAccumulator::default();
         let layer = collector.clone();
