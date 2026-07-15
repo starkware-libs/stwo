@@ -58,7 +58,7 @@ impl LogupTraceGenerator {
     pub fn new_col(&mut self) -> LogupColGenerator<'_> {
         let log_size = self.log_size;
         LogupColGenerator {
-            gen: self,
+            trace_gen: self,
             numerator: unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(1 << log_size) },
         }
     }
@@ -98,7 +98,7 @@ impl LogupTraceGenerator {
         let numerator = SecureColumnByCoords::<SimdBackend> { columns };
 
         LogupColGenerator {
-            gen: self,
+            trace_gen: self,
             numerator,
         }
         .finalize_col();
@@ -151,7 +151,7 @@ impl LogupTraceGenerator {
 
 /// Trace generator for a single lookup column.
 pub struct LogupColGenerator<'a> {
-    gen: &'a mut LogupTraceGenerator,
+    trace_gen: &'a mut LogupTraceGenerator,
     /// Numerator expressions (i.e. multiplicities) being generated for the current lookup.
     numerator: SecureColumnByCoords<SimdBackend>,
 }
@@ -170,26 +170,29 @@ impl LogupColGenerator<'_> {
         );
         unsafe {
             self.numerator.set_packed(vec_row, numerator);
-            *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
+            *self.trace_gen.denom.data.get_unchecked_mut(vec_row) = denom;
         }
     }
 
     /// Finalizes generating the column.
     pub fn finalize_col(mut self) {
         // Column size is a power of 2.
-        let chunk_size = std::cmp::min(4, self.gen.denom.data.len());
-        batch_inverse_packed_qm31(&self.gen.denom.data, &mut self.gen.batch_inverse_buffer);
+        let chunk_size = std::cmp::min(4, self.trace_gen.denom.data.len());
+        batch_inverse_packed_qm31(
+            &self.trace_gen.denom.data,
+            &mut self.trace_gen.batch_inverse_buffer,
+        );
 
         #[cfg(feature = "parallel")]
         let chunks_iter = {
-            let denom_inv_chunks = self.gen.batch_inverse_buffer.par_chunks(chunk_size);
+            let denom_inv_chunks = self.trace_gen.batch_inverse_buffer.par_chunks(chunk_size);
             let numerator_chunks = self.numerator.par_chunks_mut(chunk_size);
             (numerator_chunks, denom_inv_chunks).into_par_iter()
         };
 
         #[cfg(not(feature = "parallel"))]
         let chunks_iter = {
-            let denom_inv_chunks = self.gen.batch_inverse_buffer.chunks(chunk_size);
+            let denom_inv_chunks = self.trace_gen.batch_inverse_buffer.chunks(chunk_size);
             let numerator_chunks = self.numerator.chunks_mut(chunk_size);
             numerator_chunks.zip(denom_inv_chunks)
         };
@@ -202,7 +205,7 @@ impl LogupColGenerator<'_> {
                         let vec_row = chunk_idx * chunk_size + idx_in_chunk;
                         let value = numerator_chunk.packed_at(idx_in_chunk) * *denom_item;
                         let prev_value = self
-                            .gen
+                            .trace_gen
                             .trace
                             .last()
                             .map(|col| col.packed_at(vec_row))
@@ -212,12 +215,12 @@ impl LogupColGenerator<'_> {
                 }
             });
 
-        self.gen.trace.push(self.numerator)
+        self.trace_gen.trace.push(self.numerator)
     }
 
     // TODO(Ohad): remove.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = FractionWriter<'_>> {
-        let denom = self.gen.denom.data.iter_mut();
+        let denom = self.trace_gen.denom.data.iter_mut();
         let [coord0, coord1, coord2, coord3] =
             self.numerator.columns.each_mut().map(|s| &mut s.data);
         multizip((coord0, coord1, coord2, coord3, denom)).map(|(n0, n1, n2, n3, d)| {
@@ -233,7 +236,13 @@ impl LogupColGenerator<'_> {
     pub fn par_iter_mut(&mut self) -> impl IndexedParallelIterator<Item = FractionWriter<'_>> {
         let [coord0, coord1, coord2, coord3] =
             self.numerator.columns.each_mut().map(|s| &mut s.data);
-        (coord0, coord1, coord2, coord3, &mut self.gen.denom.data)
+        (
+            coord0,
+            coord1,
+            coord2,
+            coord3,
+            &mut self.trace_gen.denom.data,
+        )
             .into_par_iter()
             .map(|(n0, n1, n2, n3, d)| FractionWriter {
                 numerator: [n0, n1, n2, n3],
