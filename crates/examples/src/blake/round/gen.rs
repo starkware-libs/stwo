@@ -54,7 +54,7 @@ impl TraceGenerator {
 
     const fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
         TraceGeneratorRow {
-            gen: self,
+            trace_gen: self,
             col_index: 0,
             vec_row,
             xor_lookups_index: 0,
@@ -64,14 +64,14 @@ impl TraceGenerator {
 
 /// Trace generator for the constraints defined at [`super::constraints::BlakeRoundEval`]
 struct TraceGeneratorRow<'a> {
-    gen: &'a mut TraceGenerator,
+    trace_gen: &'a mut TraceGenerator,
     col_index: usize,
     vec_row: usize,
     xor_lookups_index: usize,
 }
 impl TraceGeneratorRow<'_> {
     fn append_felt(&mut self, val: u32x16) {
-        self.gen.trace[self.col_index].data[self.vec_row] =
+        self.trace_gen.trace[self.col_index].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(val) };
         self.col_index += 1;
     }
@@ -102,7 +102,7 @@ impl TraceGeneratorRow<'_> {
         chain![input_v.iter(), v.iter(), m.iter()]
             .flat_map(to_felts)
             .enumerate()
-            .for_each(|(i, felt)| self.gen.round_lookup[i].data[self.vec_row] = felt);
+            .for_each(|(i, felt)| self.trace_gen.round_lookup[i].data[self.vec_row] = felt);
     }
 
     fn g(&mut self, v: [&mut u32x16; 4], m0: u32x16, m1: u32x16) {
@@ -181,19 +181,19 @@ impl TraceGeneratorRow<'_> {
     fn xor(&mut self, w: u32, a: u32x16, b: u32x16) -> u32x16 {
         let c = a ^ b;
         self.append_felt(c);
-        if self.gen.xor_lookups.len() <= self.xor_lookups_index {
-            self.gen.xor_lookups.push((
+        if self.trace_gen.xor_lookups.len() <= self.xor_lookups_index {
+            self.trace_gen.xor_lookups.push((
                 w,
                 std::array::from_fn(|_| unsafe {
-                    BaseColumn::uninitialized(1 << self.gen.log_size)
+                    BaseColumn::uninitialized(1 << self.trace_gen.log_size)
                 }),
             ));
         }
-        self.gen.xor_lookups[self.xor_lookups_index].1[0].data[self.vec_row] =
+        self.trace_gen.xor_lookups[self.xor_lookups_index].1[0].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(a) };
-        self.gen.xor_lookups[self.xor_lookups_index].1[1].data[self.vec_row] =
+        self.trace_gen.xor_lookups[self.xor_lookups_index].1[1].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(b) };
-        self.gen.xor_lookups[self.xor_lookups_index].1[2].data[self.vec_row] =
+        self.trace_gen.xor_lookups[self.xor_lookups_index].1[2].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(c) };
         self.xor_lookups_index += 1;
         c

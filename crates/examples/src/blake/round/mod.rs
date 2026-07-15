@@ -1,8 +1,8 @@
 mod constraints;
-mod gen;
+mod r#gen;
 
-pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
+pub use r#gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,

@@ -1,9 +1,9 @@
 mod constraints;
-mod gen;
+mod r#gen;
 
 use constraints::eval_blake_scheduler_constraints;
-pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
 use num_traits::Zero;
+pub use r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
 use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,

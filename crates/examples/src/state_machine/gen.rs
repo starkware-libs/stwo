@@ -96,7 +96,7 @@ mod tests {
     use stwo_constraint_framework::Relation;
 
     use crate::state_machine::components::StateMachineElements;
-    use crate::state_machine::gen::{gen_interaction_trace, gen_trace};
+    use crate::state_machine::r#gen::{gen_interaction_trace, gen_trace};
 
     #[test]
     fn test_gen_trace() {
