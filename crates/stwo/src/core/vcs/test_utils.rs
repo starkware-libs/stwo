@@ -5,18 +5,14 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerifier};
 use crate::core::vcs::MerkleHasher;
+use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerifier};
 use crate::prover::backend::CpuBackend;
 use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::vcs::prover::MerkleProver;
 
-pub type TestData<H> = (
-    BTreeMap<u32, Vec<usize>>,
-    MerkleDecommitment<H>,
-    Vec<BaseField>,
-    MerkleVerifier<H>,
-);
+pub type TestData<H> =
+    (BTreeMap<u32, Vec<usize>>, MerkleDecommitment<H>, Vec<BaseField>, MerkleVerifier<H>);
 
 pub fn prepare_merkle<H: MerkleHasher>() -> TestData<H>
 where
@@ -27,9 +23,7 @@ where
     let log_size_range = 3..5;
 
     let mut rng = SmallRng::seed_from_u64(0);
-    let log_sizes = (0..N_COLS)
-        .map(|_| rng.random_range(log_size_range.clone()))
-        .collect_vec();
+    let log_sizes = (0..N_COLS).map(|_| rng.random_range(log_size_range.clone())).collect_vec();
     let cols = log_sizes
         .iter()
         .map(|&log_size| {

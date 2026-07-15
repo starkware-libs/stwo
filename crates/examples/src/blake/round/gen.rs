@@ -1,26 +1,26 @@
 use std::simd::u32x16;
 use std::vec;
 
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use num_traits::One;
+use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::SliceExt;
-use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::BaseColumn;
-use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedBaseField};
+use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::{Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
-use stwo_constraint_framework::{LogupTraceGenerator, Relation, ORIGINAL_TRACE_IDX};
-use tracing::{span, Level};
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo_constraint_framework::{LogupTraceGenerator, ORIGINAL_TRACE_IDX, Relation};
+use tracing::{Level, span};
 
 use super::{BlakeXorElements, RoundElements};
 use crate::blake::round::blake_round_info;
-use crate::blake::{to_felts, XorAccums, N_ROUND_INPUT_FELTS, STATE_SIZE};
+use crate::blake::{N_ROUND_INPUT_FELTS, STATE_SIZE, XorAccums, to_felts};
 
 pub struct BlakeRoundLookupData {
     /// A vector of (w, [a_col, b_col, c_col]) for each xor lookup.
@@ -53,12 +53,7 @@ impl TraceGenerator {
     }
 
     const fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
-        TraceGeneratorRow {
-            trace_gen: self,
-            col_index: 0,
-            vec_row,
-            xor_lookups_index: 0,
-        }
+        TraceGeneratorRow { trace_gen: self, col_index: 0, vec_row, xor_lookups_index: 0 }
     }
 }
 
@@ -210,10 +205,7 @@ pub fn generate_trace(
     log_size: u32,
     inputs: &[BlakeRoundInput],
     xor_accum: &mut XorAccums,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    BlakeRoundLookupData,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, BlakeRoundLookupData) {
     let _span = span!(Level::INFO, "Round Generation").entered();
     let mut generator = TraceGenerator::new(log_size);
 
@@ -229,11 +221,7 @@ pub fn generate_trace(
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
     (
-        generator
-            .trace
-            .into_iter()
-            .map(|eval| CircleEvaluation::new(domain, eval))
-            .collect(),
+        generator.trace.into_iter().map(|eval| CircleEvaluation::new(domain, eval)).collect(),
         BlakeRoundLookupData {
             xor_lookups: generator.xor_lookups,
             round_lookup: generator.round_lookup,
@@ -246,10 +234,7 @@ pub fn generate_interaction_trace(
     lookup_data: BlakeRoundLookupData,
     xor_lookup_elements: &BlakeXorElements,
     round_lookup_elements: &RoundElements,
-) -> (
-    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    SecureField,
-) {
+) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
     let _span = span!(Level::INFO, "Generate round interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 

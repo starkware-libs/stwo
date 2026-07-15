@@ -2,15 +2,15 @@ mod constraints;
 mod r#gen;
 
 use constraints::eval_blake_scheduler_constraints;
+pub use r#gen::{BlakeInput, gen_interaction_trace, gen_trace};
 use num_traits::Zero;
-pub use r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
 use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, relation,
 };
 
-use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
+use super::round::RoundElements;
 
 pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
@@ -60,7 +60,7 @@ mod tests {
     use stwo_constraint_framework::FrameworkEval;
 
     use crate::blake::round::RoundElements;
-    use crate::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
+    use crate::blake::scheduler::r#gen::{BlakeInput, gen_interaction_trace, gen_trace};
     use crate::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
 
     #[test]
@@ -91,10 +91,7 @@ mod tests {
         let trace = TreeVec::new(vec![
             vec![],
             trace.into_iter().map(|x| x.values.to_cpu()).collect(),
-            interaction_trace
-                .into_iter()
-                .map(|x| x.values.to_cpu())
-                .collect(),
+            interaction_trace.into_iter().map(|x| x.values.to_cpu()).collect(),
         ]);
         let trace = &trace.as_ref();
         let trace = trace.into();

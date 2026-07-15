@@ -1,4 +1,4 @@
-use std::simd::{simd_swizzle, u32x16, u32x8};
+use std::simd::{simd_swizzle, u32x8, u32x16};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -60,11 +60,8 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
 pub fn compute_first_twiddles(twiddle1_dbl: u32x8) -> (u32x16, u32x16) {
     // Start by loading the twiddles for the second layer (layer 1):
-    let t1 = simd_swizzle!(
-        twiddle1_dbl,
-        twiddle1_dbl,
-        [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7]
-    );
+    let t1 =
+        simd_swizzle!(twiddle1_dbl, twiddle1_dbl, [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7]);
 
     // The twiddles for layer 0 can be computed from the twiddles for layer 1.
     // Since the twiddles are bit reversed, we consider the circle domain in bit reversed order.

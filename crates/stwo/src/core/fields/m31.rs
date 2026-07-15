@@ -110,8 +110,8 @@ impl Mul for M31 {
 impl FieldExpOps for M31 {
     /// ```
     /// use num_traits::One;
-    /// use stwo::core::fields::m31::BaseField;
     /// use stwo::core::fields::FieldExpOps;
+    /// use stwo::core::fields::m31::BaseField;
     ///
     /// let v = BaseField::from(19);
     /// assert_eq!(v.inverse() * v, BaseField::one());
@@ -188,8 +188,8 @@ macro_rules! m31 {
 /// Multiplication tree found with [addchain](https://github.com/mmcloughlin/addchain).
 ///
 /// ```
-/// use stwo::core::fields::m31::{pow2147483645, BaseField};
 /// use stwo::core::fields::FieldExpOps;
+/// use stwo::core::fields::m31::{BaseField, pow2147483645};
 ///
 /// let v = BaseField::from(19);
 /// assert_eq!(pow2147483645(v), v.pow(2147483645));
@@ -228,11 +228,7 @@ mod tests {
     }
 
     const fn neg_p(a: u32) -> u32 {
-        if a == 0 {
-            0
-        } else {
-            P - a
-        }
+        if a == 0 { 0 } else { P - a }
     }
 
     #[test]

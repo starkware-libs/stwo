@@ -10,10 +10,8 @@ pub fn expand_uninitialized_impl(
     struct_name: &Ident,
     iterable_fields: &[IterableField],
 ) -> TokenStream {
-    let (field_names, allocations): (Vec<_>, Vec<_>) = iterable_fields
-        .iter()
-        .map(|f| (f.name(), f.uninitialized_field_allocation()))
-        .unzip();
+    let (field_names, allocations): (Vec<_>, Vec<_>) =
+        iterable_fields.iter().map(|f| (f.name(), f.uninitialized_field_allocation())).unzip();
     quote! {
         impl #struct_name {
             /// # Safety

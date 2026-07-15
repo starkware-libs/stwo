@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo::core::circle::CirclePoint;
@@ -19,18 +19,11 @@ fn bench_eval_at_secure_point_by_folding<B: PolyOps>(c: &mut Criterion, id: &str
     let x = rng.random();
     let y = rng.random();
     let point = CirclePoint { x, y };
-    c.bench_function(
-        &format!("{id} eval_at_secure_field_point_by_folding 2^{LOG_SIZE}"),
-        |b| {
-            b.iter(|| {
-                B::eval_at_point_by_folding(
-                    black_box(&evals),
-                    black_box(point),
-                    black_box(&twiddles),
-                )
-            });
-        },
-    );
+    c.bench_function(&format!("{id} eval_at_secure_field_point_by_folding 2^{LOG_SIZE}"), |b| {
+        b.iter(|| {
+            B::eval_at_point_by_folding(black_box(&evals), black_box(point), black_box(&twiddles))
+        });
+    });
 }
 
 fn eval_at_secure_point_by_folding_benches(c: &mut Criterion) {

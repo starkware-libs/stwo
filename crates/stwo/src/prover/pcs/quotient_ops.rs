@@ -1,21 +1,21 @@
 use std::iter::zip;
 
 use itertools::Itertools;
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::quotients::{
-    build_samples_with_randomness_and_periodicity, ColumnSampleBatch, PointSample,
-};
 use crate::core::pcs::TreeVec;
+use crate::core::pcs::quotients::{
+    ColumnSampleBatch, PointSample, build_samples_with_randomness_and_periodicity,
+};
+use crate::prover::AccumulationOps;
 use crate::prover::backend::ColumnOps;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
-use crate::prover::AccumulationOps;
 
 pub trait QuotientOps: PolyOps {
     /// Receives a non-empty set of columns of the *same* size, and populates the vector
@@ -95,11 +95,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         samples,
-        columns
-            .0
-            .iter()
-            .map(|x| x.iter().map(|c| c.domain.log_size()))
-            .collect(),
+        columns.0.iter().map(|x| x.iter().map(|c| c.domain.log_size())).collect(),
         lifting_log_size,
         random_coeff,
     );
@@ -109,24 +105,21 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     //
     //   ∑_k (# of distinct sample points per log size k).
     //
-    zip(
-        columns.iter().flatten(),
-        samples_with_randomness.iter().flatten(),
-    )
-    .sorted_by_key(|(c, _)| c.domain.log_size())
-    .group_by(|(c, _)| c.domain.log_size())
-    .into_iter()
-    .for_each(|(_, tuples)| {
-        let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
-        // TODO: slice.
-        let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
-        B::accumulate_numerators(
-            &columns,
-            &sample_batches,
-            &mut accumulated_numerators_vec,
-            log_blowup_factor,
-        )
-    });
+    zip(columns.iter().flatten(), samples_with_randomness.iter().flatten())
+        .sorted_by_key(|(c, _)| c.domain.log_size())
+        .group_by(|(c, _)| c.domain.log_size())
+        .into_iter()
+        .for_each(|(_, tuples)| {
+            let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
+            // TODO: slice.
+            let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
+            B::accumulate_numerators(
+                &columns,
+                &sample_batches,
+                &mut accumulated_numerators_vec,
+                log_blowup_factor,
+            )
+        });
 
     // Group and accumulate the numerators per sample point: the accumulations (of different
     // lengths) get lifted and accumulated to a single vector. After this step, there is a single
@@ -139,10 +132,8 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         .map(|(sample_point, accumulations_per_log_size)| {
             let accumulations_per_log_size = accumulations_per_log_size.collect_vec();
             // Accumulate the `a` coefficients.
-            let first_linear_term_acc: SecureField = accumulations_per_log_size
-                .iter()
-                .map(|x| x.first_linear_term_acc)
-                .sum();
+            let first_linear_term_acc: SecureField =
+                accumulations_per_log_size.iter().map(|x| x.first_linear_term_acc).sum();
             // Lift and accumulate the partial numerators vectors.
             // `partial_numerators_acc` is already sorted increasingly by size as required by
             // `B::lift_and_accumulate`.
@@ -184,8 +175,8 @@ mod tests {
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::verifier::VerificationError;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::{Backend, BackendForChannel, Column, CpuBackend};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
     use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
@@ -207,10 +198,7 @@ mod tests {
         ];
         let samples = sample_points
             .into_iter()
-            .map(|x| PointSample {
-                point: x,
-                value: polynomial.eval_at_point(x),
-            })
+            .map(|x| PointSample { point: x, value: polynomial.eval_at_point(x) })
             .collect_vec();
         let rand_coeff =
             SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.random::<u32>())));
@@ -235,21 +223,17 @@ mod tests {
 
     /// Generates a vector of random polynomials, such that the last one is of degree
     /// `LIFTING_LOG_SIZE - 1` and all the previous ones are of degree < `LIFTING_LOG_SIZE - 1`.
-    fn prepare_polys<B: Backend, const N_COLS: usize, const LIFTING_LOG_SIZE: u32>(
-    ) -> Vec<CircleCoefficients<B>> {
+    fn prepare_polys<B: Backend, const N_COLS: usize, const LIFTING_LOG_SIZE: u32>()
+    -> Vec<CircleCoefficients<B>> {
         let mut rng = SmallRng::seed_from_u64(0);
         let mut polys: Vec<CircleCoefficients<B>> = (0..N_COLS - 1)
             .map(|_| {
                 CircleCoefficients::new(
-                    (0..1 << rng.random_range(4..LIFTING_LOG_SIZE - 1))
-                        .map(M31::from)
-                        .collect(),
+                    (0..1 << rng.random_range(4..LIFTING_LOG_SIZE - 1)).map(M31::from).collect(),
                 )
             })
             .collect();
-        polys.push(CircleCoefficients::new(
-            (0..1 << LIFTING_LOG_SIZE).map(M31::from).collect(),
-        ));
+        polys.push(CircleCoefficients::new((0..1 << LIFTING_LOG_SIZE).map(M31::from).collect()));
         polys
     }
 
@@ -284,10 +268,12 @@ mod tests {
             SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
             SECURE_FIELD_CIRCLE_GEN.mul(rng.random::<u128>()),
         ];
-        let sampled_points = vec![(0..N_COLS)
-            .zip(mask_structure.iter())
-            .map(|(_, i)| samples.into_iter().take(*i).collect_vec())
-            .collect_vec()];
+        let sampled_points = vec![
+            (0..N_COLS)
+                .zip(mask_structure.iter())
+                .map(|(_, i)| samples.into_iter().take(*i).collect_vec())
+                .collect_vec(),
+        ];
 
         let proof = commitment_scheme.prove_values(TreeVec(sampled_points.clone()), &mut channel);
 
@@ -330,10 +316,7 @@ mod tests {
         ];
         let samples = sample_points
             .into_iter()
-            .map(|x| PointSample {
-                point: x,
-                value: polynomial.eval_at_point(x),
-            })
+            .map(|x| PointSample { point: x, value: polynomial.eval_at_point(x) })
             .collect_vec();
         let rand_coeff =
             SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.random::<u32>())));

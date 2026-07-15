@@ -6,16 +6,16 @@ use std_shims::Vec;
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriVerifier};
-use super::quotients::{fri_answers, PointSample};
-use super::utils::TreeVec;
 use super::PcsConfig;
+use super::quotients::{PointSample, fri_answers};
+use super::utils::TreeVec;
+use crate::core::ColumnVec;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
-use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
@@ -26,17 +26,12 @@ pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
 
 impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     pub fn new(config: PcsConfig) -> Self {
-        Self {
-            trees: TreeVec::default(),
-            config,
-        }
+        Self { trees: TreeVec::default(), config }
     }
 
     /// A [TreeVec<ColumnVec>] of the log sizes of each column in each commitment tree.
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.column_log_sizes.clone())
+        self.trees.as_ref().map(|tree| tree.column_log_sizes.clone())
     }
 
     /// Reads a commitment from the prover.
@@ -109,11 +104,9 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
             .zip_eq(query_positions_tree)
-            .map(
-                |(((tree, decommitment), queried_values), query_positions)| {
-                    tree.verify(query_positions, queried_values, decommitment)
-                },
-            )
+            .map(|(((tree, decommitment), queried_values), query_positions)| {
+                tree.verify(query_positions, queried_values, decommitment)
+            })
             .0
             .into_iter()
             .collect::<Result<(), _>>()?;

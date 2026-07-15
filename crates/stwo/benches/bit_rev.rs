@@ -1,6 +1,6 @@
 #![feature(iter_array_chunks)]
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use itertools::Itertools;
 use stwo::core::fields::m31::BaseField;
 
@@ -10,11 +10,7 @@ pub fn cpu_bit_rev(c: &mut Criterion) {
     const SIZE: usize = 1 << 24;
     let data = (0..SIZE).map(BaseField::from).collect_vec();
     c.bench_function("cpu bit_rev 24bit", |b| {
-        b.iter_batched(
-            || data.clone(),
-            |mut data| bit_reverse(&mut data),
-            BatchSize::LargeInput,
-        );
+        b.iter_batched(|| data.clone(), |mut data| bit_reverse(&mut data), BatchSize::LargeInput);
     });
 }
 

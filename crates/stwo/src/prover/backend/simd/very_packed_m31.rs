@@ -4,12 +4,12 @@ use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
 use super::cm31::PackedCM31;
-use super::m31::{PackedM31, N_LANES};
+use super::m31::{N_LANES, PackedM31};
 use super::qm31::PackedQM31;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::{batch_inverse_in_place, FieldExpOps};
+use crate::core::fields::{FieldExpOps, batch_inverse_in_place};
 
 pub const LOG_N_VERY_PACKED_ELEMS: u32 = 1;
 pub const N_VERY_PACKED_ELEMS: usize = 1 << LOG_N_VERY_PACKED_ELEMS;

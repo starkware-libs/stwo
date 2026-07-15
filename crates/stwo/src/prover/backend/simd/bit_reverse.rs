@@ -3,15 +3,15 @@ use std::array;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use super::SimdBackend;
 use super::column::{BaseColumn, SecureColumn};
 use super::m31::PackedBaseField;
-use super::SimdBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::utils::{bit_reverse as cpu_bit_reverse, bit_reverse_index};
 use crate::parallel_iter;
-use crate::prover::backend::simd::utils::UnsafeMut;
 use crate::prover::backend::ColumnOps;
+use crate::prover::backend::simd::utils::UnsafeMut;
 
 const VEC_BITS: u32 = 4;
 
@@ -135,9 +135,7 @@ fn bit_reverse16(mut data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
         let (d5, d13) = data[10].interleave(data[11]);
         let (d6, d14) = data[12].interleave(data[13]);
         let (d7, d15) = data[14].interleave(data[15]);
-        data = [
-            d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15,
-        ];
+        data = [d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15];
     }
 
     data
@@ -147,12 +145,12 @@ fn bit_reverse16(mut data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
 mod tests {
     use itertools::Itertools;
 
-    use super::{bit_reverse16, bit_reverse_m31, MIN_LOG_SIZE};
+    use super::{MIN_LOG_SIZE, bit_reverse_m31, bit_reverse16};
     use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse as cpu_bit_reverse;
-    use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::m31::{PackedM31, N_LANES};
     use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::m31::{N_LANES, PackedM31};
     use crate::prover::backend::{Column, ColumnOps};
 
     #[test]

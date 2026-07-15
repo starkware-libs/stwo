@@ -2,11 +2,11 @@ use core::array;
 use core::ops::{Mul, Sub};
 
 use num_traits::{One, Zero};
-use std_shims::{vec, Vec};
+use std_shims::{Vec, vec};
+use stwo::core::Fraction;
 use stwo::core::channel::Channel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::Fraction;
 
 use super::EvalAtRow;
 
@@ -75,11 +75,7 @@ impl<const N: usize> LookupElements<N> {
             cur *= alpha;
             res
         });
-        Self {
-            z,
-            alpha,
-            alpha_powers,
-        }
+        Self { z, alpha, alpha_powers }
     }
     pub fn combine<F: Clone, EF>(&self, values: &[F]) -> EF
     where
@@ -92,9 +88,7 @@ impl<const N: usize> LookupElements<N> {
         values
             .iter()
             .zip(self.alpha_powers)
-            .fold(EF::zero(), |acc, (value, power)| {
-                acc + EF::from(power) * value.clone()
-            })
+            .fold(EF::zero(), |acc, (value, power)| acc + EF::from(power) * value.clone())
             - EF::from(self.z)
     }
 
@@ -107,20 +101,16 @@ impl<const N: usize> LookupElements<N> {
             cur *= alpha;
             res
         });
-        Self {
-            z,
-            alpha,
-            alpha_powers,
-        }
+        Self { z, alpha, alpha_powers }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use stwo::core::channel::Blake2sChannel;
+    use stwo::core::fields::FieldExpOps;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
-    use stwo::core::fields::FieldExpOps;
 
     use super::LookupElements;
 

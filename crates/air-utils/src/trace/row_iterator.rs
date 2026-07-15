@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use itertools::Itertools;
-use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
+use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
 use rayon::prelude::*;
 use stwo::prover::backend::simd::m31::PackedM31;
 
@@ -17,14 +17,7 @@ pub struct RowIterMut<'trace, const N: usize> {
 impl<'trace, const N: usize> RowIterMut<'trace, N> {
     pub fn new(slice: [&'trace mut [PackedM31]; N]) -> Self {
         Self {
-            v: Box::new(
-                slice
-                    .into_iter()
-                    .map(|s| s as *mut _)
-                    .collect_vec()
-                    .try_into()
-                    .unwrap(),
-            ),
+            v: Box::new(slice.into_iter().map(|s| s as *mut _).collect_vec().try_into().unwrap()),
             phantom: PhantomData,
         }
     }
@@ -83,14 +76,7 @@ impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
             right[i] = rhs;
         }
 
-        (
-            RowProducer {
-                data: Box::new(left),
-            },
-            RowProducer {
-                data: Box::new(right),
-            },
-        )
+        (RowProducer { data: Box::new(left) }, RowProducer { data: Box::new(right) })
     }
 
     type IntoIter = RowIterMut<'trace, N>;
@@ -98,12 +84,7 @@ impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
     fn into_iter(self) -> Self::IntoIter {
         RowIterMut {
             v: Box::new(
-                self.data
-                    .into_iter()
-                    .map(|s| s as *mut _)
-                    .collect_vec()
-                    .try_into()
-                    .unwrap(),
+                self.data.into_iter().map(|s| s as *mut _).collect_vec().try_into().unwrap(),
             ),
             phantom: PhantomData,
         }
@@ -119,9 +100,7 @@ pub struct ParRowIterMut<'trace, const N: usize> {
 }
 impl<'trace, const N: usize> ParRowIterMut<'trace, N> {
     pub(super) fn new(data: [&'trace mut [PackedM31]; N]) -> Self {
-        Self {
-            data: Box::new(data),
-        }
+        Self { data: Box::new(data) }
     }
 }
 impl<'trace, const N: usize> ParallelIterator for ParRowIterMut<'trace, N> {

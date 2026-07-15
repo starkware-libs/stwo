@@ -28,10 +28,7 @@ pub fn expand_iter_mut_structs(
 
 fn expand_impl_struct_name(struct_name: &Ident, iterable_fields: &[IterableField]) -> TokenStream {
     let iter_mut_name = format_ident!("{}IterMut", struct_name);
-    let as_mut_slice = iterable_fields
-        .iter()
-        .map(|f| f.as_mut_slice())
-        .collect_vec();
+    let as_mut_slice = iterable_fields.iter().map(|f| f.as_mut_slice()).collect_vec();
     quote! {
         impl #struct_name {
             pub fn iter_mut(&mut self) -> #iter_mut_name<'_> {
@@ -68,14 +65,7 @@ fn expand_iter_mut_struct(struct_name: &Ident, iterable_fields: &[IterableField]
         Vec<_>,
     ) = iterable_fields
         .iter()
-        .map(|f| {
-            (
-                f.name(),
-                f.mut_slice_type(&lifetime),
-                f.mut_slice_ptr_type(),
-                f.as_mut_ptr(),
-            )
-        })
+        .map(|f| (f.name(), f.mut_slice_type(&lifetime), f.mut_slice_ptr_type(), f.as_mut_ptr()))
         .multiunzip();
 
     quote! {
@@ -100,10 +90,8 @@ fn expand_iterator_impl(struct_name: &Ident, iterable_fields: &[IterableField]) 
     let lifetime = Lifetime::new("'a", Span::call_site());
     let iter_mut_name = format_ident!("{}IterMut", struct_name);
     let mut_chunk_name = format_ident!("{}MutChunk", struct_name);
-    let (field_names, split_first): (Vec<_>, Vec<_>) = iterable_fields
-        .iter()
-        .map(|f| (f.name(), f.split_first()))
-        .unzip();
+    let (field_names, split_first): (Vec<_>, Vec<_>) =
+        iterable_fields.iter().map(|f| (f.name(), f.split_first())).unzip();
     let get_length = iterable_fields.first().unwrap().get_len();
 
     quote! {
@@ -142,10 +130,8 @@ fn expand_double_ended_iterator(
 ) -> TokenStream {
     let iter_mut_name = format_ident!("{}IterMut", struct_name);
     let mut_chunk_name = format_ident!("{}MutChunk", struct_name);
-    let (field_names, split_last): (Vec<_>, Vec<_>) = iterable_fields
-        .iter()
-        .map(|f| (f.name(), f.split_last(&format_ident!("len"))))
-        .unzip();
+    let (field_names, split_last): (Vec<_>, Vec<_>) =
+        iterable_fields.iter().map(|f| (f.name(), f.split_last(&format_ident!("len")))).unzip();
     let get_length = iterable_fields.first().unwrap().get_len();
     quote! {
         impl DoubleEndedIterator for #iter_mut_name<'_> {

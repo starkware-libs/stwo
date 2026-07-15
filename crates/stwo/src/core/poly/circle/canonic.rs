@@ -11,7 +11,8 @@ const MAX_CANONICAL_COSET_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 
 #[derive(Clone, Copy, Debug, Error)]
 #[error(
-    "Invalid canonic coset log size ({log_size}). Must be between 1 and {MAX_CANONICAL_COSET_LOG_SIZE}."
+    "Invalid canonic coset log size ({log_size}). Must be between 1 and \
+     {MAX_CANONICAL_COSET_LOG_SIZE}."
 )]
 pub struct InvalidCanonicCosetLogSize {
     pub log_size: u32,
@@ -44,9 +45,7 @@ impl CanonicCoset {
         if !(MIN_CIRCLE_DOMAIN_LOG_SIZE..=MAX_CANONICAL_COSET_LOG_SIZE).contains(&log_size) {
             return Err(InvalidCanonicCosetLogSize { log_size });
         }
-        Ok(Self {
-            coset: Coset::odds(log_size),
-        })
+        Ok(Self { coset: Coset::odds(log_size) })
     }
 
     pub fn new(log_size: u32) -> Self {

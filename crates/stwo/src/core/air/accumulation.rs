@@ -19,10 +19,7 @@ impl PointEvaluationAccumulator {
     /// Creates a new accumulator.
     /// `random_coeff` should be a secure random field element, drawn from the channel.
     pub fn new(random_coeff: SecureField) -> Self {
-        Self {
-            random_coeff,
-            accumulation: SecureField::default(),
-        }
+        Self { random_coeff, accumulation: SecureField::default() }
     }
 
     /// Accumulates u_i(P0), a polynomial evaluation at a P0 in reverse order.
@@ -52,9 +49,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         const MAX_LOG_SIZE: u32 = 10;
         const MASK: u32 = P;
-        let log_sizes = (0..100)
-            .map(|_| rng.random_range(4..MAX_LOG_SIZE))
-            .collect::<Vec<_>>();
+        let log_sizes = (0..100).map(|_| rng.random_range(4..MAX_LOG_SIZE)).collect::<Vec<_>>();
 
         // Generate random evaluations.
         let evaluations = log_sizes

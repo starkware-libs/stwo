@@ -17,10 +17,7 @@ pub struct CirclePoint<F> {
 
 impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>> CirclePoint<F> {
     pub fn zero() -> Self {
-        Self {
-            x: F::one(),
-            y: F::zero(),
-        }
+        Self { x: F::one(), y: F::zero() }
     }
 
     pub fn double(&self) -> Self {
@@ -90,32 +87,19 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     }
 
     pub fn conjugate(&self) -> CirclePoint<F> {
-        Self {
-            x: self.x.clone(),
-            y: -self.y.clone(),
-        }
+        Self { x: self.x.clone(), y: -self.y.clone() }
     }
 
     pub fn antipode(&self) -> CirclePoint<F> {
-        Self {
-            x: -self.x.clone(),
-            y: -self.y.clone(),
-        }
+        Self { x: -self.x.clone(), y: -self.y.clone() }
     }
 
     pub fn into_ef<EF: From<F>>(self) -> CirclePoint<EF> {
-        CirclePoint {
-            x: self.x.clone().into(),
-            y: self.y.clone().into(),
-        }
+        CirclePoint { x: self.x.clone().into(), y: self.y.clone().into() }
     }
 
     pub fn mul_signed(&self, off: isize) -> CirclePoint<F> {
-        if off > 0 {
-            self.mul(off as u128)
-        } else {
-            self.conjugate().mul(-off as u128)
-        }
+        if off > 0 { self.mul(off as u128) } else { self.conjugate().mul(-off as u128) }
     }
 }
 
@@ -153,10 +137,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
 
 impl<F: Field> ComplexConjugate for CirclePoint<F> {
     fn complex_conjugate(&self) -> Self {
-        Self {
-            x: self.x.complex_conjugate(),
-            y: self.y.complex_conjugate(),
-        }
+        Self { x: self.x.complex_conjugate(), y: self.y.complex_conjugate() }
     }
 }
 
@@ -172,9 +153,7 @@ impl CirclePoint<SecureField> {
 
         let one_plus_tsquared_inv = t_square.add(SecureField::one()).inverse();
 
-        let x = SecureField::one()
-            .add(t_square.neg())
-            .mul(one_plus_tsquared_inv);
+        let x = SecureField::one().add(t_square.neg()).mul(one_plus_tsquared_inv);
         let y = t.double().mul(one_plus_tsquared_inv);
 
         Self { x, y }
@@ -199,10 +178,8 @@ impl CirclePoint<SecureField> {
 /// let circle_point = M31_CIRCLE_GEN.repeated_double(31);
 /// assert_eq!(circle_point, CirclePoint::zero());
 /// ```
-pub const M31_CIRCLE_GEN: CirclePoint<M31> = CirclePoint {
-    x: M31::from_u32_unchecked(2),
-    y: M31::from_u32_unchecked(1268011823),
-};
+pub const M31_CIRCLE_GEN: CirclePoint<M31> =
+    CirclePoint { x: M31::from_u32_unchecked(2), y: M31::from_u32_unchecked(1268011823) };
 
 /// Order of [M31_CIRCLE_GEN].
 pub const M31_CIRCLE_LOG_ORDER: u32 = 31;
@@ -340,19 +317,11 @@ impl Coset {
     }
 
     pub const fn iter(&self) -> CosetIterator<CirclePoint<M31>> {
-        CosetIterator {
-            cur: self.initial,
-            step: self.step,
-            remaining: self.size(),
-        }
+        CosetIterator { cur: self.initial, step: self.step, remaining: self.size() }
     }
 
     pub const fn iter_indices(&self) -> CosetIterator<CirclePointIndex> {
-        CosetIterator {
-            cur: self.initial_index,
-            step: self.step_size,
-            remaining: self.size(),
-        }
+        CosetIterator { cur: self.initial_index, step: self.step_size, remaining: self.size() }
     }
 
     /// Returns a new coset comprising of all points in current coset doubled.
@@ -390,11 +359,7 @@ impl Coset {
 
     pub fn shift(&self, shift_size: CirclePointIndex) -> Self {
         let initial_index = self.initial_index + shift_size;
-        Self {
-            initial_index,
-            initial: initial_index.to_point(),
-            ..*self
-        }
+        Self { initial_index, initial: initial_index.to_point(), ..*self }
     }
 
     /// Creates the conjugate coset: -initial -\<step\>.
@@ -446,13 +411,13 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 mod tests {
     use hashbrown::HashSet;
     use num_traits::{One, Pow};
-    use std_shims::{vec, Vec};
+    use std_shims::{Vec, vec};
 
     use super::{CirclePointIndex, Coset};
     use crate::core::channel::Blake2sChannel;
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
-    use crate::core::fields::qm31::{SecureField, P4};
     use crate::core::fields::FieldExpOps;
+    use crate::core::fields::qm31::{P4, SecureField};
     use crate::core::poly::circle::CanonicCoset;
 
     #[test]
@@ -486,10 +451,7 @@ mod tests {
             canonic_coset.half_coset().conjugate().iter().collect();
 
         assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());
-        assert_eq!(
-            coset_points,
-            &half_coset_points | &half_coset_conjugate_points
-        )
+        assert_eq!(coset_points, &half_coset_points | &half_coset_conjugate_points)
     }
 
     #[test]
@@ -499,10 +461,7 @@ mod tests {
         let first_random_circle_point = CirclePoint::get_random_point(&mut channel);
 
         // Assert that the next random circle point is different.
-        assert_ne!(
-            first_random_circle_point,
-            CirclePoint::get_random_point(&mut channel)
-        );
+        assert_ne!(first_random_circle_point, CirclePoint::get_random_point(&mut channel));
     }
 
     #[test]
@@ -521,23 +480,14 @@ mod tests {
             (368140581013, 1),
         ];
 
-        assert_eq!(
-            prime_factors
-                .iter()
-                .map(|(p, e)| p.pow(*e as u32))
-                .product::<u128>(),
-            P4 - 1
-        );
+        assert_eq!(prime_factors.iter().map(|(p, e)| p.pow(*e as u32)).product::<u128>(), P4 - 1);
         assert_eq!(
             SECURE_FIELD_CIRCLE_GEN.x.square() + SECURE_FIELD_CIRCLE_GEN.y.square(),
             SecureField::one()
         );
         assert_eq!(SECURE_FIELD_CIRCLE_GEN.mul(P4 - 1), CirclePoint::zero());
         for (p, _) in prime_factors.iter() {
-            assert_ne!(
-                SECURE_FIELD_CIRCLE_GEN.mul((P4 - 1) / *p),
-                CirclePoint::zero()
-            );
+            assert_ne!(SECURE_FIELD_CIRCLE_GEN.mul((P4 - 1) / *p), CirclePoint::zero());
         }
     }
 }

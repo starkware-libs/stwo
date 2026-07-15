@@ -5,13 +5,13 @@ use starknet_ff::FieldElement as FieldElement252;
 
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::utils::uninit_vec;
-use crate::core::vcs::poseidon252_merkle::{construct_felt252_from_m31s, ELEMENTS_IN_BLOCK};
+use crate::core::vcs::poseidon252_merkle::{ELEMENTS_IN_BLOCK, construct_felt252_from_m31s};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::poseidon252_merkle::{
-    poseidon_finalize, poseidon_update, Poseidon252MerkleHasher, ELEMENTS_IN_BUFFER,
+    ELEMENTS_IN_BUFFER, Poseidon252MerkleHasher, poseidon_finalize, poseidon_update,
 };
-use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
@@ -121,10 +121,8 @@ fn poseidon_update_m31s(msgs: &[M31; ELEMENTS_IN_BUFFER], prev_state: &mut [Fiel
 }
 
 fn poseidon_finalize_m31s(msgs: &[M31], prev_state: [FieldElement252; 3]) -> [FieldElement252; 3] {
-    let field_elements: Vec<FieldElement252> = msgs
-        .chunks(ELEMENTS_IN_BLOCK)
-        .map(construct_felt252_from_m31s)
-        .collect();
+    let field_elements: Vec<FieldElement252> =
+        msgs.chunks(ELEMENTS_IN_BLOCK).map(construct_felt252_from_m31s).collect();
     poseidon_finalize(&field_elements, prev_state)
 }
 
@@ -135,18 +133,17 @@ mod tests {
     use super::FieldElement252;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleHasher;
-    use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
     use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
     #[test]
     fn test_build_next_layer() {
         const LOG_SIZE: u32 = 6;
-        let layer: Vec<FieldElement252> = (0u32..1 << (LOG_SIZE + 1))
-            .map(FieldElement252::from)
-            .collect();
+        let layer: Vec<FieldElement252> =
+            (0u32..1 << (LOG_SIZE + 1)).map(FieldElement252::from).collect();
         assert_eq!(
             <CpuBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_next_layer(&layer),
             <SimdBackend as MerkleOpsLifted<Poseidon252MerkleHasher>>::build_next_layer(&layer)
@@ -157,23 +154,15 @@ mod tests {
         const MAX_LOG_N_ROWS: u32 = 9;
         const N_COLS: u32 = 95;
         let mut cols: Vec<Vec<BaseField>> = (0..N_COLS)
-            .map(|i| {
-                (0..1 << MAX_LOG_N_ROWS)
-                    .map(|j| M31::from(100 * i + j))
-                    .collect_vec()
-            })
+            .map(|i| (0..1 << MAX_LOG_N_ROWS).map(|j| M31::from(100 * i + j)).collect_vec())
             .collect();
 
         // Make the first two columns smaller to test a non-uniform sized trace.
         (0..20).for_each(|i| {
-            cols[i] = (0..1 << (MAX_LOG_N_ROWS - 4))
-                .map(M31::from_u32_unchecked)
-                .collect_vec()
+            cols[i] = (0..1 << (MAX_LOG_N_ROWS - 4)).map(M31::from_u32_unchecked).collect_vec()
         });
         (20..40).for_each(|i| {
-            cols[i] = (0..1 << (MAX_LOG_N_ROWS - 3))
-                .map(M31::from_u32_unchecked)
-                .collect_vec()
+            cols[i] = (0..1 << (MAX_LOG_N_ROWS - 3)).map(M31::from_u32_unchecked).collect_vec()
         });
         let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 
@@ -204,11 +193,7 @@ mod tests {
         for log_size in 2..9 {
             const N_COLS: usize = 2;
             let cols: Vec<Vec<BaseField>> = (0..N_COLS)
-                .map(|i| {
-                    (0..1 << log_size)
-                        .map(|j| M31::from(100 * i + j))
-                        .collect_vec()
-                })
+                .map(|i| (0..1 << log_size).map(|j| M31::from(100 * i + j)).collect_vec())
                 .collect();
             let cols_simd: Vec<BaseColumn> = cols.iter().map(|c| BaseColumn::from_cpu(c)).collect();
 

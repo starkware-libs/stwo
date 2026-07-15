@@ -6,10 +6,10 @@ use num_traits::One;
 use stwo::core::circle::M31_CIRCLE_LOG_ORDER;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::Backend;
-use stwo::prover::lookups::mle::Mle;
 use stwo::prover::AccumulationOps;
+use stwo::prover::backend::Backend;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::lookups::mle::Mle;
 
 pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 
@@ -89,9 +89,7 @@ pub fn combine<EF: AddAssign + Mul<F, Output = EF> + Copy, F: Copy>(
 
 impl<B: Backend> Default for MleCollection<B> {
     fn default() -> Self {
-        Self {
-            mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES as usize + 1],
-        }
+        Self { mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES as usize + 1] }
     }
 }
 
@@ -138,9 +136,9 @@ mod tests {
     use std::iter::repeat_n;
 
     use num_traits::Zero;
+    use stwo::core::fields::Field;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
-    use stwo::core::fields::Field;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::lookups::mle::{Mle, MleOps};
 
@@ -161,10 +159,8 @@ mod tests {
         let small_eval_point = [SecureField::zero(); SMALL_N_VARS];
         let large_eval_point = [SecureField::zero(); LARGE_N_VARS];
 
-        let [small_mle, large_mle] = mle_collection
-            .random_linear_combine_by_n_variables(alpha)
-            .try_into()
-            .unwrap();
+        let [small_mle, large_mle] =
+            mle_collection.random_linear_combine_by_n_variables(alpha).try_into().unwrap();
 
         assert_eq!(small_mle.n_variables(), SMALL_N_VARS);
         assert_eq!(large_mle.n_variables(), LARGE_N_VARS);

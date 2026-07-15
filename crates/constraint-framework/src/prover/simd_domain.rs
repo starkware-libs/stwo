@@ -1,20 +1,20 @@
 use std::ops::Mul;
 
 use num_traits::Zero;
+use stwo::core::Fraction;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::TreeVec;
 use stwo::core::utils::offset_bit_reversed_circle_domain_index;
-use stwo::core::Fraction;
+use stwo::prover::backend::Column;
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::VeryPackedBaseColumn;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, VeryPackedSecureField, LOG_N_VERY_PACKED_ELEMS,
+    LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField, VeryPackedSecureField,
 };
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::Column;
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 
 use crate::logup::LogupAtRow;
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX, MAX_N_INTERACTIONS};
@@ -75,11 +75,8 @@ impl EvalAtRow for SimdDomainEvaluator<'_> {
             // If the offset is 0, we can just return the value directly from this row.
             if off == 0 {
                 unsafe {
-                    let col = &self
-                        .trace_eval
-                        .get_unchecked(interaction)
-                        .get_unchecked(col_index)
-                        .values;
+                    let col =
+                        &self.trace_eval.get_unchecked(interaction).get_unchecked(col_index).values;
                     let very_packed_col = VeryPackedBaseColumn::transform_under_ref(col);
                     return *very_packed_col.data.get_unchecked(self.vec_row);
                 };

@@ -1,12 +1,12 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::Field;
-use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::CpuBackend;
-use stwo::prover::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::lookups::gkr_prover::{GkrOps, Layer, prove_batch};
 use stwo::prover::lookups::mle::{Mle, MleOps};
 
 const LOG_N_ROWS: u32 = 16;
@@ -21,16 +21,13 @@ fn bench_gkr_grand_product<B: GkrOps>(c: &mut Criterion, id: &str) {
             BatchSize::LargeInput,
         )
     });
-    c.bench_function(
-        &format!("{id} grand product lookup batch 4x 2^{LOG_N_ROWS}"),
-        |b| {
-            b.iter_batched(
-                || vec![layer.clone(), layer.clone(), layer.clone(), layer.clone()],
-                |layers| prove_batch(&mut Blake2sChannel::default(), layers),
-                BatchSize::LargeInput,
-            )
-        },
-    );
+    c.bench_function(&format!("{id} grand product lookup batch 4x 2^{LOG_N_ROWS}"), |b| {
+        b.iter_batched(
+            || vec![layer.clone(), layer.clone(), layer.clone(), layer.clone()],
+            |layers| prove_batch(&mut Blake2sChannel::default(), layers),
+            BatchSize::LargeInput,
+        )
+    });
 }
 
 fn bench_gkr_logup_generic<B: GkrOps>(c: &mut Criterion, id: &str) {
@@ -54,23 +51,19 @@ fn bench_gkr_logup_multiplicities<B: GkrOps>(c: &mut Criterion, id: &str) {
         numerators: gen_random_mle(&mut rng, LOG_N_ROWS),
         denominators: gen_random_mle(&mut rng, LOG_N_ROWS),
     };
-    c.bench_function(
-        &format!("{id} multiplicities logup lookup 2^{LOG_N_ROWS}"),
-        |b| {
-            b.iter_batched(
-                || multiplicities_layer.clone(),
-                |layer| prove_batch(&mut Blake2sChannel::default(), vec![layer]),
-                BatchSize::LargeInput,
-            )
-        },
-    );
+    c.bench_function(&format!("{id} multiplicities logup lookup 2^{LOG_N_ROWS}"), |b| {
+        b.iter_batched(
+            || multiplicities_layer.clone(),
+            |layer| prove_batch(&mut Blake2sChannel::default(), vec![layer]),
+            BatchSize::LargeInput,
+        )
+    });
 }
 
 fn bench_gkr_logup_singles<B: GkrOps>(c: &mut Criterion, id: &str) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let singles_layer = Layer::<B>::LogUpSingles {
-        denominators: gen_random_mle(&mut rng, LOG_N_ROWS),
-    };
+    let singles_layer =
+        Layer::<B>::LogUpSingles { denominators: gen_random_mle(&mut rng, LOG_N_ROWS) };
     c.bench_function(&format!("{id} singles logup lookup 2^{LOG_N_ROWS}"), |b| {
         b.iter_batched(
             || singles_layer.clone(),

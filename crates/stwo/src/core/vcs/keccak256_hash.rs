@@ -17,21 +17,13 @@ impl From<Keccak256Hash> for Vec<u8> {
 
 impl From<Vec<u8>> for Keccak256Hash {
     fn from(value: Vec<u8>) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting Vec<u8> to Keccak256Hash type"),
-        )
+        Self(value.try_into().expect("Failed converting Vec<u8> to Keccak256Hash type"))
     }
 }
 
 impl From<&[u8]> for Keccak256Hash {
     fn from(value: &[u8]) -> Self {
-        Self(
-            value
-                .try_into()
-                .expect("Failed converting &[u8] to Keccak256Hash type"),
-        )
+        Self(value.try_into().expect("Failed converting &[u8] to Keccak256Hash type"))
     }
 }
 
@@ -68,9 +60,7 @@ pub struct Keccak256Hasher {
 
 impl Keccak256Hasher {
     pub fn new() -> Self {
-        Self {
-            state: Keccak256::new(),
-        }
+        Self { state: Keccak256::new() }
     }
 
     pub fn update(&mut self, data: &[u8]) {
@@ -127,9 +117,6 @@ mod tests {
         let hash_empty = state.finalize();
 
         assert_eq!(hash.to_string(), Keccak256Hasher::hash(b"ab").to_string());
-        assert_eq!(
-            hash_empty.to_string(),
-            Keccak256Hasher::hash(b"").to_string()
-        );
+        assert_eq!(hash_empty.to_string(), Keccak256Hasher::hash(b"").to_string());
     }
 }

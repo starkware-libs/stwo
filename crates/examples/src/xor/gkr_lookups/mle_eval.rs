@@ -4,10 +4,11 @@
 
 use std::iter::zip;
 
-use itertools::{chain, zip_eq, Itertools};
+use itertools::{Itertools, chain, zip_eq};
 use num_traits::{One, Zero};
-use stwo::core::air::accumulation::PointEvaluationAccumulator;
+use stwo::core::ColumnVec;
 use stwo::core::air::Component;
+use stwo::core::air::accumulation::PointEvaluationAccumulator;
 use stwo::core::circle::{CirclePoint, Coset};
 use stwo::core::constraints::{coset_vanishing, point_vanishing};
 use stwo::core::fields::m31::BaseField;
@@ -16,30 +17,29 @@ use stwo::core::fields::{Field, FieldExpOps};
 use stwo::core::pcs::{TreeSubspan, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::{bit_reverse, bit_reverse_index, coset_index_to_circle_domain_index};
-use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo::prover::backend::simd::qm31::PackedSecureField;
-use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
-use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::very_packed_m31::{LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField};
 use stwo::prover::backend::{Col, Column};
 use stwo::prover::lookups::gkr_prover::GkrOps;
 use stwo::prover::lookups::mle::Mle;
 use stwo::prover::lookups::utils::eq;
+use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::{CircleEvaluation, SecureCirclePoly, SecureEvaluation};
 use stwo::prover::poly::twiddles::TwiddleTree;
-use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use stwo_constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
-use tracing::{span, Level};
+use tracing::{Level, span};
 
+use crate::xor::gkr_lookups::IsFirst;
 #[cfg(test)]
 use crate::xor::gkr_lookups::test::mle_eval_at_point;
-use crate::xor::gkr_lookups::IsFirst;
 
 /// Prover component that carries out a univariate IOP for multilinear eval at point.
 ///
@@ -203,10 +203,8 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.log_size());
 
-        let mut component_trace = trace
-            .polys
-            .sub_tree(&self.trace_locations)
-            .map_cols(|c| &c.evals);
+        let mut component_trace =
+            trace.polys.sub_tree(&self.trace_locations).map_cols(|c| &c.evals);
 
         // Build auxiliary trace.
         let span = span!(Level::INFO, "Extension").entered();
@@ -223,12 +221,8 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
             .interpolate_with_twiddles(self.twiddles)
             .evaluate_with_twiddles(eval_domain, self.twiddles);
         let aux_interaction = component_trace.len();
-        let aux_trace = chain![
-            &mle_coeffs_column_lde,
-            &carry_quotients_column_lde,
-            [&is_first_lde]
-        ]
-        .collect();
+        let aux_trace =
+            chain![&mle_coeffs_column_lde, &carry_quotients_column_lde, [&is_first_lde]].collect();
         component_trace.push(aux_trace);
         span.exit();
 
@@ -721,10 +715,8 @@ fn gen_half_coset_carry_quotients(
     let mut half_coset0_carry_quotients = eval_point.eq_carry_quotients.clone();
     *half_coset0_carry_quotients.last_mut().unwrap() *=
         eq(&[SecureField::one()], &[last_variable]) / eq(&[SecureField::zero()], &[last_variable]);
-    let half_coset1_carry_quotients = half_coset0_carry_quotients
-        .iter()
-        .map(|v| v.inverse())
-        .collect();
+    let half_coset1_carry_quotients =
+        half_coset0_carry_quotients.iter().map(|v| v.inverse()).collect();
     (half_coset0_carry_quotients, half_coset1_carry_quotients)
 }
 
@@ -734,10 +726,7 @@ fn hadamard_product(
     b: &Col<SimdBackend, SecureField>,
 ) -> Col<SimdBackend, SecureField> {
     assert_eq!(a.len(), b.len());
-    SecureColumn {
-        data: zip_eq(&a.data, &b.data).map(|(&a, &b)| a * b).collect(),
-        length: a.len(),
-    }
+    SecureColumn { data: zip_eq(&a.data, &b.data).map(|(&a, &b)| a * b).collect(), length: a.len() }
 }
 
 #[cfg(test)]
@@ -745,7 +734,7 @@ mod tests {
     use std::array;
     use std::iter::{repeat_n, zip};
 
-    use itertools::{chain, Itertools};
+    use itertools::{Itertools, chain};
     use mle_coeff_column::{MleCoeffColumnComponent, MleCoeffColumnEval};
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
@@ -759,29 +748,29 @@ mod tests {
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
-    use stwo::core::verifier::{verify, VerificationError};
+    use stwo::core::verifier::{VerificationError, verify};
+    use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
     use stwo::prover::backend::simd::qm31::PackedSecureField;
-    use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::lookups::mle::Mle;
-    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
     use stwo::prover::poly::BitReversedOrder;
+    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
     use stwo::prover::secure_column::SecureColumnByCoords;
-    use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
+    use stwo::prover::{CommitmentSchemeProver, ComponentProver, prove};
     use stwo_constraint_framework::{
-        assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
+        EvalAtRow, TraceLocationAllocator, assert_constraints_on_polys,
     };
 
     use super::{
-        build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
-        eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint, MleEvalProverComponent,
-        MleEvalVerifierComponent,
+        MleEvalPoint, MleEvalProverComponent, MleEvalVerifierComponent, build_trace,
+        eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
+        eval_prefix_sum_constraints, gen_carry_quotient_col,
     };
+    use crate::xor::gkr_lookups::IsFirst;
     use crate::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
     use crate::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
     use crate::xor::gkr_lookups::preprocessed_columns::IsStepWithOffset;
     use crate::xor::gkr_lookups::test::mle_eval_at_point;
-    use crate::xor::gkr_lookups::IsFirst;
 
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
@@ -1204,17 +1193,17 @@ mod tests {
 
     mod mle_coeff_column {
         use num_traits::{One, Zero};
+        use stwo::core::ColumnVec;
         use stwo::core::air::accumulation::PointEvaluationAccumulator;
         use stwo::core::circle::CirclePoint;
         use stwo::core::fields::m31::BaseField;
         use stwo::core::fields::qm31::SecureField;
         use stwo::core::pcs::TreeVec;
         use stwo::core::poly::circle::CanonicCoset;
-        use stwo::core::ColumnVec;
         use stwo::prover::backend::simd::SimdBackend;
         use stwo::prover::lookups::mle::Mle;
-        use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
         use stwo::prover::poly::BitReversedOrder;
+        use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
         use stwo_constraint_framework::{
             EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator,
         };
@@ -1230,10 +1219,7 @@ mod tests {
 
         impl MleCoeffColumnEval {
             pub const fn new(interaction: usize, n_variables: usize) -> Self {
-                Self {
-                    interaction,
-                    n_variables,
-                }
+                Self { interaction, n_variables }
             }
         }
 

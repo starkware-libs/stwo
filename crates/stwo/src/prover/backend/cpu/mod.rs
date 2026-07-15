@@ -80,9 +80,9 @@ mod tests {
     use rand::rngs::SmallRng;
 
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::{batch_inverse_in_place, FieldExpOps};
-    use crate::prover::backend::cpu::bit_reverse;
+    use crate::core::fields::{FieldExpOps, batch_inverse_in_place};
     use crate::prover::backend::Column;
+    use crate::prover::backend::cpu::bit_reverse;
 
     #[test]
     fn bit_reverse_works() {

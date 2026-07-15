@@ -2,16 +2,16 @@
 use rayon::prelude::*;
 
 use super::{CircleCoefficients, CircleEvaluation};
+use crate::core::ColumnVec;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Poly;
 use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::mempool::BaseColumnPool;
-use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
@@ -35,8 +35,7 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
         #[cfg(not(feature = "parallel"))]
         let iter = columns.into_iter();
 
-        iter.map(|eval| eval.interpolate_with_twiddles(twiddles))
-            .collect()
+        iter.map(|eval| eval.interpolate_with_twiddles(twiddles)).collect()
     }
 
     /// Evaluates the polynomial at a single point.

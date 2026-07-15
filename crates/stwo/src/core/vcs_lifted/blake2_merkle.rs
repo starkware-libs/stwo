@@ -20,9 +20,7 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
     }
 
     fn update_leaf(&mut self, column_values: &[BaseField]) {
-        column_values
-            .iter()
-            .for_each(|x| self.update(&x.0.to_le_bytes()));
+        column_values.iter().for_each(|x| self.update(&x.0.to_le_bytes()));
     }
 
     fn finalize(self) -> Self::Hash {
@@ -62,10 +60,8 @@ impl MerkleChannel for Blake2sM31MerkleChannel {
 
     fn mix_root(channel: &mut Self::C, root: Blake2sHash) {
         // Mix the *unreduced* Merkle root into the channel.
-        channel.update_digest(Blake2sHasherGeneric::<true>::concat_and_hash(
-            &channel.digest(),
-            &root,
-        ));
+        channel
+            .update_digest(Blake2sHasherGeneric::<true>::concat_and_hash(&channel.digest(), &root));
     }
 }
 

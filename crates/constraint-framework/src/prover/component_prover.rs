@@ -10,16 +10,16 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::{CanonicCoset, CircleDomain};
 use stwo::core::utils::bit_reverse;
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
-use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
-use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::very_packed_m31::{LOG_N_VERY_PACKED_ELEMS, VeryPackedBaseField};
 use stwo::prover::backend::{Backend, CpuBackend};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::secure_column::SecureColumnByCoords;
 use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, EvaluationMode, Poly, Trace};
-use tracing::{span, Level};
+use tracing::{Level, span};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};
 use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
@@ -105,12 +105,7 @@ fn get_constraint_quotient_inputs<'a, E: FrameworkEval, B: Backend>(
         .collect_vec();
     bit_reverse(&mut denom_inv);
 
-    ConstraintQuotientInputs {
-        eval_domain,
-        trace_domain,
-        trace,
-        denom_inv,
-    }
+    ConstraintQuotientInputs { eval_domain, trace_domain, trace, denom_inv }
 }
 
 impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponent<E> {
@@ -123,23 +118,15 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             return;
         }
 
-        let ConstraintQuotientInputs {
-            eval_domain,
-            trace_domain,
-            trace,
-            denom_inv,
-        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
+        let ConstraintQuotientInputs { eval_domain, trace_domain, trace, denom_inv } =
+            get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
 
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
-        let _span = span!(
-            Level::INFO,
-            "Constraint point-wise eval",
-            class = "ConstraintEval"
-        )
-        .entered();
+        let _span =
+            span!(Level::INFO, "Constraint point-wise eval", class = "ConstraintEval").entered();
 
         // Fall back to CPU if the trace is too small.
         if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
@@ -165,10 +152,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let iter = range.step_by(CHUNK_SIZE).zip(col.chunks_mut(CHUNK_SIZE));
 
         #[cfg(feature = "parallel")]
-        let iter = range
-            .into_par_iter()
-            .step_by(CHUNK_SIZE)
-            .zip(col.par_chunks_mut(CHUNK_SIZE));
+        let iter = range.into_par_iter().step_by(CHUNK_SIZE).zip(col.par_chunks_mut(CHUNK_SIZE));
 
         // Define any `self` values outside the loop to prevent the compiler thinking there is a
         // `Sync` requirement on `Self`.
@@ -218,23 +202,15 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
             return;
         }
 
-        let ConstraintQuotientInputs {
-            eval_domain,
-            trace_domain,
-            trace,
-            denom_inv,
-        } = get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
+        let ConstraintQuotientInputs { eval_domain, trace_domain, trace, denom_inv } =
+            get_constraint_quotient_inputs(self, trace, evaluation_accumulator.evaluation_mode());
 
         let [mut accum] =
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
-        let _span = span!(
-            Level::INFO,
-            "Constraint point-wise eval",
-            class = "ConstraintEval"
-        )
-        .entered();
+        let _span =
+            span!(Level::INFO, "Constraint point-wise eval", class = "ConstraintEval").entered();
         let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
 
         *accum.col = accumulate_pointwise_cpu(

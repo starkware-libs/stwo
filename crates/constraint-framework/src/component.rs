@@ -4,20 +4,20 @@ use core::ops::Deref;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use std_shims::{vec, String, Vec};
-use stwo::core::air::accumulation::PointEvaluationAccumulator;
+use std_shims::{String, Vec, vec};
+use stwo::core::ColumnVec;
 use stwo::core::air::Component;
+use stwo::core::air::accumulation::PointEvaluationAccumulator;
 use stwo::core::circle::CirclePoint;
 use stwo::core::constraints::coset_vanishing;
-use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::{TreeSubspan, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::all_unique;
-use stwo::core::ColumnVec;
 
 use super::preprocessed_columns::PreProcessedColumnId;
-use super::{EvalAtRow, InfoEvaluator, PointEvaluator, PREPROCESSED_TRACE_IDX};
+use super::{EvalAtRow, InfoEvaluator, PREPROCESSED_TRACE_IDX, PointEvaluator};
 
 #[derive(Debug, Default)]
 enum PreprocessedColumnsAllocationMode {
@@ -54,11 +54,7 @@ impl TraceLocationAllocator {
                     let col_start = *offset;
                     let col_end = col_start + cols.len();
                     *offset = col_end;
-                    TreeSubspan {
-                        tree_index,
-                        col_start,
-                        col_end,
-                    }
+                    TreeSubspan { tree_index, col_start, col_end }
                 })
                 .collect(),
         )
@@ -88,10 +84,7 @@ impl TraceLocationAllocator {
         let mut input_columns = preprocessed_columns.to_vec();
         self_columns.sort_by_key(|col| col.id.clone());
         input_columns.sort_by_key(|col| col.id.clone());
-        assert_eq!(
-            self_columns, input_columns,
-            "Preprocessed columns are not a permutation."
-        );
+        assert_eq!(self_columns, input_columns, "Preprocessed columns are not a permutation.");
     }
 }
 
@@ -132,10 +125,8 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             .iter()
             .map(|col| {
                 let next_column = location_allocator.preprocessed_columns.len();
-                if let Some(pos) = location_allocator
-                    .preprocessed_columns
-                    .iter()
-                    .position(|x| x.id == col.id)
+                if let Some(pos) =
+                    location_allocator.preprocessed_columns.iter().position(|x| x.id == col.id)
                 {
                     pos
                 } else {
@@ -150,13 +141,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 }
             })
             .collect();
-        Self {
-            eval,
-            trace_locations,
-            info,
-            preprocessed_column_indices,
-            claimed_sum,
-        }
+        Self { eval, trace_locations, info, preprocessed_column_indices, claimed_sum }
     }
 
     pub fn trace_locations(&self) -> &[TreeSubspan] {
@@ -173,13 +158,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
 
     pub fn logup_counts(&self) -> RelationCounts {
         let size = 1 << self.eval.log_size();
-        RelationCounts(
-            self.info
-                .logup_counts
-                .iter()
-                .map(|(k, v)| (k.clone(), v * size))
-                .collect(),
-        )
+        RelationCounts(self.info.logup_counts.iter().map(|(k, v)| (k.clone(), v * size)).collect())
     }
 }
 
@@ -208,11 +187,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             .as_ref()
             .map(|tree_offsets| vec![self.eval.log_size(); tree_offsets.len()]);
 
-        log_degree_bounds[0] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|_| self.eval.log_size())
-            .collect();
+        log_degree_bounds[0] =
+            self.preprocessed_column_indices.iter().map(|_| self.eval.log_size()).collect();
 
         log_degree_bounds
     }
@@ -273,25 +249,13 @@ impl<E: FrameworkEval> Display for FrameworkComponent<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let log_n_rows = self.log_size();
         let mut n_cols = vec![];
-        self.trace_log_degree_bounds()
-            .0
-            .iter()
-            .for_each(|interaction| {
-                n_cols.push(interaction.len());
-            });
+        self.trace_log_degree_bounds().0.iter().for_each(|interaction| {
+            n_cols.push(interaction.len());
+        });
         writeln!(f, "n_rows 2^{log_n_rows}")?;
         writeln!(f, "n_constraints {}", self.n_constraints())?;
-        writeln!(
-            f,
-            "constraint_log_degree_bound {}",
-            self.max_constraint_log_degree_bound()
-        )?;
-        writeln!(
-            f,
-            "total felts: 2^{} * {}",
-            log_n_rows,
-            n_cols.iter().sum::<usize>()
-        )?;
+        writeln!(f, "constraint_log_degree_bound {}", self.max_constraint_log_degree_bound())?;
+        writeln!(f, "total felts: 2^{} * {}", log_n_rows, n_cols.iter().sum::<usize>())?;
         for (j, n_cols) in n_cols.into_iter().enumerate() {
             writeln!(f, "\t Interaction {j}: n_cols {n_cols}")?;
         }

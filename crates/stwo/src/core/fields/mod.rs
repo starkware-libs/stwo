@@ -117,9 +117,7 @@ pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
     let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
 
     #[cfg(feature = "parallel")]
-    let iter = dst
-        .par_chunks_mut(chunk_size)
-        .zip(column.par_chunks(chunk_size));
+    let iter = dst.par_chunks_mut(chunk_size).zip(column.par_chunks(chunk_size));
 
     iter.for_each(|(dst, column)| {
         batch_inverse_in_place(column, dst);
@@ -154,15 +152,12 @@ pub trait ComplexConjugate {
     /// # Example
     ///
     /// ```
+    /// use stwo::core::fields::ComplexConjugate;
     /// use stwo::core::fields::m31::P;
     /// use stwo::core::fields::qm31::QM31;
-    /// use stwo::core::fields::ComplexConjugate;
     ///
     /// let x = QM31::from_u32_unchecked(1, 2, 3, 4);
-    /// assert_eq!(
-    ///     x.complex_conjugate(),
-    ///     QM31::from_u32_unchecked(1, 2, P - 3, P - 4)
-    /// );
+    /// assert_eq!(x.complex_conjugate(), QM31::from_u32_unchecked(1, 2, P - 3, P - 4));
     /// ```
     fn complex_conjugate(&self) -> Self;
 }
@@ -177,7 +172,7 @@ impl<F: Field> ExtensionOf<F> for F {
 
 #[macro_export]
 macro_rules! impl_field {
-    ($field_name: ty, $field_size: ident) => {
+    ($field_name:ty, $field_size:ident) => {
         use core::iter::{Product, Sum};
 
         use num_traits::{Num, One, Zero};
@@ -239,10 +234,7 @@ macro_rules! impl_field {
 
         impl RemAssign for $field_name {
             fn rem_assign(&mut self, _rhs: Self) {
-                unimplemented!(
-                    "RemAssign is not implemented for {}",
-                    stringify!($field_name)
-                );
+                unimplemented!("RemAssign is not implemented for {}", stringify!($field_name));
             }
         }
 
@@ -289,7 +281,7 @@ macro_rules! impl_field {
 /// Used to extend a field (with characteristic M31) by 2.
 #[macro_export]
 macro_rules! impl_extension_field {
-    ($field_name: ident, $extended_field_name: ty) => {
+    ($field_name:ident, $extended_field_name:ty) => {
         use rand::distr::{Distribution, StandardUniform};
         use $crate::core::fields::ExtensionOf;
 
@@ -324,19 +316,13 @@ macro_rules! impl_extension_field {
 
         impl One for $field_name {
             fn one() -> Self {
-                Self(
-                    <$extended_field_name>::one(),
-                    <$extended_field_name>::zero(),
-                )
+                Self(<$extended_field_name>::one(), <$extended_field_name>::zero())
             }
         }
 
         impl Zero for $field_name {
             fn zero() -> Self {
-                Self(
-                    <$extended_field_name>::zero(),
-                    <$extended_field_name>::zero(),
-                )
+                Self(<$extended_field_name>::zero(), <$extended_field_name>::zero())
             }
 
             fn is_zero(&self) -> bool {
@@ -455,10 +441,7 @@ macro_rules! impl_extension_field {
 
         impl RemAssign<M31> for $field_name {
             fn rem_assign(&mut self, _rhs: M31) {
-                unimplemented!(
-                    "RemAssign is not implemented for {}",
-                    stringify!($field_name)
-                );
+                unimplemented!("RemAssign is not implemented for {}", stringify!($field_name));
             }
         }
 

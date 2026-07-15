@@ -1,12 +1,12 @@
 #![allow(unused)]
 use itertools::Itertools;
-use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::FieldExpOps;
-use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::ColumnVec;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::{Backend, Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
@@ -31,9 +31,7 @@ pub fn generate_trace<const N: usize, B: Backend>(
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
     assert!(inputs.len().is_power_of_two());
     let log_size = inputs.len().ilog2();
-    let mut trace = (0..N)
-        .map(|_| Col::<B, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+    let mut trace = (0..N).map(|_| Col::<B, BaseField>::zeros(1 << log_size)).collect_vec();
 
     for (vec_index, input) in inputs.iter().enumerate() {
         let mut a = input.a;
@@ -41,10 +39,7 @@ pub fn generate_trace<const N: usize, B: Backend>(
         trace[0].set(vec_index, a);
         trace[1].set(vec_index, b);
         trace.iter_mut().skip(2).for_each(|col| {
-            (a, b) = (
-                b,
-                a.square() + b.square() + BaseField::from(vec_index).square(),
-            );
+            (a, b) = (b, a.square() + b.square() + BaseField::from(vec_index).square());
             col.set(vec_index, b);
         });
     }
@@ -70,9 +65,7 @@ impl<const N: usize> FrameworkEval for WideFibWithPpEval<N> {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let mut a = eval.next_trace_mask();
         let mut b = eval.next_trace_mask();
-        let seq = eval.get_preprocessed_column(PreProcessedColumnId {
-            id: String::from("seq"),
-        });
+        let seq = eval.get_preprocessed_column(PreProcessedColumnId { id: String::from("seq") });
 
         for _ in 2..N {
             let c = eval.next_trace_mask();
@@ -96,25 +89,22 @@ mod tests {
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     use stwo::core::verifier::verify;
-    use stwo::prover::backend::simd::column::BaseColumn;
-    use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::Column;
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::backend::simd::column::BaseColumn;
     use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
-    use stwo::prover::{prove, CommitmentSchemeProver};
-    use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
+    use stwo::prover::{CommitmentSchemeProver, prove};
     use stwo_constraint_framework::TraceLocationAllocator;
+    use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
-    use super::{generate_preprocessed_trace, generate_trace, FibInput, WideFibWithPpEval};
+    use super::{FibInput, WideFibWithPpEval, generate_preprocessed_trace, generate_trace};
     use crate::wide_fibonacci::fib_with_preprocessed::WideFibWithPpComponent;
 
     const FIB_SEQUENCE_LENGTH: usize = 3;
 
     fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
         (0..1 << log_n_instances)
-            .map(|i| FibInput {
-                a: BaseField::one(),
-                b: BaseField::from_u32_unchecked(i as u32),
-            })
+            .map(|i| FibInput { a: BaseField::one(), b: BaseField::from_u32_unchecked(i as u32) })
             .collect_vec()
     }
 
@@ -153,9 +143,7 @@ mod tests {
             // Prove constraints.
             let component = WideFibWithPpComponent::new(
                 &mut TraceLocationAllocator::default(),
-                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 
@@ -203,10 +191,8 @@ mod tests {
             // Build a long unused preprocessed column.
             let log_size_unused_pp = log_n_instances + 1;
             let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
-            preprocessed_trace.push(CircleEvaluation::new(
-                domain,
-                BaseColumn::zeros(1 << log_size_unused_pp),
-            ));
+            preprocessed_trace
+                .push(CircleEvaluation::new(domain, BaseColumn::zeros(1 << log_size_unused_pp)));
             tree_builder.extend_evals(preprocessed_trace);
             tree_builder.commit(prover_channel);
 
@@ -219,18 +205,12 @@ mod tests {
 
             // Prove constraints.
             let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
-                PreProcessedColumnId {
-                    id: String::from("seq"),
-                },
-                PreProcessedColumnId {
-                    id: String::from("large_unused"),
-                },
+                PreProcessedColumnId { id: String::from("seq") },
+                PreProcessedColumnId { id: String::from("large_unused") },
             ]);
             let component = WideFibWithPpComponent::new(
                 &mut allocator,
-                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 
@@ -285,10 +265,8 @@ mod tests {
             let mut preprocessed_trace = vec![generate_preprocessed_trace(log_n_instances)];
             // Build a long unused preprocessed column.
             let domain = CanonicCoset::new(log_size_unused_pp).circle_domain();
-            preprocessed_trace.push(CircleEvaluation::new(
-                domain,
-                BaseColumn::zeros(1 << log_size_unused_pp),
-            ));
+            preprocessed_trace
+                .push(CircleEvaluation::new(domain, BaseColumn::zeros(1 << log_size_unused_pp)));
             tree_builder.extend_evals(preprocessed_trace);
             tree_builder.commit(prover_channel);
 
@@ -301,18 +279,12 @@ mod tests {
 
             // Prove constraints.
             let mut allocator = TraceLocationAllocator::new_with_preprocessed_columns(&[
-                PreProcessedColumnId {
-                    id: String::from("seq"),
-                },
-                PreProcessedColumnId {
-                    id: String::from("large_unused"),
-                },
+                PreProcessedColumnId { id: String::from("seq") },
+                PreProcessedColumnId { id: String::from("large_unused") },
             ]);
             let component = WideFibWithPpComponent::new(
                 &mut allocator,
-                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
+                WideFibWithPpEval::<FIB_SEQUENCE_LENGTH> { log_n_rows: log_n_instances },
                 SecureField::zero(),
             );
 

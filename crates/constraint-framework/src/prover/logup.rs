@@ -1,20 +1,20 @@
-use itertools::{multizip, Itertools};
+use itertools::{Itertools, multizip};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::uninit_vec;
-use stwo::core::ColumnVec;
-use stwo::prover::backend::simd::column::SecureColumn;
-use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
-use stwo::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
-use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::Column;
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::simd::column::SecureColumn;
+use stwo::prover::backend::simd::m31::{LOG_N_LANES, N_LANES, PackedBaseField};
+use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
+use stwo::prover::backend::simd::qm31::{PackedSecureField, batch_inverse_packed_qm31};
 use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::secure_column::SecureColumnByCoords;
 
 // SIMD backend generator for logup interaction trace.
@@ -31,12 +31,7 @@ impl LogupTraceGenerator {
         let trace = vec![];
         let denom = SecureColumn::zeros(1 << log_size);
         let batch_inverse_buffer = unsafe { uninit_vec(1 << (log_size - LOG_N_LANES)) };
-        Self {
-            log_size,
-            trace,
-            denom,
-            batch_inverse_buffer,
-        }
+        Self { log_size, trace, denom, batch_inverse_buffer }
     }
 
     /// # Safety
@@ -46,12 +41,7 @@ impl LogupTraceGenerator {
         let trace = vec![];
         let denom = SecureColumn::uninitialized(1 << log_size);
         let batch_inverse_buffer = unsafe { uninit_vec(1 << (log_size - LOG_N_LANES)) };
-        Self {
-            log_size,
-            trace,
-            denom,
-            batch_inverse_buffer,
-        }
+        Self { log_size, trace, denom, batch_inverse_buffer }
     }
 
     /// Allocate a new lookup column.
@@ -97,44 +87,29 @@ impl LogupTraceGenerator {
         let columns = [c0, c1, c2, c3].map(BaseColumn::from_simd);
         let numerator = SecureColumnByCoords::<SimdBackend> { columns };
 
-        LogupColGenerator {
-            trace_gen: self,
-            numerator,
-        }
-        .finalize_col();
+        LogupColGenerator { trace_gen: self, numerator }.finalize_col();
     }
 
     /// Finalize the trace. Returns the trace and the total sum of the last column.
     /// The last column is shifted by the cumsum_shift.
     pub fn finalize_last(
         mut self,
-    ) -> (
-        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        SecureField,
-    ) {
+    ) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, SecureField) {
         let mut last_col_coords = self.trace.pop().unwrap().columns;
 
         // Compute cumsum_shift.
-        let coordinate_sums = last_col_coords.each_ref().map(|c| {
-            c.data
-                .iter()
-                .copied()
-                .sum::<PackedBaseField>()
-                .pointwise_sum()
-        });
+        let coordinate_sums = last_col_coords
+            .each_ref()
+            .map(|c| c.data.iter().copied().sum::<PackedBaseField>().pointwise_sum());
         let claimed_sum = SecureField::from_m31_array(coordinate_sums);
         let cumsum_shift = claimed_sum / BaseField::from_u32_unchecked(1 << self.log_size);
         let packed_cumsum_shift = PackedSecureField::broadcast(cumsum_shift);
 
         last_col_coords.iter_mut().enumerate().for_each(|(i, c)| {
-            c.data
-                .iter_mut()
-                .for_each(|x| *x -= packed_cumsum_shift.into_packed_m31s()[i])
+            c.data.iter_mut().for_each(|x| *x -= packed_cumsum_shift.into_packed_m31s()[i])
         });
         let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
-        let secure_prefix_sum = SecureColumnByCoords {
-            columns: coord_prefix_sum,
-        };
+        let secure_prefix_sum = SecureColumnByCoords { columns: coord_prefix_sum };
         self.trace.push(secure_prefix_sum);
         let trace = self
             .trace
@@ -197,23 +172,21 @@ impl LogupColGenerator<'_> {
             numerator_chunks.zip(denom_inv_chunks)
         };
 
-        chunks_iter
-            .enumerate()
-            .for_each(|(chunk_idx, (mut numerator_chunk, denom_inv_chunk))| {
-                for (idx_in_chunk, denom_item) in denom_inv_chunk.iter().enumerate() {
-                    unsafe {
-                        let vec_row = chunk_idx * chunk_size + idx_in_chunk;
-                        let value = numerator_chunk.packed_at(idx_in_chunk) * *denom_item;
-                        let prev_value = self
-                            .trace_gen
-                            .trace
-                            .last()
-                            .map(|col| col.packed_at(vec_row))
-                            .unwrap_or_else(PackedSecureField::zero);
-                        numerator_chunk.set_packed(idx_in_chunk, value + prev_value)
-                    }
+        chunks_iter.enumerate().for_each(|(chunk_idx, (mut numerator_chunk, denom_inv_chunk))| {
+            for (idx_in_chunk, denom_item) in denom_inv_chunk.iter().enumerate() {
+                unsafe {
+                    let vec_row = chunk_idx * chunk_size + idx_in_chunk;
+                    let value = numerator_chunk.packed_at(idx_in_chunk) * *denom_item;
+                    let prev_value = self
+                        .trace_gen
+                        .trace
+                        .last()
+                        .map(|col| col.packed_at(vec_row))
+                        .unwrap_or_else(PackedSecureField::zero);
+                    numerator_chunk.set_packed(idx_in_chunk, value + prev_value)
                 }
-            });
+            }
+        });
 
         self.trace_gen.trace.push(self.numerator)
     }
@@ -223,12 +196,8 @@ impl LogupColGenerator<'_> {
         let denom = self.trace_gen.denom.data.iter_mut();
         let [coord0, coord1, coord2, coord3] =
             self.numerator.columns.each_mut().map(|s| &mut s.data);
-        multizip((coord0, coord1, coord2, coord3, denom)).map(|(n0, n1, n2, n3, d)| {
-            FractionWriter {
-                numerator: [n0, n1, n2, n3],
-                denom: d,
-            }
-        })
+        multizip((coord0, coord1, coord2, coord3, denom))
+            .map(|(n0, n1, n2, n3, d)| FractionWriter { numerator: [n0, n1, n2, n3], denom: d })
     }
 
     // TODO(Ohad): remove.
@@ -236,18 +205,9 @@ impl LogupColGenerator<'_> {
     pub fn par_iter_mut(&mut self) -> impl IndexedParallelIterator<Item = FractionWriter<'_>> {
         let [coord0, coord1, coord2, coord3] =
             self.numerator.columns.each_mut().map(|s| &mut s.data);
-        (
-            coord0,
-            coord1,
-            coord2,
-            coord3,
-            &mut self.trace_gen.denom.data,
-        )
+        (coord0, coord1, coord2, coord3, &mut self.trace_gen.denom.data)
             .into_par_iter()
-            .map(|(n0, n1, n2, n3, d)| FractionWriter {
-                numerator: [n0, n1, n2, n3],
-                denom: d,
-            })
+            .map(|(n0, n1, n2, n3, d)| FractionWriter { numerator: [n0, n1, n2, n3], denom: d })
     }
 }
 
@@ -356,15 +316,12 @@ mod tests {
         // Parallel version.
         let mut log_gen_par = LogupTraceGenerator::new(6);
         let mut col_gen_par = log_gen_par.new_col();
-        col_gen_par
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(i, writer)| {
-                let num = array::from_fn(|j| qm31!(i as u32, j as u32, 0, 1));
-                let den = array::from_fn(|j| qm31!(i as u32, j as u32, 2, 3));
-                let [num, den] = [num, den].map(PackedSecureField::from_array);
-                writer.write_frac(num, den);
-            });
+        col_gen_par.par_iter_mut().enumerate().for_each(|(i, writer)| {
+            let num = array::from_fn(|j| qm31!(i as u32, j as u32, 0, 1));
+            let den = array::from_fn(|j| qm31!(i as u32, j as u32, 2, 3));
+            let [num, den] = [num, den].map(PackedSecureField::from_array);
+            writer.write_frac(num, den);
+        });
         col_gen_par.finalize_col();
         let (_, sum_par) = log_gen_par.finalize_last();
 

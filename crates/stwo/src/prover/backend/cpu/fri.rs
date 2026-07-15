@@ -7,9 +7,9 @@ use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::poly::circle::SecureEvaluation;
 use crate::prover::poly::twiddles::TwiddleTree;
-use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
 impl FriOps for CpuBackend {
@@ -100,21 +100,17 @@ pub fn fold_circle_into_line_cpu(
     let values = unsafe { SecureColumnByCoords::uninitialized(1 << line_log_size) };
     let mut dst = LineEvaluation::new(dst_domain, values);
 
-    src.values
-        .into_iter()
-        .array_chunks()
-        .enumerate()
-        .for_each(|(i, [f_p, f_neg_p])| {
-            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(i << 1, domain.log_size()));
+    src.values.into_iter().array_chunks().enumerate().for_each(|(i, [f_p, f_neg_p])| {
+        // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+        let p = domain.at(bit_reverse_index(i << 1, domain.log_size()));
 
-            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
-            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
-            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            let f_prime = alpha * f1_px + f0_px;
+        // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
+        let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+        ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+        let f_prime = alpha * f1_px + f0_px;
 
-            dst.values.set(i, f_prime)
-        });
+        dst.values.set(i, f_prime)
+    });
     dst
 }
 
@@ -140,12 +136,8 @@ impl CpuBackend {
 
         // eval is in bit-reverse, hence all the positive factors are in the first half, opposite to
         // the latter.
-        let a_sum = (0..half_domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
-        let b_sum = (half_domain_size..domain_size)
-            .map(|i| eval.values.at(i))
-            .sum::<SecureField>();
+        let a_sum = (0..half_domain_size).map(|i| eval.values.at(i)).sum::<SecureField>();
+        let b_sum = (half_domain_size..domain_size).map(|i| eval.values.at(i)).sum::<SecureField>();
 
         // lambda = sum(+-f(p)) / 2N.
         (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32)
@@ -160,11 +152,11 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::m31;
-    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::fri::FriOps;
-    use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::secure_column::SecureColumnByCoords;
 
     #[test]
