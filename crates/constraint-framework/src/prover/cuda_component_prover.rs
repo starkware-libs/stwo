@@ -1,34 +1,33 @@
 //! `ComponentProver<CudaBackend>` for `FrameworkComponent`.
 //!
-//! Unlike `GpuBackend` (obelyzk), whose column layout is byte-identical to `SimdBackend`,
-//! the device-resident `CudaBackend` stores committed columns as device `BaseFieldVec`s. A
-//! `mem::transmute` to `SimdBackend` (as done in `gpu_component_prover`) is therefore UNSOUND.
-//!
-//! Correctness-first v1: we perform a REAL conversion. Each committed column referenced by the
-//! `Trace<'_, CudaBackend>` is copied to host via `Column::to_cpu()`, producing an owned
-//! `Trace<'_, CpuBackend>`. We then run the audited `CpuBackend` constraint-quotient evaluation
-//! into a host `SecureColumnByCoords<CpuBackend>` seeded with the current accumulator contents,
-//! and upload the result back into the `DomainEvaluationAccumulator<CudaBackend>`'s device column.
+//! The device-resident `CudaBackend` stores committed columns as device `BaseFieldVec`s, so a
+//! `mem::transmute` to `SimdBackend` is UNSOUND. Instead we perform a REAL conversion: each
+//! committed column referenced by the `Trace<'_, CudaBackend>` is copied to host via
+//! `Column::to_cpu()`, producing an owned `Trace<'_, CpuBackend>`. We then run the audited
+//! `CpuBackend` constraint-quotient evaluation into a host `SecureColumnByCoords<CpuBackend>`
+//! seeded with the current accumulator contents, and upload the result back into the
+//! `DomainEvaluationAccumulator<CudaBackend>`'s device column.
 //!
 //! This mirrors the SIMD small-trace CPU fallback in `component_prover.rs`: it shares the exact
 //! same `accumulate_pointwise_cpu` routine and the same `random_coeff_powers` (split off the
 //! Cuda accumulator), so the accumulated composition-polynomial column is bit-identical to the
 //! SimdBackend / CpuBackend result. The constraint-evaluation D2H/H2D round trip is acceptable
-//! for v1 (constraint eval is a small fraction of prove time vs commit/FRI); an on-device CUDA
-//! constraint kernel is future work.
+//! (constraint eval is a small fraction of prove time vs commit/FRI).
 //!
-//! # Why there is no device-resident GPU constraint path here (2026-06-28 investigation)
+//! An OPT-IN, circuit-specific, device-resident GPU constraint kernel can be registered downstream
+//! (see the branch in `evaluate_constraint_quotients_on_domain`); when present and enabled it runs
+//! ahead of this host-delegate. Absent such a kernel, this audited host-delegate is the ONLY correct
+//! path and the DEFAULT.
 //!
-//! Two candidate GPU paths were assessed and BOTH rejected on soundness grounds:
+//! # Why no GENERIC device-resident GPU constraint path exists here
 //!
-//! 1. Reviving obelyzk's generic `GpuDomainEvaluator` (`gpu_domain.rs`) against `CudaBackend`
-//!    device columns is UNSOUND: its `off == 0` fast path calls
-//!    `VeryPackedBaseColumn::transform_under_ref(col)` on the column's backing store, which
-//!    reinterprets *host* SIMD memory. A `CudaBackend` `BaseFieldVec` is a raw device pointer, so
-//!    that transmute is undefined behavior; its non-zero-offset path would also issue one
-//!    single-element D2H copy (`Column::at`) per masked value. (Independently, obelyzk's evaluator
-//!    already produced WRONG values on real gate_air even on the host-layout `GpuBackend` — see the
-//!    note in `gpu_component_prover.rs` — so it is not a trustworthy reference to port.)
+//! Two candidate generic GPU paths were assessed and BOTH rejected on soundness grounds:
+//!
+//! 1. A generic `GpuDomainEvaluator` against `CudaBackend` device columns is UNSOUND: its `off == 0`
+//!    fast path calls `VeryPackedBaseColumn::transform_under_ref(col)` on the column's backing store,
+//!    which reinterprets *host* SIMD memory. A `CudaBackend` `BaseFieldVec` is a raw device pointer,
+//!    so that transmute is undefined behavior; its non-zero-offset path would also issue one
+//!    single-element D2H copy (`Column::at`) per masked value.
 //!
 //! 2. The NitrooZK device path (`stwo_cuda/cuda/evaluate_constraints.cu`, FFI-exposed as
 //!    `bindings::evaluate_constraint_quotients_on_domain`) is NOT generic: it `switch`es on an
@@ -36,14 +35,10 @@
 //!    (blake/poseidon/cairo opcodes/range-checks/wide_fibonacci). gate_air's `GateEval` is not in
 //!    that switch, so the binding would return `false` ("unsupported, fall back to CPU"). Enabling
 //!    it for gate_air would require authoring a NEW, soundness-critical, gate_air-specific CUDA
-//!    kernel by hand — exactly the previously-abandoned, box-unvalidated risk we must avoid here.
-//!    There is no GENERIC `FrameworkEval -> CUDA` path in this tree.
+//!    kernel by hand. There is no GENERIC `FrameworkEval -> CUDA` path in this tree.
 //!
-//! Therefore the audited host-delegate below is the ONLY correct path and is the DEFAULT. The env
-//! var `CUDA_CONSTRAINT_CPU_FALLBACK` is honored for forward-compatibility / A-B testing: it is
-//! read on every call, but since no trustworthy GPU path exists yet, both settings currently route
-//! to this same audited host-delegate. When a verified device kernel lands, gate the new path on
-//! `!cpu_fallback_forced()` and leave this delegate reachable via `CUDA_CONSTRAINT_CPU_FALLBACK=1`.
+//! The env var `CUDA_CONSTRAINT_CPU_FALLBACK=1` forces this host-delegate even when a downstream GPU
+//! kernel is registered (used for the intentional CPU-vs-GPU composition byte-identity diff).
 
 use std::borrow::Cow;
 
@@ -78,11 +73,7 @@ use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
 
 /// Whether the operator has forced the audited CPU-delegate constraint path via
 /// `CUDA_CONSTRAINT_CPU_FALLBACK=1`. Read fresh on each call (cheap; once per component per prove).
-///
-/// Contract for future work: the DEFAULT (unset / "0") is meant to select the on-device GPU
-/// constraint path once one is verified; "1" forces this audited host-delegate. Until a
-/// trustworthy GPU path exists, BOTH settings route to the host-delegate, so this function only
-/// affects diagnostics today.
+/// When true, the opt-in GPU constraint branch is skipped and this component always host-delegates.
 fn cpu_fallback_forced() -> bool {
     matches!(
         std::env::var("CUDA_CONSTRAINT_CPU_FALLBACK").as_deref(),
@@ -122,9 +113,7 @@ fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
     if !guard(n_constraints, log_n_rows) {
         return;
     }
-    // Deliberate host-delegate — the operator explicitly asked for it, either by forcing the CPU
-    // fallback (CUDA_CONSTRAINT_CPU_FALLBACK=1, the CPU-vs-GPU byte-identity diff) or by opting out
-    // of the GPU constraint path entirely (CUDA_GPU_CONSTRAINTS=0). Both are sanctioned host runs.
+    // ESCAPE HATCH (see fn doc): the operator explicitly asked for the host path.
     if cpu_fallback_forced() || !gpu_constraints_opt_in() {
         return;
     }
@@ -236,14 +225,10 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             return;
         }
 
-        // No trustworthy device-resident GPU constraint path exists yet (see module docs), so we
-        // always take the audited host-delegate. Reading the flag here keeps the A/B contract live
-        // and documents which path ran; today it is informational only.
+        // Read once; gates the opt-in GPU branch below (when set, force the audited host-delegate).
         let _cpu_fallback_forced = cpu_fallback_forced();
 
-        // ============================================================================
         // OPT-IN device-resident GPU constraint kernel (circuit-specific, registered downstream).
-        //
         // Taken ONLY when `CUDA_GPU_CONSTRAINTS=1`, a kernel was installed via
         // `set_gpu_constraint_kernel`, and `CUDA_CONSTRAINT_CPU_FALLBACK` is NOT forcing the host
         // path. The kernel inspects the component (e.g. by structural fingerprint) and returns
@@ -251,17 +236,13 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         // the audited host-delegate below. This is a SEPARATE, additive branch IN FRONT of the
         // host delegate; the host-delegate code below is unchanged and remains the DEFAULT + the
         // fallback. No host constraint-eval math is affected by this branch.
-        // ============================================================================
         if gpu_constraints_opt_in() && !_cpu_fallback_forced {
             if let Some(kernel) = registered_gpu_constraint_kernel() {
                 // The committed eval columns are resident on device; dispatch the GPU kernel on the
-                // committed trace directly.
-                let dispatch_trace: &Trace<'_, CudaBackend> = trace;
-
-                // Device-resident constraint-quotient inputs (no D2H) on the CudaBackend trace.
+                // committed trace directly. Device-resident constraint-quotient inputs (no D2H).
                 let inputs = get_constraint_quotient_inputs(
                     self,
-                    dispatch_trace,
+                    trace,
                     evaluation_accumulator.evaluation_mode(),
                 );
                 let dispatch = GpuConstraintDispatch {
@@ -279,11 +260,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             }
         }
 
-        // Reaching here means this component takes the audited host-delegate constraint path. That
-        // is normal for the small table components, but a hard error for the big gate_air MAIN
-        // component on CudaBackend: the GPU kernel is REQUIRED there, so silently running the ~60x
-        // slower host delegate would benchmark the wrong path. PANIC (no silent fallback) unless
-        // the operator explicitly forced the host path (CUDA_CONSTRAINT_CPU_FALLBACK=1).
+        // Reaching here means this component takes the audited host-delegate. Normal for small table
+        // components; a hard error for a plugin-declared MAIN component (see fn doc for the rationale).
         panic_if_main_host_delegate(self.n_constraints(), self.eval.log_size());
 
         // Move ONLY this component's committed trace polynomials to host. The audited host eval
@@ -328,7 +306,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         // old scalar path.
         let seed_cpu: SecureColumnByCoords<CpuBackend> = accum.col.to_cpu();
 
-        // ============================================================================
         // SIMD (packed + rayon-parallel) pointwise constraint evaluation.
         //
         // This REPLACES the serial scalar `accumulate_pointwise_cpu` over the eval domain. It is a
@@ -352,7 +329,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
         // positional (logical index `i` -> packed `i / N_LANES`, lane `i % N_LANES`) and
         // order-preserving, so the eval-domain trace columns and the seed carry the SAME
         // logical bit-reversed order as the `CpuBackend` values.
-        // ============================================================================
 
         // Repack the prepared eval-domain trace columns (still `CpuBackend`) into `SimdBackend`
         // columns, preserving the global TreeVec shape. Owned storage; the SIMD evaluator borrows
