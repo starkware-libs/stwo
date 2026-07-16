@@ -280,9 +280,8 @@ void barycentric_eval_at_point_cuda(
 // bit-identical to the single wrapper; only the SCHEDULE (batched launch + single sync + single
 // D2H) changes. Result e is therefore identical to calling the single wrapper on eval e.
 //
-// LIFETIME (rehydrate temporaries): the caller owns evals[e] and must keep every rehydrated
-// temporary alive until this call RETURNS — the terminal sync here guarantees every kernel has
-// consumed its evals[e] before we return, after which the caller may drop the temporaries.
+// LIFETIME: the caller owns evals[e] and must keep each buffer alive until this call RETURNS — the
+// terminal sync here guarantees every kernel has consumed its evals[e] before we return.
 void barycentric_eval_at_point_batched_cuda(
     m31 **evals,
     qm31 **weights,

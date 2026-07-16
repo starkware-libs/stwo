@@ -208,12 +208,6 @@ Blake2sHash* cuda_alloc_zeroes_blake_2s_hash(int);
 extern "C"
 void cuda_free_memory(void*);
 
-// STOPGAP (streamed fused-commit only): drain the default stream so a deferred
-// cudaFreeAsync completes, then trim the pool (guarded on init) so the freed
-// segment is reclaimable before the next per-column alloc. See utils.cu.
-extern "C"
-void cuda_stream_reclaim_freed(size_t keep_bytes);
-
 // Use CUDA memory pool
 #define USE_CUDA_MEM_POOL 1
 

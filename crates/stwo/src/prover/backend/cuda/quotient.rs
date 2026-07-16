@@ -2,7 +2,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
 use crate::core::poly::circle::CanonicCoset;
 use crate::prover::backend::cuda::secure_column::CudaSecureColumn;
-use crate::prover::backend::cuda::{fused_commit, CudaBackend};
+use crate::prover::backend::cuda::CudaBackend;
 use crate::prover::backend::simd::column::BaseColumn as SimdBaseColumn;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::Column;
@@ -144,16 +144,6 @@ fn compute_quotients_and_combine_simd_delegated(
     SecureEvaluation::new(res.domain, securecol_simd_to_cuda(res.values))
 }
 
-/// Per-batch flattened accumulate-numerators terms, built once and reused across every
-/// subdomain row-block in the staged (row-tiled) path. Mirrors the arguments the
-/// `accumulate_numerators_batch` kernel consumes (`acc += c_j * col[idx_j][row] - b_j`).
-struct BatchTerms {
-    line_coeffs_b: Vec<CudaSecureField>,
-    line_coeffs_c: Vec<CudaSecureField>,
-    column_indices: Vec<u32>,
-    n_terms: usize,
-}
-
 impl QuotientOps for CudaBackend {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
@@ -177,213 +167,55 @@ impl QuotientOps for CudaBackend {
         }
 
         let subdomain_size = subdomain.size();
-        let any_staged = columns.iter().any(|c| fused_commit::is_staged(&c.values));
-
-        // COMPOSITION_TILING_SCOPE (route c) §1.5: the accumulate kernel reads
-        // `columns[column_index][row]` at global `row`, offset 0, pure pointwise over the SUBDOMAIN
-        // prefix (`size >> blowup`, ~half the eval size at blowup 1). When the streamed commit
-        // (GATE_AIR_STREAM_COMMIT) staged the columns, rehydrating them ALL whole is ~½ the commit-
-        // peak eval set at once — still busting 40 GB at 2^24. So under `any_staged` we ROW-TILE:
-        // loop subdomain row-blocks, H2D only that block's slice of every referenced column into a
-        // reused tile buffer (`rehydrate_block`), and run the SAME kernel over `[0, block)` with
-        // the RESULT pointers biased by `+off` so local row `r` writes global subdomain
-        // slot `off+r`. The kernel loops `row in [0, size)` with `size = block`, so tile
-        // columns are indexed LOCAL (no column-pointer bias) and only the result base moves
-        // — byte-identical to the whole- subdomain launch (pure pointwise,
-        // order-independent, slice-exact). Non-staged path is the legacy whole-subdomain
-        // launch, byte-for-byte unchanged.
         let quotient_constants = quotient_constants(sample_batches);
 
-        if !any_staged {
-            // ---- Legacy resident path (byte-for-byte unchanged). ----
-            let host_col_ptrs: Vec<*const u32> =
-                columns.iter().map(|c| c.values.device_ptr).collect();
-            let device_col_ptrs = unsafe {
-                interface::bindings::copy_device_pointer_vec_from_host_to_device(
-                    host_col_ptrs.as_ptr(),
-                    host_col_ptrs.len(),
-                )
-            };
-            for (batch, coeffs) in sample_batches.iter().zip(quotient_constants.line_coeffs) {
-                let line_coeffs_b: Vec<CudaSecureField> = coeffs
-                    .iter()
-                    .map(|(_, b, _)| CudaSecureField::from(*b))
-                    .collect();
-                let line_coeffs_c: Vec<CudaSecureField> = coeffs
-                    .iter()
-                    .map(|(_, _, c)| CudaSecureField::from(*c))
-                    .collect();
-                let column_indices: Vec<u32> = batch
-                    .cols_vals_randpows
-                    .iter()
-                    .map(|n| n.column_index as u32)
-                    .collect();
-                let result = unsafe { CudaSecureColumn::new_with_size(subdomain_size) };
-                unsafe {
-                    interface::bindings::accumulate_numerators_batch(
-                        subdomain_size as u32,
-                        device_col_ptrs,
-                        line_coeffs_b.as_ptr(),
-                        line_coeffs_c.as_ptr(),
-                        column_indices.as_ptr(),
-                        coeffs.len() as u32,
-                        result.columns[0].device_ptr,
-                        result.columns[1].device_ptr,
-                        result.columns[2].device_ptr,
-                        result.columns[3].device_ptr,
-                    );
-                }
-                let first_linear_term_acc = coeffs.iter().map(|(a, ..)| *a).sum();
-                accumulated_numerators_vec.push(AccumulatedNumerators {
-                    sample_point: batch.point,
-                    partial_numerators_acc: result,
-                    first_linear_term_acc,
-                });
-            }
-            unsafe {
-                interface::bindings::cuda_free_memory(device_col_ptrs as *const std::ffi::c_void);
-            }
-            return;
-        }
-
-        // ---- Staged path: per-subdomain-block H2D from the stash (residency O(block * n_cols)).
-        // ---- Tile size (rows/block); same knob family as the composition kernel. Clamp to
-        // subdomain.
-        let mut block_rows: usize = std::env::var("GATE_AIR_TILE_ROWS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|&b| b > 0)
-            .unwrap_or(1usize << 20);
-        if block_rows > subdomain_size {
-            block_rows = subdomain_size;
-        }
-
-        // One persistent result secure-column per batch (full subdomain), written block-by-block.
-        let results: Vec<SecureColumnByCoords<CudaBackend>> = sample_batches
-            .iter()
-            .map(|_| unsafe { CudaSecureColumn::new_with_size(subdomain_size) })
-            .collect();
-        // Per-batch coefficient/index tables (batch-invariant across blocks; build once).
-        let batch_terms: Vec<BatchTerms> = sample_batches
-            .iter()
-            .zip(quotient_constants.line_coeffs.iter())
-            .map(|(batch, coeffs)| BatchTerms {
-                line_coeffs_b: coeffs
-                    .iter()
-                    .map(|(_, b, _)| CudaSecureField::from(*b))
-                    .collect(),
-                line_coeffs_c: coeffs
-                    .iter()
-                    .map(|(_, _, c)| CudaSecureField::from(*c))
-                    .collect(),
-                column_indices: batch
-                    .cols_vals_randpows
-                    .iter()
-                    .map(|n| n.column_index as u32)
-                    .collect(),
-                n_terms: coeffs.len(),
-            })
-            .collect();
-
-        let mut off = 0usize;
-        while off < subdomain_size {
-            let this_block = (subdomain_size - off).min(block_rows);
-
-            // Build this block's per-column device pointer for EVERY referenced column.
-            //   * STAGED column (tree1's large eval cols, dehydrated at streamed commit): H2D only
-            //     this block's slice from the host stash into a reused tile buffer
-            //     (`rehydrate_block`). The tile buffer is indexed LOCAL (`[0, block)`).
-            //   * RESIDENT column (tree0 preprocessed / tree2 interaction — never streamed, live on
-            //     device): its committed bytes are ALREADY on the device in the same eval-domain
-            //     order the kernel indexes, so we slice its LIVE buffer directly — a BORROWED view
-            //     biased by `+off` (`device_ptr.add(off)`), so local row `r` reads global slot
-            //     `off+r`. Same biased-pointer trick already used for the result columns below;
-            //     produces byte-identical values to a staged slice (same bytes, same `col[row]`),
-            //     with no D2H/H2D round-trip. `from_borrowed_ptr` keeps `owns_memory = false` so
-            //     dropping the tile view never frees the live column. Fail-loud if a resident block
-            //     would run past the buffer (never read a bad address — the 2^24 illegal-address
-            //     class).
-            // T2: split the staged block rehydrate H2D from the accumulate kernel compute.
-            let t2 = fused_commit::t1_timers_on();
-            let h2d_start = t2.then(std::time::Instant::now);
-            let tile_cols: Vec<BaseFieldVec> = columns
+        // Resident whole-subdomain launch: every column is live on device.
+        let host_col_ptrs: Vec<*const u32> =
+            columns.iter().map(|c| c.values.device_ptr).collect();
+        let device_col_ptrs = unsafe {
+            interface::bindings::copy_device_pointer_vec_from_host_to_device(
+                host_col_ptrs.as_ptr(),
+                host_col_ptrs.len(),
+            )
+        };
+        for (batch, coeffs) in sample_batches.iter().zip(quotient_constants.line_coeffs) {
+            let line_coeffs_b: Vec<CudaSecureField> = coeffs
                 .iter()
-                .map(|c| {
-                    if fused_commit::is_staged(&c.values) {
-                        fused_commit::rehydrate_block(&c.values, off, this_block)
-                    } else {
-                        assert!(
-                            off + this_block <= c.values.size,
-                            "quotient row-tiling: resident column slice [{off}, {}) exceeds \
-                             column length {}",
-                            off + this_block,
-                            c.values.size
-                        );
-                        BaseFieldVec::from_borrowed_ptr(
-                            unsafe { c.values.device_ptr.add(off) },
-                            this_block,
-                        )
-                    }
-                })
+                .map(|(_, b, _)| CudaSecureField::from(*b))
                 .collect();
-            let host_col_ptrs: Vec<*const u32> = tile_cols.iter().map(|c| c.device_ptr).collect();
-            let device_col_ptrs = unsafe {
-                interface::bindings::copy_device_pointer_vec_from_host_to_device(
-                    host_col_ptrs.as_ptr(),
-                    host_col_ptrs.len(),
-                )
-            };
-            if let Some(s) = h2d_start {
-                crate::prover::prove_ex_sync();
-                fused_commit::t2_add(2, s.elapsed().as_nanos());
-            }
-            let k_start = t2.then(std::time::Instant::now);
-
-            for (bi, terms) in batch_terms.iter().enumerate() {
-                // Bias each result coord by +off so local row r writes global subdomain slot off+r.
-                let r0 = unsafe { results[bi].columns[0].device_ptr.add(off) };
-                let r1 = unsafe { results[bi].columns[1].device_ptr.add(off) };
-                let r2 = unsafe { results[bi].columns[2].device_ptr.add(off) };
-                let r3 = unsafe { results[bi].columns[3].device_ptr.add(off) };
-                unsafe {
-                    interface::bindings::accumulate_numerators_batch(
-                        this_block as u32,
-                        device_col_ptrs,
-                        terms.line_coeffs_b.as_ptr(),
-                        terms.line_coeffs_c.as_ptr(),
-                        terms.column_indices.as_ptr(),
-                        terms.n_terms as u32,
-                        r0,
-                        r1,
-                        r2,
-                        r3,
-                    );
-                }
-            }
+            let line_coeffs_c: Vec<CudaSecureField> = coeffs
+                .iter()
+                .map(|(_, _, c)| CudaSecureField::from(*c))
+                .collect();
+            let column_indices: Vec<u32> = batch
+                .cols_vals_randpows
+                .iter()
+                .map(|n| n.column_index as u32)
+                .collect();
+            let result = unsafe { CudaSecureColumn::new_with_size(subdomain_size) };
             unsafe {
-                interface::bindings::cuda_free_memory(device_col_ptrs as *const std::ffi::c_void);
+                interface::bindings::accumulate_numerators_batch(
+                    subdomain_size as u32,
+                    device_col_ptrs,
+                    line_coeffs_b.as_ptr(),
+                    line_coeffs_c.as_ptr(),
+                    column_indices.as_ptr(),
+                    coeffs.len() as u32,
+                    result.columns[0].device_ptr,
+                    result.columns[1].device_ptr,
+                    result.columns[2].device_ptr,
+                    result.columns[3].device_ptr,
+                );
             }
-            if let Some(s) = k_start {
-                crate::prover::prove_ex_sync();
-                fused_commit::t2_add(3, s.elapsed().as_nanos());
-            }
-            // tile_cols drop here -> per-column tile device buffers freed before the next block.
-            off += this_block;
-        }
-
-        // Move each persistent (full-subdomain) result out by value, in batch order (results,
-        // sample_batches, and line_coeffs are all built in the same order).
-        for ((partial, batch), coeffs) in results
-            .into_iter()
-            .zip(sample_batches.iter())
-            .zip(quotient_constants.line_coeffs.iter())
-        {
             let first_linear_term_acc = coeffs.iter().map(|(a, ..)| *a).sum();
             accumulated_numerators_vec.push(AccumulatedNumerators {
                 sample_point: batch.point,
-                partial_numerators_acc: partial,
+                partial_numerators_acc: result,
                 first_linear_term_acc,
             });
+        }
+        unsafe {
+            interface::bindings::cuda_free_memory(device_col_ptrs as *const std::ffi::c_void);
         }
     }
 

@@ -92,30 +92,13 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
     }
 
     fn at(&self, index: usize) -> BaseField {
-        // STEP 2 decommit reader-site (GATE_AIR_STREAM_COMMIT): the generic
-        // `MerkleProverLifted::decommit` reads each committed column at ~70 sparse query positions
-        // via `col.at(idx)`. Under the streamed commit the device buffer was freed and the exact
-        // bytes live in the streaming-commit-layer stash (fused_commit), so serve the read from
-        // there — byte-identical to the resident device read. This keeps the recovery in the CUDA
-        // backend layer (not the shared generic PCS/verifier). For a resident column the stash has
-        // no entry and this is the plain device read.
-        if crate::prover::backend::cuda::fused_commit::is_staged(self) {
-            return crate::prover::backend::cuda::fused_commit::host_batch_get(self, &[index])[0];
-        }
         Self::get_data(self, index)
     }
 
     /// Bulk gather: one device→host copy for all `indices` instead of one per `at`. Returns the
     /// SAME values in the SAME order as `indices.iter().map(|&i| self.at(i))` — the only change vs.
     /// the default trait impl is that the read is batched, so the produced bytes are identical.
-    ///
-    /// Routes exactly like `at`: a host-staged column (freed device buffer, bytes in the streaming
-    /// stash) is served from the stash via `host_batch_get`; a resident column is served by the
-    /// device batch-gather kernel. Both preserve `indices` order.
     fn batch_at(&self, indices: &[usize]) -> Vec<BaseField> {
-        if crate::prover::backend::cuda::fused_commit::is_staged(self) {
-            return crate::prover::backend::cuda::fused_commit::host_batch_get(self, indices);
-        }
         self.batch_get(indices)
     }
 

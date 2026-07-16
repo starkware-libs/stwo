@@ -71,7 +71,6 @@ impl<T> CudaVariableMut<T> for T {
 }
 
 use crate::prover::backend::cpu::CpuCirclePoly;
-use crate::prover::backend::cuda::fused_commit;
 use crate::stwo_cuda as interface;
 use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 use crate::stwo_cuda::SecureFieldVec;
@@ -404,39 +403,7 @@ impl PolyOps for CudaBackend {
         evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
         weights: &SecureFieldVec,
     ) -> SecureField {
-        // STEP 2 (GATE_AIR_STREAM_COMMIT): the streamed commit freed this column's device buffer
-        // and kept its bytes in the streaming-commit-layer stash (fused_commit). This dense OODS
-        // read runs ON GPU, so H2D a TEMPORARY resident copy from the stash, evaluate on device,
-        // and drop it immediately (freed on scope exit). Residency during OODS is thus O(one
-        // column) rather than the whole 188-column eval set. The temporary is bit-identical to the
-        // committed column (same u32 payload), so the OODS value is identical to the resident path.
-        // `&self` is preserved: `rehydrate_owned` copies from the stash without mutating the
-        // column.
         let mut result = CudaSecureField::zero();
-        if fused_commit::is_staged(&evals.values) {
-            // T2: split the staged rehydrate H2D from the barycentric kernel compute.
-            let t2 = fused_commit::t1_timers_on();
-            let h2d_start = t2.then(std::time::Instant::now);
-            let tmp = fused_commit::rehydrate_owned(&evals.values);
-            if let Some(s) = h2d_start {
-                crate::prover::prove_ex_sync();
-                fused_commit::t2_add(0, s.elapsed().as_nanos());
-            }
-            let k_start = t2.then(std::time::Instant::now);
-            unsafe {
-                interface::bindings::barycentric_eval_at_point_cuda(
-                    tmp.device_ptr,
-                    weights.device_ptr,
-                    evals.domain.size() as i32,
-                    &mut result,
-                );
-            }
-            if let Some(s) = k_start {
-                crate::prover::prove_ex_sync();
-                fused_commit::t2_add(1, s.elapsed().as_nanos());
-            }
-            return SecureField::from(result);
-        }
         unsafe {
             interface::bindings::barycentric_eval_at_point_cuda(
                 evals.values.device_ptr,
@@ -451,19 +418,11 @@ impl PolyOps for CudaBackend {
     /// Option A (batched OODS): evaluate ALL (column x mask-point) barycentric dot products with a
     /// single batched launch instead of one tiny kernel + full-device sync + 4 KB D2H per eval.
     ///
-    /// Schedule change ONLY. For each pair we rehydrate the (streaming-committed) column if it was
-    /// dehydrated — exactly as the single `barycentric_eval_at_point` does — then hand all the device
-    /// pointers to `barycentric_eval_at_point_batched_cuda`, which launches every kernel with no
-    /// interior sync, does ONE terminal device sync, ONE bulk D2H, and the SAME per-column CPU
-    /// reduction. The values returned are bit-identical to calling the single wrapper per pair,
-    /// preserving the OODS `mix_felts` content and order.
-    ///
-    /// SHARP EDGE (rehydrate lifetime): a rehydrated `tmp` owns a fresh device buffer that its kernel
-    /// reads. All `tmp`s are held in `rehydrated` across the WHOLE enqueue phase and only dropped
-    /// after `barycentric_eval_at_point_batched_cuda` RETURNS — i.e. after its terminal sync, by
-    /// which point every kernel has consumed its input. So no temporary is freed while a kernel still
-    /// needs it. Non-staged columns keep their own resident buffer alive via `evals` (borrowed for
-    /// the whole call), so their pointers stay valid too.
+    /// Schedule change ONLY. All device pointers are handed to
+    /// `barycentric_eval_at_point_batched_cuda`, which launches every kernel with no interior sync,
+    /// does ONE terminal device sync, ONE bulk D2H, and the SAME per-column CPU reduction. The
+    /// values returned are bit-identical to calling the single wrapper per pair, preserving the
+    /// OODS `mix_felts` content and order.
     fn barycentric_eval_at_points_batched(
         work: &[crate::prover::poly::circle::BarycentricEvalWork<'_, Self>],
     ) -> Vec<SecureField> {
@@ -471,26 +430,12 @@ impl PolyOps for CudaBackend {
             return Vec::new();
         }
 
-        // ENQUEUE-PHASE STATE. `rehydrated` keeps each staged column's temporary device buffer alive
-        // (index-aligned with a Some entry) until after the terminal sync inside the FFI call.
-        let mut rehydrated: Vec<Option<BaseFieldVec>> = Vec::with_capacity(work.len());
         let mut eval_ptrs: Vec<*const u32> = Vec::with_capacity(work.len());
         let mut weight_ptrs: Vec<*const u32> = Vec::with_capacity(work.len());
         let mut sizes: Vec<i32> = Vec::with_capacity(work.len());
 
         for (evals, weights) in work {
-            let eval_ptr = if fused_commit::is_staged(&evals.values) {
-                // Same rehydrate the single path does; the temporary is bit-identical to the
-                // committed column, so the OODS value is identical to the resident path.
-                let tmp = fused_commit::rehydrate_owned(&evals.values);
-                let ptr = tmp.device_ptr;
-                rehydrated.push(Some(tmp));
-                ptr
-            } else {
-                rehydrated.push(None);
-                evals.values.device_ptr
-            };
-            eval_ptrs.push(eval_ptr);
+            eval_ptrs.push(evals.values.device_ptr);
             weight_ptrs.push(weights.device_ptr);
             sizes.push(evals.domain.size() as i32);
         }
@@ -508,10 +453,6 @@ impl PolyOps for CudaBackend {
                 results.as_mut_ptr(),
             );
         }
-
-        // The terminal sync inside the FFI call has completed, so every kernel has consumed its
-        // input; the rehydrated temporaries may now be dropped.
-        drop(rehydrated);
 
         results.into_iter().map(SecureField::from).collect()
     }
@@ -594,76 +535,6 @@ impl PolyOps for CudaBackend {
             return Vec::new();
         }
 
-        // Staging scope for the STREAMED tree1 commit. True ONLY when GATE_AIR_STREAM_COMMIT is set
-        // AND this call contains at least one BORROWED (`owns_memory == false`) input column — the
-        // structural signature of tree1's un-interpolated `d_cols` main views under
-        // GATE_AIR_FUSED_INTERP. tree0/tree2 and every other caller have no borrowed columns, so
-        // `stream_tree1` is false and their columns stay fully resident (unchanged). When true, only
-        // the LARGE main columns (the interp branch below) are host-staged (dehydrated) — the ~47 GB
-        // eval set that must leave the device; the small (multiplicity/witness/program) tree1 columns
-        // stay RESIDENT (FULL (A): small cols are cheap to keep, and the row-tilers read a resident
-        // column directly per-column, so no uniform all-staged assumption is needed). Only the byte
-        // SOURCE of the large columns moves (device -> host stash); committed values are unchanged.
-        let stream_tree1 = fused_commit::stream_commit_enabled()
-            && indexed
-                .iter()
-                .any(|(_, _, _, poly)| !poly.coeffs.owns_memory);
-
-        // Option (a) — interaction (tree2) staging scope. True ONLY when
-        // GATE_AIR_STREAM_INTERACTION is set AND the interaction-commit arm flag is up (set by
-        // the gate_air leaf prover immediately before the tree2 `commit()`; see
-        // `fused_commit::arm_interaction_commit`). The interaction eval columns are OWNED (never
-        // borrowed), so they never match the `stream_tree1` borrowed-column signature — hence the
-        // dedicated trigger. The arm flag is what makes this byte-identity-safe: it fires ONLY for
-        // the tree2 interaction commit, never for tree0's preprocessed `extend_evals` fallback
-        // (also all-owned, same full size) or tree1's small OWNED columns (which share tree1's
-        // call and must stay resident). When true, the OWNED interaction eval columns are
-        // host-staged (dehydrated) in the chunked branch below, freeing their device buffers so
-        // the composition kernel row-tiles tree2 (`host_trace2` non-null -> `tree2_tiled`) instead
-        // of holding it whole-resident. Only the byte SOURCE moves (device -> host stash);
-        // committed values are unchanged. `stream_tree1` and `stream_tree2` are mutually exclusive
-        // per call (tree1's call has a borrowed column, so its arm flag is down; tree2's call is
-        // all-owned).
-        let stream_tree2 = fused_commit::stream_interaction_enabled()
-            && fused_commit::interaction_commit_armed()
-            && indexed.iter().all(|(_, _, _, poly)| poly.coeffs.owns_memory);
-
-        // DIAG (GATE_AIR_NTT_DEBUG): observe, per commit, whether the tree2 interaction streaming
-        // actually engages — prints the stream_tree2 decision + its three sub-conditions. The tree2
-        // interaction commit is the one with ~28 owned same-size columns; if stream_tree2 is false
-        // there, the dehydrate never runs and the whole eval set stays resident (chunk size is then
-        // irrelevant — explaining why arm-wiring and NTT_SUBBATCH had no effect).
-        let ntt_dbg = std::env::var("GATE_AIR_NTT_DEBUG").is_ok();
-        if ntt_dbg {
-            eprintln!(
-                "[ntt_dbg] evaluate_polynomials: n_cols={} stream_tree1={} stream_tree2={} \
-                 si_enabled={} armed={} all_owned={}",
-                indexed.len(),
-                stream_tree1,
-                stream_tree2,
-                fused_commit::stream_interaction_enabled(),
-                fused_commit::interaction_commit_armed(),
-                indexed.iter().all(|(_, _, _, poly)| poly.coeffs.owns_memory),
-            );
-            // stderr is fully buffered under `>> logfile` redirect and its tail is LOST on abort —
-            // flush so this line survives an OOM crash in the same commit (the whole point of it).
-            let _ = std::io::Write::flush(&mut std::io::stderr());
-        }
-
-        // Unlike `stream_tree1`, tree2 does NOT `clear_stash()`: the tree1 staged columns are
-        // still live in the stash (they must survive commit-through-decommit), and tree2's columns
-        // are keyed by fresh unique sentinels, so both trees' entries coexist until the next
-        // proof's tree1 commit clears them.
-        if stream_tree1 {
-            // Evict any stale stash entries from a PRIOR streamed commit before staging THIS tree's
-            // columns, so a freed pointer key can never alias a fresh live column (which would
-            // falsely read as staged — soundness). Called ONCE per tree1 commit here (not per
-            // group): tree1 now stages multiple groups (large interp + small chunked) and a
-            // per-group clear would wipe an earlier group's staged columns before `build_leaves`
-            // rehydrates them. See `fused_commit::clear_stash`.
-            fused_commit::clear_stash();
-        }
-
         // Sort by extended log_size to batch same-size NTTs together.
         indexed.sort_by_key(|(_, ls, ..)| *ls);
 
@@ -716,230 +587,34 @@ impl PolyOps for CudaBackend {
 
                 let mut values_list: Vec<BaseFieldVec> = Vec::with_capacity(num_poly);
 
-                // STEP 1 fused path (GATE_AIR_FUSED_COMMIT, default OFF). When ON: drive
-                // extend+NTT ONE COLUMN AT A TIME, feeding each freshly-extended eval column into
-                // the P-S0 streamed Blake2s absorb, then finalize the leaf layer and stash it for
-                // the immediately-following `build_leaves` (blake2s.rs) to consume. Eval columns
-                // are KEPT RESIDENT (appended to `values_list` exactly as the
-                // default path) — no free, no host-stage, no ceiling move. The
-                // per-column NTT is byte-identical to the sub-batched NTT (columns
-                // are an independent grid dimension; asserted at rfft.cu),
-                // and absorbing one column at a time in group order is bit-identical to the fused
-                // all-at-once leaf hash by absorb-associativity (see P-S0, blake2s.rs:130-139). The
-                // absorb order here is the group's `indexed` order which — for the same-size main
-                // tree (a single group) — equals both the original column order AND `commit`'s
-                // `sorted_by_key(|c| c.len())` order (stable sort on equal keys). The stash is
-                // keyed by the exact eval-column device pointers so `build_leaves`
-                // reuses it ONLY for the matching columns and otherwise safely
-                // rebuilds.
-                // Fix (b) interpolate-in-commit (GATE_AIR_FUSED_INTERP): the gate_air driver feeds
-                // tree1's main columns as BORROWED views into `d_cols` holding UN-interpolated
-                // base-domain evals (never a D2D copy). A group is the un-interpolated main group iff
-                // it contains a borrowed (`owns_memory == false`) input column — the structural
-                // signature that distinguishes it from the already-interpolated tree0/tree2/small
-                // groups (all owned). When ON, this group runs the fused loop and the loop
-                // interpolates each column per-column FIRST (see below).
-                let interp_in_commit = fused_commit::interpolate_in_commit_enabled()
-                    && indexed[group_start..group_end]
+                let mut chunk_off = 0;
+                while chunk_off < num_poly {
+                    let chunk_end = (chunk_off + chunk).min(num_poly);
+
+                    let mut chunk_values: Vec<BaseFieldVec> = indexed
+                        [group_start + chunk_off..group_start + chunk_end]
                         .iter()
-                        .any(|(_, _, _, poly)| !poly.coeffs.owns_memory);
-                let fused = (fused_commit::fused_commit_enabled()
-                    && log_size == eval_domain_size.ilog2())
-                    || interp_in_commit;
-                // STEP 2: under `stream_tree1` (GATE_AIR_STREAM_COMMIT + this tree1 call), host-stage
-                // (D2H + deferred free) each LARGE main eval column right after it is produced (the
-                // interp branch below). This drops the commit peak below 40 GB at 2^24/2^25. Columns
-                // are still pushed to `values_list` (so the tree shape and downstream indexing are
-                // unchanged) but their device buffers are freed; post-commit readers
-                // rehydrate/host-recover on demand. The SMALL (multiplicity/witness/program) tree1
-                // columns stay RESIDENT (FULL (A), see the chunked `else` branch ~line 760): the
-                // per-column readers handle a mixed staged+resident tree1, so no all-staged
-                // assumption is required. EVERY large column is staged under a UNIQUE stash key: the
-                // per-column free is DEFERRED (alloc-next-before-free-prev, see the interp loop) so a
-                // just-freed address is never reused for the next column, which previously made half
-                // the large columns collide on a shared device_ptr and stay resident (the 94/188
-                // corruption). When OFF, columns stay fully resident (step-1 behavior).
-                if fused {
-                    // `fused` is only reachable via `interpolate_in_commit` (the non-interp fused
-                    // condition `log_size == eval_domain_size.ilog2()` is unsatisfiable: a
-                    // CircleDomain's `log_size() == half_coset.log_size + 1`, so it is `n == n-1`).
-                    // So this block is purely the streamed per-column PRODUCER: it interpolates,
-                    // extends, n2b-transforms, dehydrates (host-stages) and pushes each eval column.
-                    // The leaf hashing is owned entirely by the subsequent `build_leaves`
-                    // (blake2s.rs), which absorbs the (dehydrated) columns by rehydrating from the
-                    // host stash — no leaf states are allocated or absorbed here.
+                        .map(|(_, _, _, poly)| poly.extend(log_size).coeffs)
+                        .collect();
 
-                    // Fix (b): ONE reused base-size temp buffer to interpolate each borrowed-view
-                    // column into (never in-place on the borrowed `d_cols` view — that would clobber
-                    // d_cols, which K4/interaction reuses). Base log = coeffs.len().ilog2(); the base
-                    // circle domain's `half_coset.size()` is the b2n `eval_domain_size`, mirroring
-                    // `interpolate_columns` (num_poly = 1). Allocated only when interpolate-in-commit
-                    // is active for this group.
-                    let interp_base_log = indexed[group_start].3.log_size();
-                    let mut interp_temp = if interp_in_commit {
-                        Some(BaseFieldVec::new_zeroes(1usize << interp_base_log))
-                    } else {
-                        None
-                    };
-                    let interp_base_domain =
-                        CanonicCoset::new(interp_base_log).circle_domain();
-                    let interp_eval_domain_size =
-                        interp_base_domain.half_coset.size() as u32;
+                    let mut ptrs: Vec<*mut u32> = chunk_values
+                        .iter()
+                        .map(|v| v.device_ptr as *mut u32)
+                        .collect();
 
-                    for (_, _, _, poly) in &indexed[group_start..group_end] {
-                        let mut col = if let Some(temp) = interp_temp.as_mut() {
-                            // Per-column interpolate == the batched b2n in `interpolate_columns`
-                            // (columns are an independent NTT grid dimension). The coeffs buffer
-                            // handed to the in-place b2n MUST NOT be a borrowed d_cols view.
-                            if poly.coeffs.owns_memory {
-                                // Owned un-interpolated eval column: interpolate in place, leaving
-                                // `poly.coeffs` holding valid interpolated coeffs (matches the
-                                // flag-off `interpolate_columns` output), then extend a fresh eval
-                                // buffer from it.
-                                debug_assert!(
-                                    poly.coeffs.owns_memory,
-                                    "in-place b2n interpolate on a borrowed view is forbidden"
-                                );
-                                let mut coeffs_ptr = [poly.coeffs.device_ptr as *mut u32];
-                                unsafe {
-                                    interface::bindings::ntt_b2n_column(
-                                        coeffs_ptr.as_mut_ptr() as *mut *mut u32,
-                                        interp_base_log,
-                                        1,
-                                        twiddles.itwiddles.device_ptr,
-                                        twiddles.itwiddles.len() as u32,
-                                        interp_eval_domain_size,
-                                    );
-                                }
-                                poly.extend(log_size).coeffs
-                            } else {
-                                // Borrowed view into d_cols: copy to temp, interpolate temp in
-                                // place (leaves d_cols untouched for K4 reuse).
-                                temp.copy_from(&poly.coeffs);
-                                debug_assert!(
-                                    temp.owns_memory,
-                                    "in-place b2n interpolate on a borrowed view is forbidden"
-                                );
-                                let mut temp_ptr = [temp.device_ptr as *mut u32];
-                                unsafe {
-                                    interface::bindings::ntt_b2n_column(
-                                        temp_ptr.as_mut_ptr() as *mut *mut u32,
-                                        interp_base_log,
-                                        1,
-                                        twiddles.itwiddles.device_ptr,
-                                        twiddles.itwiddles.len() as u32,
-                                        interp_eval_domain_size,
-                                    );
-                                }
-                                // Extend the interpolated coeffs (in `temp`) to the eval buffer.
-                                let mut extended = BaseFieldVec::new_zeroes(1usize << log_size);
-                                extended.copy_from(temp);
-                                extended
-                            }
-                        } else {
-                            poly.extend(log_size).coeffs
-                        };
-                        // T1 sub-timer: NTT GPU time. Under the timer flag we sync AFTER the launch
-                        // to attribute real device time to NTT (vs. it folding into the following
-                        // blocking D2H). The sync is diagnostic-only (timer runs), off the perf path.
-                        let t1 = fused_commit::t1_timers_on();
-                        let ntt_start = t1.then(std::time::Instant::now);
-                        let mut col_ptr = [col.device_ptr as *mut u32];
-                        unsafe {
-                            interface::bindings::ntt_n2b_columns(
-                                col_ptr.as_mut_ptr() as *mut *mut u32,
-                                log_size,
-                                1,
-                                twiddles.twiddles.device_ptr,
-                                twiddles.twiddles.len() as u32,
-                                eval_domain_size,
-                            );
-                        }
-                        if let Some(s) = ntt_start {
-                            crate::prover::prove_ex_sync();
-                            fused_commit::t1_add(0, s.elapsed().as_nanos());
-                        }
-                        // STEP 2: host-stage each eval column. `dehydrate_column` D2H-copies its
-                        // bytes to the host stash, frees the device buffer (streaming: keeps the
-                        // commit peak below 40 GB at 2^24/2^25), and re-keys the column by a UNIQUE
-                        // monotonic sentinel (NOT the freed device address), so every large column
-                        // stashes under its own entry and no two committed columns can share a key
-                        // via mem-pool address reuse. `build_leaves` later rehydrates these.
-                        if stream_tree1 {
-                            fused_commit::dehydrate_column(&mut col);
-                        }
-                        values_list.push(col); // resident (step 1) or host-staged (step 2)
+                    unsafe {
+                        interface::bindings::ntt_n2b_columns(
+                            ptrs.as_mut_ptr(),
+                            log_size,
+                            (chunk_end - chunk_off) as u32,
+                            twiddles.twiddles.device_ptr,
+                            twiddles.twiddles.len() as u32,
+                            eval_domain_size,
+                        );
                     }
-                } else {
-                    let mut chunk_off = 0;
-                    while chunk_off < num_poly {
-                        let chunk_end = (chunk_off + chunk).min(num_poly);
 
-                        let mut chunk_values: Vec<BaseFieldVec> = indexed
-                            [group_start + chunk_off..group_start + chunk_end]
-                            .iter()
-                            .map(|(_, _, _, poly)| poly.extend(log_size).coeffs)
-                            .collect();
-
-                        let mut ptrs: Vec<*mut u32> = chunk_values
-                            .iter()
-                            .map(|v| v.device_ptr as *mut u32)
-                            .collect();
-
-                        unsafe {
-                            interface::bindings::ntt_n2b_columns(
-                                ptrs.as_mut_ptr(),
-                                log_size,
-                                (chunk_end - chunk_off) as u32,
-                                twiddles.twiddles.device_ptr,
-                                twiddles.twiddles.len() as u32,
-                                eval_domain_size,
-                            );
-                        }
-
-                        // FULL (A): the small (multiplicity/witness/program) tree1 columns and the
-                        // preprocessed tree0 columns stay RESIDENT (owned) — they
-                        // are NOT dehydrated. Only the 188 LARGE main columns (the interp branch
-                        // above) are host-staged. The downstream row-tilers (quotient/composition)
-                        // read a resident column directly from its live device buffer (its
-                        // `is_staged` check returns false), so a mixed resident+staged tree1 is
-                        // handled per-column — no uniform all-staged assumption. This is the memory
-                        // win (the large columns are the ~47 GB) without paying D2H/H2D for the small
-                        // columns.
-                        //
-                        // Option (a) — interaction (tree2) staging: under `stream_tree2`
-                        // (GATE_AIR_STREAM_INTERACTION + the armed interaction commit) host-stage
-                        // (D2H + free) each OWNED interaction eval column right after its NTT, the
-                        // same `dehydrate_column` mechanism tree1's large columns use. This frees
-                        // the interaction device buffers so the composition kernel row-tiles tree2.
-                        // Columns are still pushed to `values_list` (tree shape / indexing
-                        // unchanged) with a sentinel device_ptr; `build_leaves` / OODS / quotient /
-                        // decommit rehydrate from the stash on demand, and the composition kernel
-                        // supplies them via `host_trace2`. Byte-identical (only the byte SOURCE
-                        // moves). NOTE: unlike the tree1 large-column staging, the NTT here is the
-                        // BATCHED multi-column launch above (interaction columns are all owned and
-                        // same-size, so they never take the borrowed interp branch); the dehydrate
-                        // runs per-column after that batched NTT, which is byte-identical to the
-                        // per-column NTT+dehydrate (the NTT output is independent per column).
-                        if stream_tree2 {
-                            for mut col in chunk_values.drain(..) {
-                                fused_commit::dehydrate_column(&mut col);
-                                values_list.push(col);
-                            }
-                        } else {
-                            values_list.append(&mut chunk_values);
-                        }
-                        chunk_off = chunk_end;
-                        // DIAG (GATE_AIR_NTT_DEBUG): free/pool after each chunk's NTT (+dehydrate if
-                        // stream_tree2) — shows whether the per-chunk peak is CAPPED (streaming frees
-                        // between chunks) or CLIMBING (eval set accumulating). log_size identifies the
-                        // group (interaction group = eval-domain size, ~28 same-size cols).
-                        if ntt_dbg {
-                            crate::stwo_cuda::cuda_mem_probe(&format!(
-                                "ntt_chunk_log{log_size}_off{chunk_off}"
-                            ));
-                        }
-                    }
+                    values_list.append(&mut chunk_values);
+                    chunk_off = chunk_end;
                 }
 
                 // Drain the group to take ownership of polys.

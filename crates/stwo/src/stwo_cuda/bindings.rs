@@ -128,103 +128,17 @@ extern "C" {
 
     pub fn cuda_free_memory(device_ptr: *const c_void);
 
-    // STOPGAP (streamed fused-commit only): after cuda_free_memory, drain the default stream so the
-    // deferred cudaFreeAsync completes and trim the pool (guarded on init) so the freed 128 MiB
-    // segment returns to the pool free-list before the next per-column cudaMallocFromPoolAsync. See
-    // utils.cu and fused_commit::dehydrate_column.
-    pub fn cuda_stream_reclaim_freed(keep_bytes: usize);
-
-    // PART A: drain the default stream (bounds live memory before the next alloc — no OOM
-    // regression) WITHOUT cudaMemPoolTrimTo, so the pool caches+reuses the freed segment instead of
-    // releasing it to the OS and re-mapping it every column (the per-column OS churn is the bulk of
-    // the tree1 streaming serialization tax). See utils.cu.
-    pub fn cuda_stream_reclaim_freed_notrim();
-
-    // OPTION-0 one-shot pool defrag: sync + cudaMemPoolTrimTo(0), releasing ALL cached
-    // already-freed segments to the OS. Called ONCE at the tree1->interaction boundary (NOT per
-    // column) so the fresh contiguous 3 GiB d_inter fits at 2^25. Live buffers untouched. See
-    // utils.cu.
+    // One-shot pool defrag: sync + cudaMemPoolTrimTo(0), releasing ALL cached already-freed segments
+    // to the OS. Used by the resident multi-shard path (GATE_AIR_POOL_TRIM) at a shard boundary so
+    // the next shard starts from a clean pool. Live buffers untouched. See utils.cu.
     pub fn cuda_pool_trim();
-
-    // STEP 2 (GATE_AIR_STREAM_COMMIT) async substrate: pinned host buffers + async H2D/D2H on a
-    // caller stream (opaque `cudaStream_t` == `*mut c_void`; null = default stream). See utils.cu
-    // and the deferred async note in fused_commit.rs — these are the primitives for overlapping the
-    // streamed-commit staging transfers with GPU compute; the stash is not yet wired onto them.
-    pub fn cuda_alloc_pinned_host_uint32_t(size: u32) -> *mut u32;
-
-    pub fn cuda_free_pinned_host(host_ptr: *const c_void);
-
-    pub fn copy_uint32_t_vec_from_device_to_host_async(
-        device_ptr: *const u32,
-        host_ptr: *mut u32,
-        size: u32,
-        stream: *mut c_void,
-    );
-
-    pub fn copy_uint32_t_vec_from_host_to_device_async(
-        host_ptr: *const u32,
-        size: u32,
-        stream: *mut c_void,
-    ) -> *const u32;
-
-    // PART B1/B2 (GATE_AIR_ASYNC_STASH) substrate: a dedicated non-blocking copy stream + events +
-    // no-redundant-memset async H2D/D2H. `cudaStream_t`/`cudaEvent_t` are opaque handles (`*mut
-    // c_void`). These let the streamed-commit dehydrate/rehydrate overlap compute (double-buffered
-    // through a small pinned staging pool) and let the parallel OODS/quotient readers skip the two
-    // dead full-column device memsets + stream-0 serialization. See utils.cu + fused_commit.rs.
-    pub fn cuda_create_copy_stream() -> *mut c_void;
-
-    pub fn cuda_destroy_stream(stream: *mut c_void);
 
     // MULTI-GPU ("option A"): bind the calling host thread to CUDA device `ordinal` (per-thread
     // runtime current-device). Returns 0 on success, -1 on error. See utils.cu.
     pub fn cuda_set_device(ordinal: i32) -> i32;
 
-    // MULTI-GPU: the calling host thread's current CUDA device ordinal (companion read to
-    // `cuda_set_device`; per-thread runtime current-device). Used to index the per-device
-    // streaming-globals tables in fused_commit.rs, mirroring the C-side
-    // `cuda_mem_pool_current_device()`. Returns 0 on error. See utils.cu.
-    pub fn cuda_get_device() -> i32;
-
     // MULTI-GPU: number of visible CUDA devices (0 on error). See utils.cu.
     pub fn cuda_device_count() -> i32;
-
-    pub fn cuda_stream_synchronize(stream: *mut c_void);
-
-    pub fn cuda_create_event() -> *mut c_void;
-
-    pub fn cuda_destroy_event(event: *mut c_void);
-
-    pub fn cuda_event_record(event: *mut c_void, stream: *mut c_void);
-
-    pub fn cuda_event_synchronize(event: *mut c_void);
-
-    pub fn cuda_stream_wait_event(stream: *mut c_void, event: *mut c_void);
-
-    // PART B3 (GATE_AIR_ASYNC_STASH_BATCHED): free a pool device buffer STREAM-ORDERED on `stream`
-    // (cudaFreeAsync), with NO host block. Enqueued after the D2H on the copy stream so the free
-    // executes only once the copy has captured the bytes; device residency is bounded by a
-    // device-side event ring (stream 0 waits on the ring-old free event) instead of a per-column
-    // host sync. See utils.cu.
-    pub fn cuda_free_memory_on_stream(device_ptr: *const c_void, stream: *mut c_void);
-
-    // Async D2H device->pinned-host on `stream`, no memset. Caller records an event afterward so
-    // the pinned-slot reuse / device free can wait on completion.
-    pub fn copy_uint32_t_d2h_pinned_async(
-        device_ptr: *const u32,
-        pinned_host_ptr: *mut u32,
-        size: u32,
-        stream: *mut c_void,
-    );
-
-    // Async H2D pinned-host->fresh device buffer on `stream`, WITHOUT the redundant memset (the
-    // copy overwrites the whole buffer). Caller syncs the stream / waits the event before the
-    // kernel reads.
-    pub fn copy_uint32_t_h2d_nomemset_async(
-        host_ptr: *const u32,
-        size: u32,
-        stream: *mut c_void,
-    ) -> *const u32;
 
     pub fn cuda_get_memory_info(free_mem: *mut usize, total_mem: *mut usize);
 
@@ -264,8 +178,8 @@ extern "C" {
     // reduction the single wrapper does. `evals`/`weights` are arrays of `n` device pointers, `sizes`
     // an array of `n` domain sizes; `results` (len `n`) receives one value per eval. Byte-identical
     // to calling `barycentric_eval_at_point_cuda` `n` times; only the schedule changes. The caller
-    // MUST keep any rehydrated `evals[e]` temporaries alive until this returns (the terminal sync
-    // guarantees all kernels have consumed their inputs by then).
+    // MUST keep each `evals[e]` buffer alive until this returns (the terminal sync guarantees all
+    // kernels have consumed their inputs by then).
     pub fn barycentric_eval_at_point_batched_cuda(
         evals: *const *const u32,
         weights: *const *const u32,
