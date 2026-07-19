@@ -4,7 +4,6 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
-// use crate::stwo_cuda::mem_pool; // DEPRECATED: No longer needed
 
 #[repr(C)]
 pub struct CudaSecureField {
@@ -129,8 +128,10 @@ extern "C" {
     pub fn cuda_free_memory(device_ptr: *const c_void);
 
     // One-shot pool defrag: sync + cudaMemPoolTrimTo(0), releasing ALL cached already-freed segments
-    // to the OS. Used by the resident multi-shard path (GATE_AIR_POOL_TRIM) at a shard boundary so
-    // the next shard starts from a clean pool. Live buffers untouched. See utils.cu.
+    // to the OS, so the next shard starts from a clean pool. Live buffers untouched. See utils.cu.
+    // Invoked at a shard boundary by the resident multi-shard path; the decision to call it is made
+    // cross-repo in gate-air-leaf (its `GATE_AIR_POOL_TRIM` env flag) — this decl is just the FFI
+    // entry point and reads no env var here.
     pub fn cuda_pool_trim();
 
     // MULTI-GPU ("option A"): bind the calling host thread to CUDA device `ordinal` (per-thread
@@ -139,12 +140,6 @@ extern "C" {
 
     // MULTI-GPU: number of visible CUDA devices (0 on error). See utils.cu.
     pub fn cuda_device_count() -> i32;
-
-    pub fn cuda_get_memory_info(free_mem: *mut usize, total_mem: *mut usize);
-
-    // MEM PROBE (diagnostic, read-only): prints driver free/total + pool reserved/used at a labeled
-    // boundary. Does not allocate/free/trim. `tag` is a NUL-terminated C string. See utils.cu.
-    pub fn cuda_mem_probe(tag: *const core::ffi::c_char);
 
     pub fn bit_reverse_base_field(array: *const u32, size: usize);
 
@@ -198,15 +193,6 @@ extern "C" {
         step: CirclePointBaseField,
         total_size: usize,
     ) -> *const u32;
-
-    pub fn evaluate_columns(
-        eval_domain_sizes: *const u32,
-        values: *const *const u32,
-        twiddles_tree: *const u32,
-        twiddle_tree_size: u32,
-        number_of_columns: u32,
-        column_sizes: *const u32,
-    );
 
     pub fn eval_at_point(
         coeffs: *const u32,
@@ -422,26 +408,6 @@ extern "C" {
         result_3: *const u32,
     );
 
-    pub fn accumulate_quotients(
-        half_coset_initial_index: u32,
-        half_coset_step_size: u32,
-        domain_size: u32,
-        columns: *const *const u32,
-        number_of_columns: usize,
-        random_coeff: CudaSecureField,
-        sample_points: *const u32,
-        sample_columns_indexes: *const u32,
-        sample_columns_indexes_size: u32,
-        sample_column_values: *const CudaSecureField,
-        sample_column_and_values_sizes: *const u32,
-        sample_size: u32,
-        result_column_0: *const u32,
-        result_column_1: *const u32,
-        result_column_2: *const u32,
-        result_column_3: *const u32,
-        flattened_line_coeffs_size: u32,
-    );
-
     pub fn gen_eq_evals(
         v: CudaSecureField,
         y: *const CudaSecureField,
@@ -464,17 +430,6 @@ extern "C" {
         output_evals: *const u32,
     );
 
-    pub fn ntt_n2b_native_batch(
-        value: *mut *mut u32,
-        log_n: u32,
-        num_poly: u32,
-        start_stage: u32,
-        end_stage: u32,
-        g_twiddles: *const u32,
-        twiddles_size: u32,
-        eval_domain_size: u32,
-    );
-
     pub fn ntt_b2n_column(
         values_columns: *mut *mut u32,
         log_n: u32,
@@ -492,11 +447,6 @@ extern "C" {
         twiddles_size: u32,
         eval_domain_size: u32,
     );
-
-    // pub fn inclusive_prefix_sum(
-    //     device_bit_rev_circle_domain_evals:  *const u32,
-    //     len: u32,
-    // );
 
     // GPU-accelerated PoW grinding for Blake2s channel
     pub fn grind_blake2s(prefixed_digest: *const u32, pow_bits: u32) -> u64;

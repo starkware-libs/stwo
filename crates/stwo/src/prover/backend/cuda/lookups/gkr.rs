@@ -39,6 +39,7 @@ impl GkrOps for CudaBackend {
     }
 }
 
+#[cfg(test)]
 mod tests {
 
     #[test]

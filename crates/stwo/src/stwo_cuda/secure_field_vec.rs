@@ -1,11 +1,7 @@
 use std::ffi::c_void;
-use std::time::{Duration, Instant};
 
-// use crate::stwo_cuda::mem_pool; // DEPRECATED: Using CUDA allocation directly
 use super::bindings;
 use crate::core::fields::qm31::SecureField;
-use crate::prover::backend::simd::qm31;
-use crate::prover::backend::simd::very_packed_m31::VeryPackedSecureField;
 
 #[derive(Debug)]
 pub struct SecureFieldVec {
@@ -21,20 +17,12 @@ impl SecureFieldVec {
         Self { device_ptr, size }
     }
     pub fn from_vec(host_array: Vec<SecureField>) -> Self {
-        let _data_size_bytes = (host_array.len() * 16) as u64;
-
-        // let start_time = Instant::now();
         let device_ptr = unsafe {
             bindings::copy_uint32_t_vec_from_host_to_device(
                 host_array.as_ptr() as *const u32,
                 4 * host_array.len() as u32,
             )
         };
-        // let elapsed_time = Instant::now().duration_since(start_time);
-
-        // let transfer_speed_gbps = (data_size_bytes as f64 / 1_000_000_000.0) /
-        // elapsed_time.as_secs_f64();
-
         let size = host_array.len();
         Self::new(device_ptr, size)
     }

@@ -75,51 +75,6 @@ use crate::stwo_cuda as interface;
 use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 use crate::stwo_cuda::SecureFieldVec;
 pub(crate) type CudaCircleEvaluation<F, EvalOrder> = CircleEvaluation<CudaBackend, F, EvalOrder>;
-// fn interpolate_native(
-//     eval: CircleEvaluation<CudaBackend, BaseField, BitReversedOrder>,
-//     twiddle_tree: &TwiddleTree<CudaBackend>,
-// ) -> CircleCoefficients<CudaBackend> {
-//     let values = eval.values;
-//     assert!(eval.domain.half_coset.is_doubling_of(twiddle_tree.root_coset));
-//     unsafe {
-//         interface::bindings::interpolate(
-//             eval.domain.half_coset.size() as u32,
-//             values.device_ptr,
-//             twiddle_tree.itwiddles.device_ptr,
-//             twiddle_tree.itwiddles.len() as u32,
-//             values.len() as u32,
-//         );
-//     }
-
-//     CircleCoefficients::new(values)
-// }
-
-// fn interpolate_columns_native(
-//     columns: impl IntoIterator<Item = CircleEvaluation<CudaBackend, BaseField,
-// BitReversedOrder>>,     twiddles: &TwiddleTree<CudaBackend>,
-// ) -> Vec<CircleCoefficients<CudaBackend>> {
-//     let columns = columns.into_iter().collect_vec();
-//     let values = columns
-//         .iter()
-//         .map(|column| column.values.device_ptr)
-//         .collect_vec();
-//     let number_of_rows = columns[0].len();
-//     unsafe {
-//         interface::bindings::interpolate_columns(
-//             columns[0].domain.half_coset.size() as u32,
-//             values.as_ptr(),
-//             twiddles.itwiddles.device_ptr,
-//             twiddles.itwiddles.len() as u32,
-//             columns.len() as u32,
-//             number_of_rows as u32,
-//         );
-//     }
-
-//     columns
-//         .into_iter()
-//         .map(|column| CircleCoefficients::new(column.values))
-//         .collect_vec()
-// }
 
 use std::mem::transmute;
 
@@ -180,18 +135,6 @@ impl PolyOps for CudaBackend {
     // Option A: route OODS through the batched barycentric path (see
     // `barycentric_eval_at_points_batched` below).
     const USE_BATCHED_OODS: bool = true;
-
-    // fn new_canonical_ordered(
-    //     coset: CanonicCoset,
-    //     values: Col<Self, BaseField>,
-    // ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-    //     let size = values.len();
-    //     let device_ptr = unsafe {
-    //         interface::bindings::sort_values_and_permute_with_bit_reverse_order(values.
-    // device_ptr, size)     };
-    //     let result = BaseFieldVec::new(device_ptr, size);
-    //     CircleEvaluation::new(coset.circle_domain(), result)
-    // }
 
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
@@ -675,44 +618,19 @@ impl PolyOps for CudaBackend {
 }
 #[cfg(test)]
 mod tests {
-    // use itertools::Itertools;
     use test_log::test;
 
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
     use crate::core::{
         circle::{CirclePoint, CirclePointIndex, Coset},
         fields::m31::BaseField,
-        // ColumnVec,
     };
-    // use crate::prover::backend::cuda::poly::evaluate_native;
     use crate::prover::backend::cuda::CudaBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
     use crate::prover::poly::twiddles::TwiddleTree;
     use crate::prover::poly::BitReversedOrder;
     use crate::stwo_cuda::base_field_vec::BaseFieldVec;
-
-    // use ark_std::start_timer;
-    // use ark_std::end_timer;
-
-    // #[test]
-    // fn test_new_canonical_ordered() {
-    //     let log_size = 4;
-    //     let coset = CanonicCoset::new(log_size);
-    //     let size: usize = 1 << log_size;
-    //     let column_data = (0..size as u32).map(BaseField::from).collect::<Vec<_>>();
-    //     let cpu_values = column_data.clone();
-    //     let expected_result = CpuBackend::new_canonical_ordered(coset, cpu_values.clone());
-
-    //     let column = BaseFieldVec::from_vec(column_data);
-    //     let result = CudaBackend::new_canonical_ordered(coset, column);
-
-    //     assert_eq!(result.values.to_cpu(), expected_result.values);
-    //     assert_eq!(
-    //         result.domain.iter().collect::<Vec<_>>(),
-    //         expected_result.domain.iter().collect::<Vec<_>>()
-    //     );
-    // }
 
     #[test]
     fn test_interpolate_evaluate_log24() {
@@ -782,196 +700,6 @@ mod tests {
         assert_eq!(result.coeffs.to_cpu(), expected_result.coeffs);
         assert_eq!(result.log_size(), expected_result.log_size());
     }
-
-    // #[test]
-    // fn test_interpolate() {
-    //     let log_size = 20;
-
-    //     let size = 1 << log_size;
-
-    //     let cpu_values = (1..(size + 1) as u32)
-    //         .map(BaseField::from)
-    //         .collect::<Vec<_>>();
-    //     let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //     let coset = CanonicCoset::new(log_size);
-    //     let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //     let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-
-    //     let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //     let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-
-    //     let timer = start_timer!(|| format!("cpu backend interpolate, log_n:{}", log_size));
-    //     let expected_result = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-    //     end_timer!(timer);
-
-    //     let timer = start_timer!(|| format!("gpu backend interpolate, log_n:{}", log_size));
-    //     let result = CudaBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-    //     end_timer!(timer);
-
-    //     assert_eq!(result.coeffs.to_cpu(), expected_result.coeffs);
-    // }
-
-    // #[test]
-    // fn test_interpolate_2() {
-    //     let log_size = 5;
-
-    //     let cpu_values = vec![
-    //         BaseField::from(1),
-    //         BaseField::from(443693538),
-    //         BaseField::from(793699796),
-    //         BaseField::from(1631104375),
-    //         BaseField::from(460025527),
-    //         BaseField::from(98131605),
-    //         BaseField::from(1292025643),
-    //         BaseField::from(1056169651),
-    //         BaseField::from(29),
-    //         BaseField::from(1645907698),
-    //         BaseField::from(300234932),
-    //         BaseField::from(2113642380),
-    //         BaseField::from(2031046861),
-    //         BaseField::from(541052612),
-    //         BaseField::from(1857203558),
-    //         BaseField::from(5),
-    //         BaseField::from(2),
-    //         BaseField::from(187770177),
-    //         BaseField::from(1190378570),
-    //         BaseField::from(1107054997),
-    //         BaseField::from(1436440899),
-    //         BaseField::from(1555024221),
-    //         BaseField::from(2002021885),
-    //         BaseField::from(866),
-    //         BaseField::from(750797),
-    //         BaseField::from(1704111751),
-    //         BaseField::from(1874758341),
-    //         BaseField::from(960394553),
-    //         BaseField::from(1365348280),
-    //         BaseField::from(376645196),
-    //         BaseField::from(2119137245),
-    //         BaseField::from(1),
-    //     ];
-    //     let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //     let coset = CanonicCoset::new(log_size);
-    //     let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //     let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-
-    //     let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //     let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-
-    //     let expected_result = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-    //     let result = CudaBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-
-    //     assert_eq!(result.coeffs.to_cpu(), expected_result.coeffs);
-    // }
-
-    // #[test]
-    // fn test_interpolate_3() {
-
-    //     for log_size in 4..30 {
-
-    //         let size = 1 << log_size;
-
-    //         let cpu_values = (1..(size + 1) as u32)
-    //             .map(BaseField::from)
-    //             .collect::<Vec<_>>();
-    //         let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //         let coset = CanonicCoset::new(log_size);
-    //         let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //         let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-
-    //         let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //         let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-
-    //         assert_eq!(cpu_twiddles.twiddles.to_vec(), gpu_twiddles.twiddles.to_vec());
-
-    //         let timer = start_timer!(|| format!("cpu backend interpolate, log_n:{}", log_size));
-    //         let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-    //         end_timer!(timer);
-
-    //         let timer = start_timer!(|| format!("optimize gpu backend interpolate, log_n:{}",
-    // log_size));         let gpu_poly = CudaBackend::interpolate(gpu_evaluations,
-    // &gpu_twiddles);         end_timer!(timer);
-
-    //         assert_eq!(gpu_poly.coeffs.to_vec(), cpu_poly.coeffs.to_vec());
-
-    //     }
-
-    // }
-
-    // #[test]
-    // #[allow(unused_variables)]
-    // fn test_evaluate() {
-    //     for log_size in 13..26 {
-
-    //         let size = 1 << log_size;
-
-    //         let cpu_values = (1..(size + 1) as u32)
-    //             .map(BaseField::from)
-    //             .collect::<Vec<_>>();
-    //         let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-    //         let gpu_values_optim = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //         let coset = CanonicCoset::new(log_size);
-    //         let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //         let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-    //         let gpu_evaluations_optim = CudaBackend::new_canonical_ordered(coset,
-    // gpu_values_optim);
-
-    //         let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //         let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-
-    //         assert_eq!(cpu_twiddles.twiddles.to_vec(), gpu_twiddles.twiddles.to_vec());
-
-    //         let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-    //         let gpu_poly = CudaBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-    //         let gpu_poly_optim = CudaBackend::interpolate(gpu_evaluations_optim, &gpu_twiddles);
-    //         assert_eq!(gpu_poly_optim.coeffs.to_vec(), cpu_poly.coeffs.to_vec());
-
-    //         let timer = start_timer!(|| format!("cpu backend interpolate, log_n:{}", log_size));
-    //         let expected_result = CpuBackend::evaluate(&cpu_poly, coset.circle_domain(),
-    // &cpu_twiddles);         end_timer!(timer);
-
-    //         let timer = start_timer!(|| format!("native gpu backend  interpolate, log_n:{}",
-    // log_size));         let result = evaluate_native(&gpu_poly, coset.circle_domain(),
-    // &gpu_twiddles);         end_timer!(timer);
-
-    //         let timer = start_timer!(|| format!("optimize gpu backend interpolate, log_n:{}",
-    // log_size));         let result_optim = CudaBackend::evaluate(&gpu_poly_optim,
-    // coset.circle_domain(), &gpu_twiddles);         end_timer!(timer);
-
-    //         assert_eq!(result_optim.values.to_cpu(), expected_result.values);
-    //     }
-
-    // }
-
-    // #[test]
-    // fn test_eval_at_point() {
-    //     let log_size = 20;
-
-    //     let size = 1 << log_size;
-    //     let coset = CanonicCoset::new(log_size);
-    //     let point = SECURE_FIELD_CIRCLE_GEN;
-
-    //     let cpu_values = (1..(size + 1) as u32)
-    //         .map(BaseField::from)
-    //         .collect::<Vec<_>>();
-
-    //     let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-    //     let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-    //     let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-    //     let gpu_poly = CudaBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-    //     let result = CudaBackend::eval_at_point(&gpu_poly, point);
-
-    //     let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //     let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //     let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-
-    //     let expected_result = CpuBackend::eval_at_point(&cpu_poly, point.clone());
-
-    //     assert_eq!(result, expected_result);
-    // }
 
     #[test]
     fn test_evaluate_small_poly_on_large_domain() {
@@ -1264,127 +992,6 @@ mod tests {
         let result = CudaBackend::interpolate(eval, &twiddle_tree);
         assert_eq!(expected_result.coeffs, result.coeffs.to_cpu());
     }
-
-    // #[test_log::test]
-    // fn test_interpolate_columns() {
-    //     // use crate::prover::backend::cuda::poly::interpolate_columns_native;
-    //     let log_number_of_columns = 7;
-
-    //     for log_size in 13..17 {
-    //         let size = 1 << log_size;
-    //         let number_of_columns = 1 << log_number_of_columns;
-    //         let cpu_values = (1..(size + 1) as u32).map(BaseField::from).collect_vec();
-    //         let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //         let coset = CanonicCoset::new(log_size);
-    //         let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-    //         let gpu_evaluations = CudaBackend::new_canonical_ordered(coset, gpu_values);
-
-    //         let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-    //         let gpu_twiddles = CudaBackend::precompute_twiddles(coset.half_coset());
-
-    //         let cpu_columns = (0..number_of_columns)
-    //             .map(|_index| cpu_evaluations.clone())
-    //             .collect_vec();
-    //         let gpu_columns = (0..number_of_columns)
-    //             .map(|_index| gpu_evaluations.clone())
-    //             .collect_vec();
-
-    //         let timer = start_timer!(|| format!("cpu backend interpolate_columns, column:{}
-    // log_n:{}", 1<<log_number_of_columns, log_size));         let expected_result =
-    // CpuBackend::interpolate_columns(cpu_columns, &cpu_twiddles);         end_timer!(timer);
-
-    //         // let timer = start_timer!(|| format!("gpu backend native interpolate_columns,
-    // column:{} log_n:{}", 1<<log_number_of_columns, log_size));         // let result =
-    // interpolate_columns_native(gpu_columns.clone(), &gpu_twiddles);         //
-    // end_timer!(timer);
-
-    //         let timer = start_timer!(|| format!("cuda backend optimize interpolate_columns,
-    // column:{} log_n:{}", 1<<log_number_of_columns, log_size));         let result_optim =
-    // CudaBackend::interpolate_columns(gpu_columns, &gpu_twiddles);         end_timer!(timer);
-
-    //         let expected_coeffs = expected_result
-    //             .iter()
-    //             .map(|poly| poly.coeffs.clone())
-    //             .collect_vec();
-    //         let coeffs = result
-    //             .iter()
-    //             .map(|poly| poly.coeffs.clone().to_cpu())
-    //             .collect_vec();
-    //         let coeffs_optim = result_optim
-    //             .iter()
-    //             .map(|poly| poly.coeffs.clone().to_cpu())
-    //             .collect_vec();
-
-    //         assert_eq!(expected_coeffs, coeffs_optim);
-    //     }
-    // }
-
-    // #[allow(unused_variables)]
-    // #[test_log::test]
-    // fn test_evaluate_columns() {
-    //     let log_blowup_factor = 2;
-    //     let log_number_of_columns = 7;
-
-    //     for log_size in 13..20-log_blowup_factor {
-
-    //         let size = 1 << log_size;
-    //         let number_of_columns = 1 << log_number_of_columns;
-
-    //         let cpu_values = (1..(size + 1) as u32)
-    //             .map(BaseField::from)
-    //             .collect::<Vec<_>>();
-    //         let gpu_values = BaseFieldVec::from_vec(cpu_values.clone());
-
-    //         let trace_coset = CanonicCoset::new(log_size);
-    //         let cpu_evaluations = CpuBackend::new_canonical_ordered(trace_coset, cpu_values);
-    //         let gpu_evaluations = CudaBackend::new_canonical_ordered(trace_coset,
-    // gpu_values.clone());         let gpu_evaluations_ref =
-    // CudaBackend::new_canonical_ordered(trace_coset, gpu_values);
-
-    //         let interpolation_coset = CanonicCoset::new(log_size + log_blowup_factor);
-    //         let cpu_twiddles = CpuBackend::precompute_twiddles(interpolation_coset.half_coset());
-    //         let gpu_twiddles =
-    // CudaBackend::precompute_twiddles(interpolation_coset.half_coset());
-
-    //         let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-    //         let gpu_poly = CudaBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-
-    //         assert_eq!(gpu_poly.coeffs.to_vec(), cpu_poly.coeffs.to_vec());
-
-    //         let mut cpu_columns: Vec<CircleCoefficients<CpuBackend>> = ColumnVec::from(
-    //             (0..number_of_columns)
-    //                 .map(|_index| cpu_poly.clone())
-    //                 .collect_vec(),
-    //         );
-    //         let mut gpu_columns = ColumnVec::from(
-    //             (0..number_of_columns)
-    //                 .map(|_index| gpu_poly.clone())
-    //                 .collect_vec(),
-    //         );
-
-    //         let timer = start_timer!(|| format!("cpu backend optimize evaluate_polynomials,
-    // column:{} log_n:{}", 1<<log_number_of_columns, log_size));         let expected_result =
-    // CpuBackend::evaluate_polynomials(&mut cpu_columns, log_blowup_factor, &cpu_twiddles);
-    //         end_timer!(timer);
-
-    //         let timer = start_timer!(|| format!("cuda backend evaluate_polynomials, column:{}
-    // log_n:{}", 1<<log_number_of_columns, log_size));         let result =
-    // CudaBackend::evaluate_polynomials(&mut gpu_columns, log_blowup_factor, &gpu_twiddles);
-    //         end_timer!(timer);
-
-    //         let expected_values = expected_result
-    //             .iter()
-    //             .map(|eval| eval.clone().values)
-    //             .collect_vec();
-    //         let values = result
-    //             .iter()
-    //             .map(|eval| eval.clone().values.to_cpu())
-    //             .collect_vec();
-
-    //         assert_eq!(values, expected_values);
-    //     }
-    // }
 
     #[test]
     fn test_eval_at_point_log24() {

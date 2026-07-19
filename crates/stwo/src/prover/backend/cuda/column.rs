@@ -110,7 +110,6 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
         Self {
             device_ptr: bindings::cuda_malloc_uint32_t(len),
             size: len,
-            owns_memory: true,
         }
     }
 
@@ -134,18 +133,6 @@ impl Column<BaseField> for interface::base_field_vec::BaseFieldVec {
             );
         }
         (first, second)
-    }
-}
-
-// Device-batched gather helpers (not part of the 74951f79 `Column` trait — kept as inherent
-// methods so internal CUDA callers can still use them).
-impl BaseFieldVec {
-    pub fn batch_at(&self, indices: &[usize]) -> Vec<BaseField> {
-        self.batch_get(indices)
-    }
-
-    pub fn batch_at_multi(columns: &[&Self], indices: &[usize]) -> Vec<BaseField> {
-        Self::batch_gather_multi(columns, indices)
     }
 }
 

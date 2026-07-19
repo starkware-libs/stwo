@@ -47,17 +47,8 @@ use crate::stwo_cuda::bindings::{CirclePointSecureField, CudaSecureField};
 // Small subdomains (`subdomain.log_size() < LOG_N_LANES == 4`) are handled by delegating to
 // SimdBackend, which itself falls back to CPU for that case — this reproduces simd's exact small
 // path byte-for-byte instead of relying on CudaBackend NTT's own (separate) <=3 CPU fallback.
-//
-// FALLBACK: setting env `CUDA_QUOTIENT_CPU_FALLBACK=1` forces the original SIMD-delegated (host
-// round-trip) path for the whole op, so the maintainer can A/B native-vs-delegate on the box.
 
 const LOG_N_LANES: u32 = 4;
-
-fn cpu_fallback_enabled() -> bool {
-    std::env::var("CUDA_QUOTIENT_CPU_FALLBACK")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-}
 
 fn eval_cuda_to_simd(
     c: &CircleEvaluation<CudaBackend, BaseField, BitReversedOrder>,
@@ -94,7 +85,8 @@ fn twiddles_cuda_to_simd(t: &TwiddleTree<CudaBackend>) -> TwiddleTree<SimdBacken
     SimdBackend::precompute_twiddles(t.root_coset)
 }
 
-// === SIMD-delegated fallback (the pre-native v1 implementation, kept for A/B). ===
+// === SIMD-delegated path (used for small subdomains, `< LOG_N_LANES`, where the native device
+// kernels don't apply; mirrors simd's own CPU fallback for that case). ===
 
 fn accumulate_numerators_simd_delegated(
     columns: &[&CircleEvaluation<CudaBackend, BaseField, BitReversedOrder>],
@@ -155,9 +147,9 @@ impl QuotientOps for CudaBackend {
         // simd quotients.rs L42: subdomain = first `size >> log_blowup_factor` rows.
         let (subdomain, _) = domain.split(log_blowup_factor);
 
-        // Mirror simd's small-subdomain CPU path (simd quotients.rs L45-65) and the env fallback by
-        // delegating to SimdBackend (which itself falls back to CPU for sub-LANE subdomains).
-        if cpu_fallback_enabled() || subdomain.log_size() < LOG_N_LANES {
+        // Mirror simd's small-subdomain CPU path (simd quotients.rs L45-65) by delegating to
+        // SimdBackend (which itself falls back to CPU for sub-LANE subdomains).
+        if subdomain.log_size() < LOG_N_LANES {
             return accumulate_numerators_simd_delegated(
                 columns,
                 sample_batches,
@@ -229,8 +221,8 @@ impl QuotientOps for CudaBackend {
         // simd quotients.rs L91-92.
         let (eval_subdomain, _) = eval_domain.split(log_blowup_factor);
 
-        // Mirror simd's small-subdomain CPU path (simd quotients.rs L94-115) and the env fallback.
-        if cpu_fallback_enabled() || eval_subdomain.log_size() < LOG_N_LANES {
+        // Mirror simd's small-subdomain CPU path (simd quotients.rs L94-115).
+        if eval_subdomain.log_size() < LOG_N_LANES {
             return compute_quotients_and_combine_simd_delegated(
                 accumulations,
                 lifting_log_size,

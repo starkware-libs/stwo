@@ -470,7 +470,9 @@ void cuda_free_memory(void *device_ptr) {
 #endif
 }
 
-// A ONE-SHOT pool defrag at a shard boundary (GATE_AIR_POOL_TRIM, resident multi-shard path):
+// A ONE-SHOT pool defrag at a shard boundary (invoked by the resident multi-shard path; the
+// decision to call it is made cross-repo in gate-air-leaf's GATE_AIR_POOL_TRIM flag — this function
+// itself reads no env var):
 // cudaStreamSynchronize(0) drains the default stream so any deferred cudaFreeAsync has completed and
 // its block is trimmable, then cudaMemPoolTrimTo releases ALL cached (already-freed) segments back
 // to the OS so the next shard starts from a clean pool.
