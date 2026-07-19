@@ -16,14 +16,15 @@ use crate::stwo_cuda::bindings::CudaSecureField;
 /// Default number of columns processed per `ntt_n2b_columns` launch in the batched
 /// `evaluate_polynomials` extend+NTT. Chosen to cap the transient device-memory peak during the
 /// tree-commit extend (so large shards fit in 40GB) while keeping batched launch efficiency.
-/// Overridable via the `GATE_AIR_NTT_SUBBATCH` env var.
+/// Overridable via the `CUDA_NTT_SUBBATCH` env var.
 const DEFAULT_NTT_SUBBATCH: usize = 48;
 
-/// Sub-batch width for the batched extend+NTT in `evaluate_polynomials`. Reads
-/// `GATE_AIR_NTT_SUBBATCH` (a positive integer); falls back to `DEFAULT_NTT_SUBBATCH` when unset,
-/// empty, unparseable, or zero. Purely an allocation-granularity knob — it does not affect outputs.
+/// Sub-batch width for the batched extend+NTT in `evaluate_polynomials`. Reads the
+/// `CUDA_NTT_SUBBATCH` env var (a positive integer); falls back to `DEFAULT_NTT_SUBBATCH` when
+/// unset, empty, unparseable, or zero. Purely an allocation-granularity knob — it does not affect
+/// outputs.
 fn ntt_subbatch_size() -> usize {
-    std::env::var("GATE_AIR_NTT_SUBBATCH")
+    std::env::var("CUDA_NTT_SUBBATCH")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
@@ -363,9 +364,8 @@ impl PolyOps for CudaBackend {
     ///
     /// Schedule change ONLY. All device pointers are handed to
     /// `barycentric_eval_at_point_batched_cuda`, which launches every kernel with no interior sync,
-    /// does ONE terminal device sync, ONE bulk D2H, and the SAME per-column CPU reduction. The
-    /// values returned are bit-identical to calling the single wrapper per pair, preserving the
-    /// OODS `mix_felts` content and order.
+    /// does ONE terminal device sync, ONE bulk D2H, and the SAME per-column CPU reduction —
+    /// preserving the OODS `mix_felts` content and order.
     fn barycentric_eval_at_points_batched(
         work: &[crate::prover::poly::circle::BarycentricEvalWork<'_, Self>],
     ) -> Vec<SecureField> {
@@ -520,10 +520,9 @@ impl PolyOps for CudaBackend {
                 // reuse by the next chunk, so the instantaneous peak is bounded by one chunk's
                 // worth of fresh allocations instead of all `num_poly` at once. The final resident
                 // set (all columns' evals, read by the subsequent lifted-Merkle commit) is
-                // unchanged, and the NTT output is byte-identical: each column's NTT is
-                // independent, so `ntt_n2b_columns` over a sub-slice yields exactly
-                // the same per-column result as over the full batch (batching is
-                // purely launch grouping).
+                // unchanged: each column's NTT is independent, so `ntt_n2b_columns` over a sub-slice
+                // yields the same per-column result as over the full batch (batching is purely
+                // launch grouping).
                 let num_poly = group_end - group_start;
                 let eval_domain_size = indexed[group_start].2.half_coset.size() as u32;
                 let chunk = ntt_subbatch_size().min(num_poly).max(1);

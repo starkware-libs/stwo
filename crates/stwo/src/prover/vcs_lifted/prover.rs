@@ -375,8 +375,8 @@ mod test {
 
     #[test]
     fn test_query_to_buffer_index_map() {
-        // (a) Equal sizes (shift = 0): the map is the identity. This is the gate_air main-tree
-        // case (all ~191 eval columns are at the lifting size), so it must be exact.
+        // (a) Equal sizes (shift = 0): the map is the identity. This is the main-tree case where
+        // all eval columns are at the lifting size, so it must be exact.
         for pos in 0..16usize {
             assert_eq!(
                 query_to_buffer_index(pos, 4, 4),

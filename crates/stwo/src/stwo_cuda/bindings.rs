@@ -130,8 +130,8 @@ extern "C" {
     // One-shot pool defrag: sync + cudaMemPoolTrimTo(0), releasing ALL cached already-freed segments
     // to the OS, so the next shard starts from a clean pool. Live buffers untouched. See utils.cu.
     // Invoked at a shard boundary by the resident multi-shard path; the decision to call it is made
-    // cross-repo in gate-air-leaf (its `GATE_AIR_POOL_TRIM` env flag) — this decl is just the FFI
-    // entry point and reads no env var here.
+    // by the downstream caller (via its own env flag) — this decl is just the FFI entry
+    // point and reads no env var here.
     pub fn cuda_pool_trim();
 
     // MULTI-GPU ("option A"): bind the calling host thread to CUDA device `ordinal` (per-thread
@@ -171,8 +171,8 @@ extern "C" {
     // Option A (batched OODS): one call launches all `n` independent dot-product kernels (no interior
     // sync), does a single terminal device sync + single bulk D2H, then the same per-column CPU
     // reduction the single wrapper does. `evals`/`weights` are arrays of `n` device pointers, `sizes`
-    // an array of `n` domain sizes; `results` (len `n`) receives one value per eval. Byte-identical
-    // to calling `barycentric_eval_at_point_cuda` `n` times; only the schedule changes. The caller
+    // an array of `n` domain sizes; `results` (len `n`) receives one value per eval. Equivalent to
+    // calling `barycentric_eval_at_point_cuda` `n` times; only the schedule changes. The caller
     // MUST keep each `evals[e]` buffer alive until this returns (the terminal sync guarantees all
     // kernels have consumed their inputs by then).
     pub fn barycentric_eval_at_point_batched_cuda(
@@ -320,7 +320,7 @@ extern "C" {
         index: usize,
     );
 
-    // Option B: pinned minimal-latency single-root read. Byte-identical value to
+    // Option B: pinned minimal-latency single-root read. Returns the same value as
     // `cuda_get_blake_2s_hash`; copies via a pinned staging buffer on a dedicated copy stream and
     // syncs only that stream, instead of the pageable blocking default-stream read. See utils.cu.
     pub fn cuda_get_blake_2s_hash_pinned(

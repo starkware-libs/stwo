@@ -37,24 +37,13 @@ __device__ __constant__ uint8_t blake2s_sigma[10][16] = {
 // ---------------------------------------------------------------------------
 // L3 change 2: word-path Blake2s.
 //
-// The original byte-path streamed message bytes into `buf[64]`, then `compress`
-// reassembled each 4-byte little-endian group back into a word `m[i]`. But every
-// byte fed came from an M31 word via `val.to_le_bytes()`
-// (bytes = { val>>0, val>>8, val>>16, val>>24 }), so `compress`'s reassembly
-// `m[i] = b0 | b1<<8 | b2<<16 | b3<<24` reproduced EXACTLY the original word.
-// The round-trip word -> 4 LE bytes -> word is the identity on u32. Every message
-// this file hashes is a whole number of 4-byte M31 words (leaf columns are u32;
-// child hashes are 8 u32 words), so the byte buffer never holds a partial word.
-//
-// The word-path therefore skips the byte detour: it feeds message words straight
-// into `m[]`. Because `m[]` is bit-identical to the byte-path's, and the IV,
-// parameter block (0x01010020, digest len 32), `t` byte counter, high-offset
-// word (v[13]^=0), final-block flag (v[14]^=0xFFFFFFFF) and the 10 G-rounds are
-// all unchanged, the output hash is bit-identical. `t` is still counted in BYTES
-// (16 words = 64 bytes per full block), preserving the exact final-block offset.
-//
-// The word buffer holds the same words, in the same order, that the byte buffer
-// held as LE bytes; a block boundary fires at the same cumulative 64-byte mark.
+// The byte-path streamed message bytes into `buf[64]`, then `compress` reassembled
+// each 4-byte LE group into a word. Since every message here is a whole number of
+// M31 words fed via `to_le_bytes()`, the word -> LE bytes -> word round-trip is the
+// identity, so the word-path skips the byte detour and feeds words straight into
+// `m[]`. Everything else (IV, parameter block, the byte-counted `t`, final-block
+// flag, 10 G-rounds) is unchanged, so the hash is unchanged. `t` is still counted
+// in BYTES (16 words = 64 bytes per full block) to preserve the final-block offset.
 // ---------------------------------------------------------------------------
 
 // Streaming state, word-path. Buffer is 16 WORDS (== 64 bytes), matching the
@@ -69,10 +58,9 @@ typedef struct {
     uint32_t wlen;      // buffered words in wbuf (0..15)
 } Blake2sState;
 
-// Word-path compress: `m[]` is supplied directly (no byte reassembly). This is
-// the single point that guarantees byte-identity — see the equivalence note
-// above. Semantics (IV mix, t/lastblock XORs, 10 rounds, feed-forward) are
-// copied verbatim from the byte-path `blake2s_compress`.
+// Word-path compress: `m[]` is supplied directly (no byte reassembly). Semantics
+// (IV mix, t/lastblock XORs, 10 rounds, feed-forward) are copied verbatim from the
+// byte-path `blake2s_compress`.
 __device__ __forceinline__ void blake2s_compress_words(
     uint32_t h[8],
     const uint32_t m[16],
@@ -113,11 +101,10 @@ __device__ __forceinline__ void blake2s_compress_words(
 // no Blake2sState struct, no buf[64]/buflen. This is the register relief: the
 // 88-byte Blake2sState is gone from build_leaves_fused / lifted_build_next_layer.
 //
-// Byte-identity: absorb-associativity + the compress_words equivalence above.
 // Feeding words w0,w1,... in order and firing compress_words every 16 words with
 // t += 64, then finalizing the tail with t += 4*wlen and lastblock=0xFFFFFFFF,
 // reproduces the exact block sequence, `m[]` contents, `t` values and final flag
-// of the byte-path.
+// of the byte-path (absorb-associativity + the compress_words equivalence above).
 // ---------------------------------------------------------------------------
 struct Blake2sWordHasher {
     uint32_t h[8];
@@ -538,9 +525,8 @@ blake2s_build_leaves_fused_kernel(
     if (index >= size) return;
 
     // Word-path, register-resident (L3 change 2): absorb each column value
-    // directly as a message word. For gate_air, number_of_columns = 22 words = 88
-    // bytes = one full block (16 words, t+=64) + a 6-word tail. Feeding words is
-    // bit-identical to the LE-byte split + reassembly (compress_words note).
+    // directly as a message word. Feeding words is equivalent to the LE-byte
+    // split + reassembly (see the compress_words note).
     Blake2sWordHasher hasher;
     hasher.init();
 

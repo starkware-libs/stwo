@@ -471,15 +471,15 @@ void cuda_free_memory(void *device_ptr) {
 }
 
 // A ONE-SHOT pool defrag at a shard boundary (invoked by the resident multi-shard path; the
-// decision to call it is made cross-repo in gate-air-leaf's GATE_AIR_POOL_TRIM flag — this function
+// decision to call it is made by the downstream caller via its own env flag — this function
 // itself reads no env var):
 // cudaStreamSynchronize(0) drains the default stream so any deferred cudaFreeAsync has completed and
 // its block is trimmable, then cudaMemPoolTrimTo releases ALL cached (already-freed) segments back
 // to the OS so the next shard starts from a clean pool.
 //
 // CORRECTNESS: cudaMemPoolTrimTo only returns segments that are already FREE (freed + drained) to
-// the OS; it never touches a LIVE allocation (d_cols, tree0, twiddles are untouched). Byte-identical
-// proof, no working-set change. Guarded on pool init; no-op on the cudaMalloc-fallback path.
+// the OS; it never touches a LIVE allocation (d_cols, tree0, twiddles are untouched). No effect on
+// the proof, no working-set change. Guarded on pool init; no-op on the cudaMalloc-fallback path.
 extern "C" void cuda_pool_trim() {
     cudaStreamSynchronize(0);
     if (g_mem_pool_initialized && g_mem_pool != nullptr) {
@@ -491,8 +491,8 @@ extern "C" void cuda_pool_trim() {
 // current-device is per-host-thread; a producer thread proving base shards on GPU n calls this ONCE
 // at startup so every subsequent runtime-API alloc/kernel/commit on that thread targets device n
 // (the per-device mem pool then indexes slot n). The default/single-GPU path never calls this, so
-// the current device stays 0 => byte-identical. Returns the number of devices seen so the caller can
-// validate the requested count against the box.
+// the current device stays 0 => no change to results. Returns the number of devices seen so the
+// caller can validate the requested count against the box.
 extern "C" int cuda_set_device(int ordinal) {
     cudaError_t err = cudaSetDevice(ordinal);
     if (err != cudaSuccess) {
@@ -503,7 +503,7 @@ extern "C" int cuda_set_device(int ordinal) {
 }
 
 // MULTI-GPU: number of visible CUDA devices (respecting CUDA_VISIBLE_DEVICES). The harness uses this
-// to clamp/validate the GATE_AIR_BASE_GPUS knob. Returns 0 on error.
+// to clamp/validate its multi-GPU device-count knob. Returns the count, or 0 on error.
 extern "C" int cuda_device_count() {
     int count = 0;
     cudaError_t err = cudaGetDeviceCount(&count);

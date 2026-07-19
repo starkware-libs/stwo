@@ -18,35 +18,33 @@ use crate::stwo_cuda as interface;
 use crate::stwo_cuda::base_field_vec::BaseFieldVec;
 use crate::stwo_cuda::bindings::{CirclePointSecureField, CudaSecureField};
 
-// NATIVE (device-resident) LIFTED QuotientOps for CudaBackend, matching the 74951f79 lifted
-// quotient scheme byte-identically to SimdBackend
-// (crates/stwo/src/prover/backend/simd/quotients.rs).
+// NATIVE (device-resident) LIFTED QuotientOps for CudaBackend, matching the lifted quotient scheme
+// of SimdBackend (crates/stwo/src/prover/backend/simd/quotients.rs).
 //
 // The lifted scheme is expressed as Rust orchestration of EXISTING NitrooZK device kernels plus the
 // device-resident NTT (CudaBackend::interpolate / CudaBackend::evaluate). No new CUDA was written.
 //
 //   accumulate_numerators: NitrooZK's `accumulate_numerators_batch` kernel run over the SUBDOMAIN
 //   (first `size >> log_blowup_factor` rows, in bit-reversed order — a prefix of the committed
-//   device column), mirroring simd `accumulate_numerators_on_subdomain` (quotients.rs L208-253).
+//   device column), mirroring simd `accumulate_numerators_on_subdomain`.
 //
 //   compute_quotients_and_combine: NitrooZK's `compute_quotients_and_combine` kernel run over the
-//   SUBDOMAIN (giving the quotient on the subdomain, mirroring simd quotients.rs L116-179), then
-// the   on-device lift: for each of the 4 secure coords, interpolate the subdomain eval -> coeffs
-// and   evaluate on the full domain (simd quotients.rs L188-197).
+//   SUBDOMAIN (giving the quotient on the subdomain, mirroring simd `compute_quotients_and_combine`),
+//   then the on-device lift: for each of the 4 secure coords, interpolate the subdomain eval ->
+//   coeffs and evaluate on the full domain.
 //
 // SAFETY OF THE PORT:
-// * The combine kernel's lifting index `(row >> (log_ratio+1) << 1) + (row & 1)` was verified to be
-//   byte-identical to simd `to_lifted_simd`'s scalar source-index mapping for all log_ratios.
+// * The combine kernel's lifting index `(row >> (log_ratio+1) << 1) + (row & 1)` reproduces simd
+//   `to_lifted_simd`'s scalar source-index mapping for all log_ratios.
 // * The kernel's `domain_at_index(half_coset.initial_index, half_coset.step_size,
 //   bit_reverse(row))` convention matches simd's `CircleDomainBitRevIterator` (==
-//   `domain.at(bit_reverse_index(row))`), the same convention validated byte-identical-to-CPU by
-//   the barycentric path/tests.
+//   `domain.at(bit_reverse_index(row))`).
 // * The denominator-inverse and numerator math in both kernels matches simd line-for-line (see the
 //   per-function comments below).
 //
 // Small subdomains (`subdomain.log_size() < LOG_N_LANES == 4`) are handled by delegating to
 // SimdBackend, which itself falls back to CPU for that case — this reproduces simd's exact small
-// path byte-for-byte instead of relying on CudaBackend NTT's own (separate) <=3 CPU fallback.
+// path instead of relying on CudaBackend NTT's own (separate) <=3 CPU fallback.
 
 const LOG_N_LANES: u32 = 4;
 

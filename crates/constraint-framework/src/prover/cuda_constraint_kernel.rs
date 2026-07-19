@@ -61,11 +61,10 @@ pub(crate) fn registered_gpu_constraint_kernel() -> Option<GpuConstraintKernel> 
 /// host-delegate for it is a hard error (see `panic_if_main_host_delegate`). Returns `true` iff the
 /// component with `(n_constraints, log_n_rows)` is that expected MAIN component.
 ///
-/// This is the ONE gate_air-shaped piece of knowledge that must stay circuit-specific: the generic
-/// backend does not know which component is "big enough that a missing kernel is a bug". A plugin
-/// crate (e.g. gate-air-cuda-kernel) installs its own predicate here alongside its kernel. When no
-/// guard is registered (a generic backend with no plugin) the backend NEVER force-panics — a
-/// host-delegate is then always a sanctioned path.
+/// This is the ONE circuit-specific piece of knowledge: the generic backend does not know which
+/// component is "big enough that a missing kernel is a bug". A downstream plugin crate installs its
+/// own predicate here alongside its kernel. When no guard is registered (a generic backend with no
+/// plugin) the backend NEVER force-panics — a host-delegate is then always a sanctioned path.
 pub type ExpectedKernelGuard = fn(n_constraints: usize, log_n_rows: u32) -> bool;
 
 static EXPECTED_KERNEL_GUARD: Mutex<Option<ExpectedKernelGuard>> = Mutex::new(None);
@@ -82,12 +81,11 @@ pub(crate) fn registered_expected_kernel_guard() -> Option<ExpectedKernelGuard> 
     *EXPECTED_KERNEL_GUARD.lock().unwrap()
 }
 
-/// Whether the device-resident GPU constraint path is engaged. It is now the DEFAULT for GPU
+/// Whether the device-resident GPU constraint path is engaged. It is the DEFAULT for GPU
 /// (`--features cuda`) builds: a registered kernel is used unless the operator EXPLICITLY opts out
-/// with `CUDA_GPU_CONSTRAINTS=0` (or "false"). This makes the fast path default — no `=1` env
-/// gymnastics — so a plain cuda prove cannot silently benchmark the slow host-delegate path. The
-/// opt-out escape hatch remains for the deliberate CPU-vs-GPU byte-identity diff (paired with the
-/// `panic_if_main_host_delegate` escape hatch `CUDA_CONSTRAINT_CPU_FALLBACK=1`).
+/// with `CUDA_GPU_CONSTRAINTS=0` (or "false"), so a plain cuda prove cannot silently take the slow
+/// host-delegate path. The opt-out escape hatch is paired with the `panic_if_main_host_delegate`
+/// escape hatch `CUDA_CONSTRAINT_CPU_FALLBACK=1`.
 ///
 /// This only decides whether to OFFER a component to a registered kernel; if no kernel is installed
 /// via `set_gpu_constraint_kernel`, the prover still takes the host delegate regardless.
