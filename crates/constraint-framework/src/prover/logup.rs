@@ -183,6 +183,10 @@ impl LogupColGenerator<'_> {
             &mut self.trace_gen.batch_inverse_buffer,
         );
 
+        // `trace` isn't mutated until after this loop, so the last column is the same for every
+        // row; look it up once instead of re-deriving it from the `Vec` on every row.
+        let prev_col = self.trace_gen.trace.last();
+
         #[cfg(feature = "parallel")]
         let chunks_iter = {
             let denom_inv_chunks = self.trace_gen.batch_inverse_buffer.par_chunks(chunk_size);
@@ -204,10 +208,7 @@ impl LogupColGenerator<'_> {
                     unsafe {
                         let vec_row = chunk_idx * chunk_size + idx_in_chunk;
                         let value = numerator_chunk.packed_at(idx_in_chunk) * *denom_item;
-                        let prev_value = self
-                            .trace_gen
-                            .trace
-                            .last()
+                        let prev_value = prev_col
                             .map(|col| col.packed_at(vec_row))
                             .unwrap_or_else(PackedSecureField::zero);
                         numerator_chunk.set_packed(idx_in_chunk, value + prev_value)
