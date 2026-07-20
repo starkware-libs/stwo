@@ -11,7 +11,7 @@
 //! The rest of the lookups are computed based on these constant columns.
 
 mod constraints;
-mod r#gen;
+mod trace_gen;
 
 use std::simd::u32x16;
 

@@ -1,14 +1,13 @@
 use stwo_constraint_framework::Relation;
 use stwo_constraint_framework::relation_tracker::RelationSummary;
 pub mod components;
-pub mod r#gen;
+pub mod trace_gen;
 
 use components::{
     State, StateMachineComponents, StateMachineElements, StateMachineOp0Component,
     StateMachineOp1Component, StateMachineProof, StateMachineStatement0, StateMachineStatement1,
     StateTransitionEval, track_state_machine_relations,
 };
-use r#gen::{gen_interaction_trace, gen_trace};
 use itertools::{Itertools, chain};
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::M31;
@@ -22,6 +21,7 @@ use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{CommitmentSchemeProver, prove};
 use stwo_constraint_framework::TraceLocationAllocator;
+use trace_gen::{gen_interaction_trace, gen_trace};
 
 #[allow(unused)]
 pub fn prove_state_machine(
@@ -177,7 +177,7 @@ mod tests {
     use super::components::{
         STATE_SIZE, StateMachineElements, StateMachineOp0Component, StateTransitionEval,
     };
-    use super::r#gen::{gen_interaction_trace, gen_trace};
+    use super::trace_gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
 
     #[test]
