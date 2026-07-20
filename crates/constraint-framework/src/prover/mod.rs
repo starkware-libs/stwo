@@ -22,8 +22,8 @@ pub use component_prover::{get_constraint_quotient_inputs, ConstraintQuotientInp
 pub use cpu_domain::CpuDomainEvaluator;
 #[cfg(feature = "cuda")]
 pub use cuda_constraint_kernel::{
-    gpu_constraints_opt_in, set_expected_kernel_guard, set_gpu_constraint_kernel,
-    ExpectedKernelGuard, GpuConstraintDispatch, GpuConstraintKernel,
+    set_expected_kernel_guard, set_gpu_constraint_kernel, ExpectedKernelGuard,
+    GpuConstraintDispatch, GpuConstraintKernel,
 };
 pub use logup::{FractionWriter, LogupColGenerator, LogupTraceGenerator};
 pub use simd_domain::SimdDomainEvaluator;

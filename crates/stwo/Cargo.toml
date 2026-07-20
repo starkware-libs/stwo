@@ -29,6 +29,11 @@ prover = ["std", "tracing/attributes"]
 parallel = ["rayon", "indexmap/rayon"]
 slow-tests = []
 tracing = []
+# Diagnostic tooling parity flag for the prover::diag helper module. The PROVE_EX_TIMERS sub-phase
+# timers themselves stay RUNTIME-env (compiled in every `prover` build so they measure on the
+# production-fast binary); this feature is declared for downstream diagnostic builds that opt in by
+# name, and never gates the timers out.
+diag = ["prover"]
 # Device-resident CUDA backend (NitrooZK). build.rs compiles the nvcc/CMake `libstwo_cuda` and
 # exposes `CudaBackend`. nvcc/CMake are only needed on the GPU box; `cargo check` elsewhere can set
 # STWO_CUDA_SKIP_BUILD=1 to skip the native compile.

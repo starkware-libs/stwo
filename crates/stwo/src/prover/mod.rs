@@ -26,34 +26,11 @@ pub mod secure_column;
 pub mod vcs;
 pub mod vcs_lifted;
 
-// ---- Soundness-NEUTRAL prove_ex sub-phase instrumentation (timers only) ----
-// Enabled at runtime via PROVE_EX_TIMERS=1. Emits `[prove_ex] <name> <secs>s` lines.
-// Does NOT change any prover logic or proof output (guarded by the proof_fingerprint check).
-//
-// CUDA kernel launches are async on stream 0; reading the clock without a device sync would
-// mis-attribute a phase's GPU time to whatever later forces a sync. `prove_ex_sync()` calls the
-// CUDA-runtime `cudaDeviceSynchronize` (linked via `cargo:rustc-link-lib=cudart`) so each timer
-// read reflects real completed GPU work. On non-cuda builds it is a no-op.
-#[cfg(feature = "cuda")]
-extern "C" {
-    fn cudaDeviceSynchronize() -> i32;
-}
-
-/// Force a full device sync (real GPU completion) before reading a timer. No-op without cuda.
-#[inline]
-pub fn prove_ex_sync() {
-    #[cfg(feature = "cuda")]
-    // SAFETY: FFI to the CUDA runtime; blocks until all device work completes. No state change.
-    unsafe {
-        let _ = cudaDeviceSynchronize();
-    }
-}
-
-/// Whether prove_ex sub-phase timers are enabled (PROVE_EX_TIMERS=1).
-#[inline]
-pub fn prove_ex_timers_on() -> bool {
-    std::env::var("PROVE_EX_TIMERS").is_ok()
-}
+// Soundness-NEUTRAL prove_ex sub-phase instrumentation (timers only), enabled at RUN time via
+// PROVE_EX_TIMERS=1. The helpers live in `diag` (compiled in every `prover` build; the timers stay
+// runtime-env, NOT feature-gated, so they measure on the production-fast binary).
+pub mod diag;
+pub use diag::{prove_ex_sync, prove_ex_timers_on};
 
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
@@ -100,13 +77,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
         commitment_scheme.twiddles,
         commitment_scheme.config.fri_config.log_blowup_factor,
     );
-    if timers {
-        prove_ex_sync();
-        eprintln!(
-            "[prove_ex] 1_composition_eval {:.3}s",
-            t_phase.elapsed().as_secs_f64()
-        );
-    }
+    diag::phase(timers, "1_composition_eval", t_phase.elapsed());
     span1.exit();
 
     // Commit on the Composition Polynomial by splitting its coeffs to two polynomialsof degree
@@ -118,13 +89,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
     tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
-    if timers {
-        prove_ex_sync();
-        eprintln!(
-            "[prove_ex] 2_composition_commit {:.3}s",
-            t_phase.elapsed().as_secs_f64()
-        );
-    }
+    diag::phase(timers, "2_composition_commit", t_phase.elapsed());
     span.exit();
 
     // Draw OODS point.
@@ -174,10 +139,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Prove the trace and composition OODS values, and retrieve them.
     // (prove_values emits its own finer [prove_ex] 3_* .. 7_* sub-phase timers.)
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
-    if timers {
-        prove_ex_sync();
-        eprintln!("[prove_ex] TOTAL {:.3}s", t_total.elapsed().as_secs_f64());
-    }
+    diag::phase(timers, "TOTAL", t_total.elapsed());
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 

@@ -7,10 +7,13 @@
 //! fingerprint) lives entirely in a DOWNSTREAM crate, which installs it here via
 //! [`set_gpu_constraint_kernel`].
 //!
-//! When `CUDA_GPU_CONSTRAINTS=1` AND a kernel is installed, the generic prover offers each
-//! component to the kernel first; the kernel returns `false` for any component that is not its
-//! target AIR, and the prover falls back to the audited host-delegate. No host constraint-eval
-//! math is affected, and the default (no kernel installed / env unset) is unchanged.
+//! When a kernel is installed, the generic prover offers each component to the kernel first; the
+//! kernel returns `false` for any component that is not its target AIR, and the prover falls back
+//! to the audited host-delegate. No host constraint-eval math is affected, and the default (no
+//! kernel installed) is unchanged. The registered kernel is the unconditional primary — the former
+//! `CUDA_GPU_CONSTRAINTS` opt-out (and the paired `CUDA_CONSTRAINT_CPU_FALLBACK`) are removed; the
+//! GPU-kernel == host-delegate byte-identity they let you A/B is now the `gpu_vs_host_constraints_*`
+//! test (T6), which exercises the two prover paths directly.
 
 use std::sync::Mutex;
 
@@ -81,17 +84,3 @@ pub(crate) fn registered_expected_kernel_guard() -> Option<ExpectedKernelGuard> 
     *EXPECTED_KERNEL_GUARD.lock().unwrap()
 }
 
-/// Whether the device-resident GPU constraint path is engaged. It is the DEFAULT for GPU
-/// (`--features cuda`) builds: a registered kernel is used unless the operator EXPLICITLY opts out
-/// with `CUDA_GPU_CONSTRAINTS=0` (or "false"), so a plain cuda prove cannot silently take the slow
-/// host-delegate path. The opt-out escape hatch is paired with the `panic_if_main_host_delegate`
-/// escape hatch `CUDA_CONSTRAINT_CPU_FALLBACK=1`.
-///
-/// This only decides whether to OFFER a component to a registered kernel; if no kernel is installed
-/// via `set_gpu_constraint_kernel`, the prover still takes the host delegate regardless.
-pub fn gpu_constraints_opt_in() -> bool {
-    !matches!(
-        std::env::var("CUDA_GPU_CONSTRAINTS").as_deref(),
-        Ok("0") | Ok("false") | Ok("FALSE")
-    )
-}

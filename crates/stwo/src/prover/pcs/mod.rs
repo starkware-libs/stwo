@@ -309,13 +309,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());
         channel.mix_felts(&sampled_values.clone().flatten_cols());
-        if timers {
-            crate::prover::prove_ex_sync();
-            eprintln!(
-                "[prove_ex] 3_oods_eval_at_point {:.3}s",
-                t_phase.elapsed().as_secs_f64()
-            );
-        }
+        crate::prover::diag::phase(timers, "3_oods_eval_at_point", t_phase.elapsed());
 
         let columns = self.evaluations();
         print_column_size_histogram::<B, MC>(&columns);
@@ -329,25 +323,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.twiddles,
             self.config.fri_config.log_blowup_factor,
         );
-        if timers {
-            crate::prover::prove_ex_sync();
-            eprintln!(
-                "[prove_ex] 4_quotient {:.3}s",
-                t_phase.elapsed().as_secs_f64()
-            );
-        }
+        crate::prover::diag::phase(timers, "4_quotient", t_phase.elapsed());
 
         // Run FRI commitment phase on the oods quotients.
         let t_phase = std::time::Instant::now();
         let fri_prover =
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
-        if timers {
-            crate::prover::prove_ex_sync();
-            eprintln!(
-                "[prove_ex] 5_fri_commit {:.3}s",
-                t_phase.elapsed().as_secs_f64()
-            );
-        }
+        crate::prover::diag::phase(timers, "5_fri_commit", t_phase.elapsed());
 
         // Proof of work.
         let t_phase = std::time::Instant::now();
@@ -355,13 +337,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let proof_of_work = B::grind(channel, self.config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);
-        if timers {
-            crate::prover::prove_ex_sync();
-            eprintln!(
-                "[prove_ex] 6_pow_grind {:.3}s",
-                t_phase.elapsed().as_secs_f64()
-            );
-        }
+        crate::prover::diag::phase(timers, "6_pow_grind", t_phase.elapsed());
 
         // FRI decommitment phase.
         let t_phase = std::time::Instant::now();
@@ -399,13 +375,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .into_iter()
             .map(|(v, x)| (v, x.decommitment, x.aux))
             .multiunzip();
-        if timers {
-            crate::prover::prove_ex_sync();
-            eprintln!(
-                "[prove_ex] 7_fri_query_decommit {:.3}s",
-                t_phase.elapsed().as_secs_f64()
-            );
-        }
+        crate::prover::diag::phase(timers, "7_fri_query_decommit", t_phase.elapsed());
 
         // Return evaluation buffers to the memory pool for reuse (owned trees only).
         for tree in &mut self.trees.0 {

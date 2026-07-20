@@ -30,8 +30,9 @@
 //!    such an AIR would require authoring a NEW, soundness-critical, AIR-specific CUDA kernel by
 //!    hand. There is no GENERIC `FrameworkEval -> CUDA` path in this tree.
 //!
-//! The env var `CUDA_CONSTRAINT_CPU_FALLBACK=1` forces this host-delegate even when a downstream GPU
-//! kernel is registered.
+//! A registered downstream GPU kernel is the unconditional primary for its target AIR; the former
+//! `CUDA_CONSTRAINT_CPU_FALLBACK` / `CUDA_GPU_CONSTRAINTS` toggles that could force this
+//! host-delegate on `CudaBackend` are removed (their GPU-vs-host byte-identity check is now T6).
 
 use std::borrow::Cow;
 
@@ -58,21 +59,10 @@ use super::component_prover::{
     accumulate_pointwise_cpu, get_constraint_quotient_inputs, ConstraintQuotientInputs,
 };
 use super::cuda_constraint_kernel::{
-    gpu_constraints_opt_in, registered_expected_kernel_guard, registered_gpu_constraint_kernel,
-    GpuConstraintDispatch,
+    registered_expected_kernel_guard, registered_gpu_constraint_kernel, GpuConstraintDispatch,
 };
 use super::SimdDomainEvaluator;
 use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
-
-/// Whether the operator has forced the audited CPU-delegate constraint path via
-/// `CUDA_CONSTRAINT_CPU_FALLBACK=1`. Read fresh on each call (cheap; once per component per prove).
-/// When true, the opt-in GPU constraint branch is skipped and this component always host-delegates.
-fn cpu_fallback_forced() -> bool {
-    matches!(
-        std::env::var("CUDA_CONSTRAINT_CPU_FALLBACK").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
-    )
-}
 
 /// PANIC (no silent fallback) when a component that a downstream plugin declared "expected on GPU"
 /// falls to the host-delegate constraint path on `CudaBackend`. That path runs composition_eval
@@ -86,26 +76,22 @@ fn cpu_fallback_forced() -> bool {
 /// `set_expected_kernel_guard`. This function consults the registered guard:
 ///   * No guard registered (`None`) => a generic backend with no plugin => NEVER force-panic (a
 ///     host-delegate is always a sanctioned path). This is the default.
-///   * A guard registered => panic iff the guard returns `true` for this component (its MAIN AIR)
-///     AND the operator did not explicitly opt into a host run.
+///   * A guard registered => panic iff the guard returns `true` for this component (its MAIN AIR).
 ///
 /// The plugin's guard is the sole owner of the fingerprint, separating the large many-constraint
 /// MAIN AIR from every small fixed-size table component, which host-delegates normally.
 ///
-/// ESCAPE HATCH: honored ONLY when the operator has EXPLICITLY forced the host path via
-/// `CUDA_CONSTRAINT_CPU_FALLBACK=1`, or opted out of the GPU constraint path entirely
-/// (`CUDA_GPU_CONSTRAINTS=0`); both are sanctioned host runs. This function is only reachable from
-/// `ComponentProver<CudaBackend>`, so the CPU/SimdBackend build never calls it.
+/// UNCONDITIONAL for a guarded MAIN: the former `CUDA_CONSTRAINT_CPU_FALLBACK` / `CUDA_GPU_CONSTRAINTS`
+/// escape hatches are removed — a guarded MAIN falling to the host delegate is always a hard error.
+/// This function is only reachable from `ComponentProver<CudaBackend>`, so the CPU/SimdBackend build
+/// never calls it; the GPU-kernel == host-delegate byte-identity check is now the T6 test, which
+/// compares the CudaBackend (GPU kernel) proof against the SimdBackend (host) proof.
 fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
     // No downstream plugin registered an "expected-on-GPU" guard -> generic backend, never panic.
     let Some(guard) = registered_expected_kernel_guard() else {
         return;
     };
     if !guard(n_constraints, log_n_rows) {
-        return;
-    }
-    // ESCAPE HATCH (see fn doc): the operator explicitly asked for the host path.
-    if cpu_fallback_forced() || !gpu_constraints_opt_in() {
         return;
     }
     panic!(
@@ -115,9 +101,7 @@ fn panic_if_main_host_delegate(n_constraints: usize, log_n_rows: u32) {
          either was not registered (plugin `register()`), declined on a structural mismatch (the \
          kernel's own decline-guard constants stale vs the AIR), or its drawn relation was not \
          installed. Refusing to silently fall back. \
-         (n_constraints={n_constraints}, log_n_rows={log_n_rows}). \
-         To intentionally run the host delegate (e.g. the CPU-vs-GPU byte-identity diff), set \
-         CUDA_CONSTRAINT_CPU_FALLBACK=1."
+         (n_constraints={n_constraints}, log_n_rows={log_n_rows})."
     );
 }
 
@@ -216,39 +200,31 @@ impl<E: FrameworkEval + Sync> ComponentProver<CudaBackend> for FrameworkComponen
             return;
         }
 
-        // Read once; gates the opt-in GPU branch below (when set, force the audited host-delegate).
-        let _cpu_fallback_forced = cpu_fallback_forced();
-
-        // OPT-IN device-resident GPU constraint kernel (circuit-specific, registered downstream).
-        // Taken ONLY when `CUDA_GPU_CONSTRAINTS=1`, a kernel was installed via
-        // `set_gpu_constraint_kernel`, and `CUDA_CONSTRAINT_CPU_FALLBACK` is NOT forcing the host
-        // path. The kernel inspects the component (e.g. by structural fingerprint) and returns
-        // `false` for any component that is not its target AIR, in which case we fall through to
-        // the audited host-delegate below. This is a SEPARATE, additive branch IN FRONT of the
-        // host delegate; the host-delegate code below is unchanged and remains the DEFAULT + the
-        // fallback. No host constraint-eval math is affected by this branch.
-        if gpu_constraints_opt_in() && !_cpu_fallback_forced {
-            if let Some(kernel) = registered_gpu_constraint_kernel() {
-                // The committed eval columns are resident on device; dispatch the GPU kernel on the
-                // committed trace directly. Device-resident constraint-quotient inputs (no D2H).
-                let inputs = get_constraint_quotient_inputs(
-                    self,
-                    trace,
-                    evaluation_accumulator.evaluation_mode(),
-                );
-                let dispatch = GpuConstraintDispatch {
-                    inputs: &inputs,
-                    n_constraints: self.n_constraints(),
-                    claimed_sum: self.claimed_sum(),
-                    log_n_rows: self.eval.log_size(),
-                    accumulator: evaluation_accumulator,
-                };
-                if kernel(dispatch) {
-                    return;
-                }
-                // Kernel declined (not its target AIR) -> fall through to the audited host
-                // delegate.
+        // Device-resident GPU constraint kernel (circuit-specific, registered downstream) — the
+        // UNCONDITIONAL primary when a kernel is installed via `set_gpu_constraint_kernel`. The
+        // kernel inspects the component (e.g. by structural fingerprint) and returns `false` for
+        // any component that is not its target AIR, in which case we fall through to the audited
+        // host-delegate below. The host-delegate code below is unchanged and remains the fallthrough
+        // for no-kernel/generic components. No host constraint-eval math is affected by this branch.
+        if let Some(kernel) = registered_gpu_constraint_kernel() {
+            // The committed eval columns are resident on device; dispatch the GPU kernel on the
+            // committed trace directly. Device-resident constraint-quotient inputs (no D2H).
+            let inputs = get_constraint_quotient_inputs(
+                self,
+                trace,
+                evaluation_accumulator.evaluation_mode(),
+            );
+            let dispatch = GpuConstraintDispatch {
+                inputs: &inputs,
+                n_constraints: self.n_constraints(),
+                claimed_sum: self.claimed_sum(),
+                log_n_rows: self.eval.log_size(),
+                accumulator: evaluation_accumulator,
+            };
+            if kernel(dispatch) {
+                return;
             }
+            // Kernel declined (not its target AIR) -> fall through to the audited host delegate.
         }
 
         // Reaching here means this component takes the audited host-delegate. Normal for small table
