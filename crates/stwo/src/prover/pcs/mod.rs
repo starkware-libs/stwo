@@ -224,7 +224,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Proof of work.
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
-        let proof_of_work = B::grind(channel, self.config.pow_bits);
+        let proof_of_work = B::grind(channel, self.config.fri_config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);
 

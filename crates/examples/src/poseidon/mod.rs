@@ -385,7 +385,7 @@ mod tests {
     #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_poseidon_prove_wasm() {
         const LOG_N_INSTANCES: u32 = 10;
-        let config = PcsConfig { pow_bits: 10, fri_config: FriConfig::new(5, 1, 64, 1) };
+        let config = PcsConfig { fri_config: FriConfig::new(5, 1, 64, 1, 10) };
 
         // Prove.
         prove_poseidon(LOG_N_INSTANCES, config);
@@ -460,11 +460,8 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64, 1),
-            min_lifting_log_size: 0,
-        };
+        let config =
+            PcsConfig { fri_config: FriConfig::new(5, 1, 64, 1, 10), min_lifting_log_size: 0 };
 
         // Prove.
         let (component, proof) = prove_poseidon(log_n_instances, config);
@@ -509,11 +506,8 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64, 1),
-            min_lifting_log_size: 0,
-        };
+        let config =
+            PcsConfig { fri_config: FriConfig::new(5, 1, 64, 1, 10), min_lifting_log_size: 0 };
 
         // Prove.
         let _ = prove_poseidon(log_n_instances, config);

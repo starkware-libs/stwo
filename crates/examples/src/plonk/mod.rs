@@ -293,11 +293,8 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 4, 64, 1),
-            min_lifting_log_size: 0,
-        };
+        let config =
+            PcsConfig { fri_config: FriConfig::new(5, 4, 64, 1, 10), min_lifting_log_size: 0 };
 
         // Prove.
         let (component, proof) = prove_fibonacci_plonk(log_n_instances, config);

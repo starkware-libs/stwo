@@ -456,7 +456,7 @@ mod tests {
     fn committing_high_degree_polynomial_fails() {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1);
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3, 1, 0);
         let column = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -468,7 +468,7 @@ mod tests {
     fn committing_column_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let config = FriConfig::new(2, 2, 3, 1);
+        let config = FriConfig::new(2, 2, 3, 1, 0);
         let column = SecureEvaluation::new(
             invalid_domain,
             [SecureField::one(); 1 << 4].into_iter().collect(),
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_fri_commit_decommit_with_jumps() {
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2, 0);
         let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn test_fri_commit_decommit_with_packed_leaves() {
         for fold_step in 2..=4 {
-            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step);
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step, 0);
             let column = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
             let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_fri_commit_decommit_with_packed_leaves_simd() {
         for fold_step in 2..=4 {
-            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step);
+            let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, fold_step, 0);
             let cpu_eval = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
             let column = SecureEvaluation::new(
                 cpu_eval.domain,
@@ -542,7 +542,7 @@ mod tests {
         use crate::core::channel::Keccak256Channel;
         use crate::core::vcs_lifted::keccak256_merkle::Keccak256MerkleChannel;
 
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2, 0);
         let column = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
 
@@ -561,7 +561,7 @@ mod tests {
         use crate::core::channel::Keccak256Channel;
         use crate::core::vcs_lifted::keccak256_merkle::Keccak256MerkleChannel;
 
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3, 2, 0);
         let cpu_eval = polynomial_evaluation(8, LOG_BLOWUP_FACTOR);
         let column =
             SecureEvaluation::new(cpu_eval.domain, cpu_eval.values.to_vec().into_iter().collect());
