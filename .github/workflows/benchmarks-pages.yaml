@@ -15,9 +15,9 @@ jobs:
   run-avx-bench:
     runs-on: namespace-profile-starkware-libs-stwo-large-ubuntu-24-04-amd64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: ./.github/actions/bootstrap_runners
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: nightly-2026-01-15
       - name: Run benchmark
@@ -25,12 +25,12 @@ jobs:
           cargo install cargo-criterion
           ./scripts/bench.sh |& tee output.txt
       - name: Download previous benchmark data
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ./cache
           key: ${{ runner.os }}-${{github.event.pull_request.base.ref}}-benchmark
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
         with:
           tool: "cargo"
           output-file-path: output.txt
