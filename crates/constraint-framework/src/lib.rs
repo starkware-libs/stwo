@@ -28,6 +28,14 @@ pub use prover::{
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
     SimdDomainEvaluator,
 };
+// Public surface for a downstream device-resident GPU constraint kernel (see
+// `prover::cuda_constraint_kernel`). The per-AIR CUDA kernel lives downstream; this crate only
+// exposes the registration hook + the inputs the generic prover builds.
+#[cfg(feature = "cuda")]
+pub use prover::{
+    get_constraint_quotient_inputs, set_expected_kernel_guard, set_gpu_constraint_kernel,
+    ConstraintQuotientInputs, ExpectedKernelGuard, GpuConstraintDispatch, GpuConstraintKernel,
+};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::fields::FieldExpOps;
