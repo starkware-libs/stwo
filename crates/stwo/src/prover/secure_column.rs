@@ -24,6 +24,20 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
         SecureField::from_m31_array(std::array::from_fn(|i| self.columns[i].at(index)))
     }
 
+    /// Bulk analogue of `at`: gathers `indices` from each of the four coordinate columns with one
+    /// batched read per column (instead of `4 * indices.len()` scalar `at` calls), then reassembles
+    /// the `SecureField`s. Returns the SAME values in the SAME order as
+    /// `indices.iter().map(|&i| self.at(i)).collect()`: for output position `j` it uses
+    /// `columns[i].batch_at(indices)[j]` for coordinate `i`, and `batch_at` preserves `indices`
+    /// order on every backend, so `at(indices[j])` and this agree element-for-element.
+    pub fn batch_at(&self, indices: &[usize]) -> Vec<SecureField> {
+        let coords: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+            std::array::from_fn(|i| self.columns[i].batch_at(indices));
+        (0..indices.len())
+            .map(|j| SecureField::from_m31_array(std::array::from_fn(|i| coords[i][j])))
+            .collect()
+    }
+
     pub fn zeros(len: usize) -> Self {
         Self { columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)) }
     }

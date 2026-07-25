@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Core library implementing the Circle STARK prover and verifier"
+# `links` lets build.rs export the CUDA include + lib dirs to dependents (DEP_STWO_CUDA_*), so a
+# downstream crate can compile + link its own circuit-specific GPU constraint kernel. build.rs only
+# emits this metadata under `--features cuda`; other builds run it as a no-op.
+links = "stwo_cuda"
 
 [features]
 default = ["std"]
@@ -25,7 +29,19 @@ prover = ["std", "tracing/attributes"]
 parallel = ["rayon", "indexmap/rayon"]
 slow-tests = []
 tracing = []
+# Diagnostic tooling parity flag for the prover::diag helper module. The PROVE_EX_TIMERS sub-phase
+# timers themselves stay RUNTIME-env (compiled in every `prover` build so they measure on the
+# production-fast binary); this feature is declared for downstream diagnostic builds that opt in by
+# name, and never gates the timers out.
+diag = ["prover"]
+# Device-resident CUDA backend (NitrooZK). build.rs compiles the nvcc/CMake `libstwo_cuda` and
+# exposes `CudaBackend`. nvcc/CMake are only needed on the GPU box; `cargo check` elsewhere can set
+# STWO_CUDA_SKIP_BUILD=1 to skip the native compile.
+cuda = ["prover", "parallel"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+cmake = "0.1.50"
 
 [dependencies]
 blake2.workspace = true

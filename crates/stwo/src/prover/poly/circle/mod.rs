@@ -4,7 +4,7 @@ mod poly;
 mod secure_poly;
 
 pub use evaluation::{CircleEvaluation, CosetSubEvaluation};
-pub use ops::PolyOps;
+pub use ops::{BarycentricEvalWork, PolyOps};
 pub use poly::CircleCoefficients;
 pub use secure_poly::{SecureCirclePoly, SecureEvaluation};
 

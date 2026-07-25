@@ -101,11 +101,12 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         for col in columns.iter() {
             let log_size = col.len().ilog2() as usize;
             let shift = max_log_size - log_size;
-            let res: Vec<_> = query_positions
-                .iter()
-                .map(|pos| col.at((pos >> (shift + 1) << 1) + (pos & 1)))
-                .collect();
-            queried_values.push(res);
+            // Map each query position to its column index (unchanged formula), then gather all in a
+            // single batched read. `batch_at` returns values in the SAME order as these indices, so
+            // `res[k]` equals the previous `col.at(idx_k)` for every `k` — byte-identical.
+            let indices: Vec<usize> =
+                query_positions.iter().map(|pos| (pos >> (shift + 1) << 1) + (pos & 1)).collect();
+            queried_values.push(col.batch_at(&indices));
         }
 
         let mut prev_layer_queries: Vec<usize> =
@@ -125,20 +126,40 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             let prev_layer_hashes = self.layers.get(layer_log_size + 1).unwrap();
             // All chunks have either length 1 (only one child is present) or 2 (both children are
             // present).
-            for queries_chunk in prev_layer_queries.as_slice().chunk_by(|a, b| a ^ 1 == *b) {
+            let chunks: Vec<&[usize]> =
+                prev_layer_queries.as_slice().chunk_by(|a, b| a ^ 1 == *b).collect();
+            // PASS 1: collect the hash indices to read, in the EXACT order the original per-element
+            // loop read them — per chunk: optionally `first ^ 1` (the witness sibling, only for a
+            // length-1 chunk), then `2 * curr_index`, then `2 * curr_index + 1`. A single batched
+            // read then replaces one device->host copy per element with one per layer.
+            let mut read_indices: Vec<usize> = Vec::new();
+            for queries_chunk in &chunks {
+                let first = queries_chunk[0];
+                if queries_chunk.len() == 1 {
+                    read_indices.push(first ^ 1);
+                }
+                let curr_index = first >> 1;
+                read_indices.push(2 * curr_index);
+                read_indices.push(2 * curr_index + 1);
+            }
+            let hashes = prev_layer_hashes.batch_at(&read_indices);
+            // PASS 2: replay the original loop, consuming `hashes` in the same order they were
+            // requested. `hash_witness` push order and the `all_node_values` (key -> hash) contents
+            // are therefore identical to the per-element path (the map is order-insensitive, and
+            // the witness pushes happen in the same chunk order with the same values).
+            let mut hashes_iter = hashes.into_iter();
+            for queries_chunk in &chunks {
                 let first = queries_chunk[0];
                 // If the brother of `first` was not queried before, add its hash to the witness.
                 if queries_chunk.len() == 1 {
-                    decommitment.hash_witness.push(prev_layer_hashes.at(first ^ 1))
+                    decommitment.hash_witness.push(hashes_iter.next().unwrap())
                 }
                 let curr_index = first >> 1;
                 curr_layer_queries.push(curr_index);
 
                 // Add the previous layer hashes to all_node_values.
-                all_node_values_for_layer
-                    .insert(2 * curr_index, prev_layer_hashes.at(2 * curr_index));
-                all_node_values_for_layer
-                    .insert(2 * curr_index + 1, prev_layer_hashes.at(2 * curr_index + 1));
+                all_node_values_for_layer.insert(2 * curr_index, hashes_iter.next().unwrap());
+                all_node_values_for_layer.insert(2 * curr_index + 1, hashes_iter.next().unwrap());
             }
             // Propagate queries to the next layer.
             prev_layer_queries = curr_layer_queries;
@@ -155,7 +176,11 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     }
 
     pub fn root(&self) -> H::Hash {
-        self.layers.first().unwrap().at(0)
+        // Option B: the root is read then immediately mixed into the channel to draw the next
+        // challenge (serial commit/FRI chain), so this single read is latency-critical. Use the
+        // pinned minimal-latency read (Cuda overrides it; CPU/SIMD default to `at`,
+        // byte-identical).
+        self.layers.first().unwrap().at_root_pinned(0)
     }
 }
 
@@ -302,5 +327,115 @@ mod test {
             .rev()
             .for_each(|layer| expected.push(HashMap::from_iter([(0, layer[0]), (1, layer[1])])));
         assert_eq!(expected, aux.all_node_values);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Host-staging recovery (route b) support tests.
+    //
+    // These pin down the *recovery* half of the streaming-Merkle host-staging design: given a
+    // query position `pos` (an index into the LARGEST column), which element of a smaller staged
+    // column provides that query's opening. This is the exact mapping `decommit` uses at
+    // prover.rs:114 — `col.at((pos >> (shift + 1) << 1) + (pos & 1))` — where
+    // `shift = max_log_size - col_log_size`. Route b will read this index out of a HOST buffer (a
+    // D2H-staged copy of the column) instead of the resident device column, so getting the map
+    // byte-exact is load-bearing. The tests are pure CPU and run on the laptop with no cuda.
+    // ---------------------------------------------------------------------------------------------
+
+    /// The query-position -> staged-buffer index map used by `decommit`.
+    /// `pos` is an index into the largest column (log size `max_log_size`); `col_log_size` is the
+    /// log size of the (possibly smaller) column whose opening we want. Identical to the inline
+    /// expression at the top of `decommit`.
+    fn query_to_buffer_index(pos: usize, max_log_size: usize, col_log_size: usize) -> usize {
+        let shift = max_log_size - col_log_size;
+        (pos >> (shift + 1) << 1) + (pos & 1)
+    }
+
+    #[test]
+    fn test_query_to_buffer_index_map() {
+        // (a) Equal sizes (shift = 0): the map is the identity. This is the main-tree case where
+        // all eval columns are at the lifting size, so it must be exact.
+        for pos in 0..16usize {
+            assert_eq!(query_to_buffer_index(pos, 4, 4), pos, "shift=0 must be identity");
+        }
+
+        // (b) shift = 1 (column is half the largest size). The map keeps the parity bit (pos & 1)
+        // and drops one of the middle index bits: index = (pos >> 2 << 1) + (pos & 1).
+        // Hand-computed table for max_log_size=4, col_log_size=3 over pos = 0..8:
+        //   pos: 0 1 2 3 4 5 6 7
+        //   idx: 0 1 0 1 2 3 2 3
+        let expected_shift1 = [0usize, 1, 0, 1, 2, 3, 2, 3];
+        for (pos, &want) in expected_shift1.iter().enumerate() {
+            assert_eq!(query_to_buffer_index(pos, 4, 3), want, "shift=1 mismatch at pos={pos}");
+        }
+
+        // (c) shift = 2 (column is a quarter of the largest size). max_log_size=4, col_log_size=2.
+        //   index = (pos >> 3 << 1) + (pos & 1):
+        //   pos:  0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+        //   idx:  0 1 0 1 0 1 0 1 2 3  2  3  2  3  2  3
+        let expected_shift2 = [0usize, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3];
+        for (pos, &want) in expected_shift2.iter().enumerate() {
+            assert_eq!(query_to_buffer_index(pos, 4, 2), want, "shift=2 mismatch at pos={pos}");
+        }
+
+        // (d) Every produced index is in-bounds for the staged column [0, 2^col_log_size).
+        // Columns always have len >= 2 (asserted in `build_leaves`), i.e. col_log_size >= 1; the
+        // map relies on this (for col_log_size = 0 it would return parity bit 1, out of a len-1
+        // buffer). Range starts at 1 to match the real committed-column invariant.
+        for col_log_size in 1..6usize {
+            let max_log_size = 6usize;
+            for pos in 0..(1usize << max_log_size) {
+                let idx = query_to_buffer_index(pos, max_log_size, col_log_size);
+                assert!(
+                    idx < (1usize << col_log_size),
+                    "index {idx} out of bounds for col_log_size={col_log_size} at pos={pos}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_host_stage_recovery_roundtrip_matches_decommit() {
+        // Route b round-trip: stage each committed column to a HOST buffer (here: clone the column
+        // values into a plain Vec, modelling the D2H copy + device free), then RECOVER the queried
+        // openings from the host buffer using the same query->buffer index map, and assert the
+        // recovered values are byte-for-byte identical to what `decommit` returns from the resident
+        // columns. This is the equivalence property route b must preserve (the proof is unchanged;
+        // only where the opening bytes are read from changes).
+        let max_log_size = 4usize;
+        let columns: Vec<Vec<BaseField>> = (2..=max_log_size as u32)
+            .map(|i| (0..1u32 << i).map(M31::from_u32_unchecked).collect())
+            .collect();
+        let merkle_prover = MerkleProverLifted::<CpuBackend, Blake2sHasher>::commit(
+            columns.iter().collect(),
+            max_log_size as u32,
+            0,
+        );
+
+        // A spread of query positions into the largest column, incl. duplicates and both parities.
+        let query_positions = [0usize, 1, 4, 7, 7, 15, 8, 3];
+
+        // Reference: the resident-column decommit path.
+        let (decommit_values, _) =
+            merkle_prover.decommit(&query_positions, columns.iter().collect_vec());
+
+        // Stage to host (model the D2H copy that frees the device column).
+        let host_buffers: Vec<Vec<BaseField>> = columns.clone();
+
+        // Recover openings purely from the host buffers via the query->buffer index map.
+        let recovered: Vec<Vec<BaseField>> = host_buffers
+            .iter()
+            .map(|buf| {
+                let col_log_size = buf.len().ilog2() as usize;
+                query_positions
+                    .iter()
+                    .map(|&pos| buf[query_to_buffer_index(pos, max_log_size, col_log_size)])
+                    .collect()
+            })
+            .collect();
+
+        assert_eq!(
+            recovered, decommit_values,
+            "host-staged recovery must be byte-identical to resident decommit"
+        );
     }
 }
