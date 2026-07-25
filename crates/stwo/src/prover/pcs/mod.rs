@@ -167,6 +167,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
     ) -> ExtendedCommitmentSchemeProof<MC::H> {
+        // Soundness-NEUTRAL sub-phase timers (PROVE_EX_TIMERS=1); see prover::mod.
+        let timers = crate::prover::prove_ex_timers_on();
+        let t_phase = std::time::Instant::now();
+
         // Evaluate polynomials on open points.
         let span =
             span!(Level::INFO, "Evaluate columns out of domain", class = "EvaluateOutOfDomain")
@@ -180,7 +184,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         };
 
         // Lambda that evaluates a polynomial on a collection of circle points and returns a vector
-        // of point samples.
+        // of point samples. Used for the coefficients path (`store_polynomials_coefficients`),
+        // which never touches the barycentric weights map.
         let eval_at_points = |(poly, points): (&Poly<B>, &Vec<CirclePoint<SecureField>>)| {
             points
                 .iter()
@@ -205,10 +210,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let sampled_values =
             samples.as_cols_ref().map_cols(|x| x.iter().map(|o| o.value).collect());
         channel.mix_felts(&sampled_values.clone().flatten_cols());
+        crate::prover::diag::phase(timers, "3_oods_eval_at_point", t_phase.elapsed());
 
         let columns = self.evaluations();
         print_column_size_histogram::<B, MC>(&columns);
         // Compute oods quotients for boundary constraints on the sampled points.
+        let t_phase = std::time::Instant::now();
         let quotients = compute_fri_quotients(
             &columns,
             &samples,
@@ -217,16 +224,21 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.twiddles,
             self.config.fri_config.log_blowup_factor,
         );
+        crate::prover::diag::phase(timers, "4_quotient", t_phase.elapsed());
 
         // Run FRI commitment phase on the oods quotients.
+        let t_phase = std::time::Instant::now();
         let fri_prover =
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
+        crate::prover::diag::phase(timers, "5_fri_commit", t_phase.elapsed());
 
         // Proof of work.
+        let t_phase = std::time::Instant::now();
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
         let proof_of_work = B::grind(channel, self.config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);
+        crate::prover::diag::phase(timers, "6_pow_grind", t_phase.elapsed());
 
         // FRI decommitment phase.
         let FriDecommitResult { fri_proof, query_positions, unsorted_query_locations } =
@@ -260,6 +272,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .into_iter()
             .map(|(v, x)| (v, x.decommitment, x.aux))
             .multiunzip();
+        crate::prover::diag::phase(timers, "7_fri_query_decommit", t_phase.elapsed());
 
         // Return evaluation buffers to the memory pool for reuse (owned trees only).
         for tree in &mut self.trees.0 {
