@@ -433,23 +433,39 @@ fn compute_decommitment_positions_and_witness_evals(
     let mut witness_evals = Vec::new();
     let mut value_map = HashMap::new();
 
-    // Group queries by the folding coset they reside in.
+    // PASS 1: enumerate the decommitment positions AND, per subset, which of them are witness evals
+    // (a position the verifier can't recompute). This is the exact original control flow, but it
+    // records instead of reading the column: every visited `position` is pushed to
+    // `decommitment_positions` (unconditionally, as before), and `is_witness` marks the same
+    // positions the original pushed to `witness_evals`. `column.at(position)` is a
+    // `SecureColumnByCoords::at` that fans to 4 base-field device reads; batching all positions of
+    // this layer into ONE `batch_at` replaces `4 * decommitment_positions.len()` device->host
+    // copies with 4 (one per coordinate column).
+    let mut is_witness: Vec<bool> = Vec::new();
     for subset_queries in query_positions.chunk_by(|a, b| a >> fold_step == b >> fold_step) {
         let subset_start = (subset_queries[0] >> fold_step) << fold_step;
         let subset_decommitment_positions = subset_start..subset_start + (1 << fold_step);
         let mut subset_queries_iter = subset_queries.iter().peekable();
 
         for position in subset_decommitment_positions {
-            // Add decommitment position.
             decommitment_positions.push(position);
+            is_witness.push(subset_queries_iter.next_if_eq(&&position).is_none());
+        }
+    }
 
-            let eval = column.at(position);
-            value_map.insert(position, eval);
+    // Single batched gather, in `decommitment_positions` order (identical to the original visit
+    // order), so `evals[k]` is exactly what `column.at(decommitment_positions[k])` returned before.
+    let evals = column.batch_at(&decommitment_positions);
 
-            // Only add evals the verifier can't calculate.
-            if subset_queries_iter.next_if_eq(&&position).is_none() {
-                witness_evals.push(eval);
-            }
+    // PASS 2: replay the inserts/pushes in the same order and with the same values. `value_map` is
+    // order-insensitive; `witness_evals` receives the same values in the same order as before.
+    for (&position, (&eval, &is_witness)) in decommitment_positions
+        .iter()
+        .zip(evals.iter().zip(is_witness.iter()))
+    {
+        value_map.insert(position, eval);
+        if is_witness {
+            witness_evals.push(eval);
         }
     }
 

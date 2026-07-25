@@ -4,6 +4,11 @@
 # status, or there's a reference to an undefined variable.
 set -eou pipefail
 
+# Clippy is check-only and never links libstwo_cuda, so the nvcc/CMake native build in build.rs is
+# unnecessary here; skip it so `--all-features` (which enables `cuda`) can lint the CUDA Rust on
+# hosts without a CUDA toolchain. Override by exporting STWO_CUDA_SKIP_BUILD=0 before invoking.
+export STWO_CUDA_SKIP_BUILD="${STWO_CUDA_SKIP_BUILD:-1}"
+
 cargo +nightly-2026-01-15 clippy --workspace "$@" --all-targets --all-features -- -D warnings \
     -D future-incompatible -D nonstandard-style -D rust-2018-idioms -D unused
 

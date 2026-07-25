@@ -10,6 +10,11 @@
 )]
 pub mod core;
 
+// NitrooZK device-resident CUDA backend FFI module. Public so a downstream crate can `#include`
+// the C++ headers / call the FFI bindings for its own circuit-specific GPU constraint kernel.
+#[cfg(feature = "cuda")]
+pub mod stwo_cuda;
+
 #[cfg(feature = "prover")]
 pub mod prover;
 #[cfg(feature = "tracing")]

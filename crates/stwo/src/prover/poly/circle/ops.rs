@@ -13,6 +13,13 @@ use crate::prover::mempool::BaseColumnPool;
 use crate::prover::poly::twiddles::{TwiddleBuffer, TwiddleTree};
 use crate::prover::poly::BitReversedOrder;
 
+/// One unit of OODS batched barycentric work: a column's evaluations paired with the precomputed
+/// barycentric weights for one sampled point. See [`PolyOps::barycentric_eval_at_points_batched`].
+pub type BarycentricEvalWork<'a, B> = (
+    &'a CircleEvaluation<B, BaseField, BitReversedOrder>,
+    &'a Col<B, SecureField>,
+);
+
 /// Operations on BaseField polynomials.
 pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     // TODO(alont): Use a column instead of this type.
@@ -62,6 +69,32 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
         evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
         weights: &Col<Self, SecureField>,
     ) -> SecureField;
+
+    /// Whether the OODS out-of-domain sampling should route through the BATCHED barycentric path
+    /// (Option A) instead of the per-column `map_cols`/`par_map_cols` closure. `false` by default
+    /// so CPU/SIMD keep EXACTLY their pre-existing path (including rayon parallelism across
+    /// columns). The Cuda backend sets this `true`: its per-eval work is a tiny kernel +
+    /// full-device sync + 4 KB D2H, so batching all launches behind one terminal sync + one
+    /// bulk D2H is the win, and host parallelism across columns buys nothing there.
+    const USE_BATCHED_OODS: bool = false;
+
+    /// Batched barycentric evaluation for the OODS out-of-domain sampling (Option A). Only called
+    /// when [`Self::USE_BATCHED_OODS`] is `true` (Cuda).
+    ///
+    /// Evaluates each `(evals, weights)` pair and returns the values in the SAME order. These evals
+    /// are all independent and the transcript observes them only once (a single `mix_felts` after
+    /// the whole OODS loop), so a backend is free to batch the launches / device round-trips.
+    ///
+    /// DEFAULT: a straight per-pair map over [`Self::barycentric_eval_at_point`] (byte-identical
+    /// values). CPU/SIMD never reach this (their `USE_BATCHED_OODS` stays `false`); it exists so
+    /// the generic call site type-checks for every backend.
+    fn barycentric_eval_at_points_batched(
+        work: &[BarycentricEvalWork<'_, Self>],
+    ) -> Vec<SecureField> {
+        work.iter()
+            .map(|(evals, weights)| Self::barycentric_eval_at_point(evals, weights))
+            .collect()
+    }
 
     /// Evaluates a polynomial, represented by it's evaluations, at a point using folding.
     /// Used by the [`CircleEvaluation::eval_at_point_by_folding()`] function.
