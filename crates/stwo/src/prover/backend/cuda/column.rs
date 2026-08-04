@@ -13,6 +13,9 @@ use crate::stwo_cuda::secure_field_vec::SecureFieldVec;
 
 impl ColumnOps<BaseField> for CudaBackend {
     type Column = BaseFieldVec;
+    /// This backend's allocation paths (`evaluate_polynomials`, tree commits) do not draw from the
+    /// pool, so recycling is deposit-only; opt out to keep long-lived pools bounded.
+    const RECYCLES_COLUMNS: bool = false;
 
     fn bit_reverse_column(column: &mut Self::Column) {
         let size = column.len();

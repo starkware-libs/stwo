@@ -52,6 +52,11 @@ impl<B: ColumnOps<BaseField>> BaseColumnPool<B> {
     /// Returns a buffer to the pool. The caller is responsible for ensuring the buffer's log_size
     /// matches.
     pub fn give_back(&self, log_size: u32, buf: Col<B, BaseField>) {
+        // A backend whose allocations bypass the pool never withdraws deposits, so keeping them
+        // would only grow the pool for the process's lifetime; drop the buffer instead.
+        if !B::RECYCLES_COLUMNS {
+            return;
+        }
         debug_assert_eq!(buf.len(), 1 << log_size);
         self.pools.entry(log_size).or_default().push(buf);
     }
@@ -62,3 +67,10 @@ impl<B: ColumnOps<BaseField>> Default for BaseColumnPool<B> {
         Self::new()
     }
 }
+
+/// Pins the CUDA opt-out at compile time: its allocation paths bypass the pool, so recycling
+/// there would be deposit-only and unbounded (the behavioural half follows from the one `if`
+/// in [`BaseColumnPool::give_back`]).
+#[cfg(feature = "cuda")]
+const _: () =
+    assert!(!<crate::prover::backend::cuda::CudaBackend as ColumnOps<BaseField>>::RECYCLES_COLUMNS);

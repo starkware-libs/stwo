@@ -40,6 +40,11 @@ pub trait BackendForChannel<MC: MerkleChannel>:
 
 pub trait ColumnOps<T> {
     type Column: Column<T>;
+    /// Whether [`BaseColumnPool`](crate::prover::mempool::BaseColumnPool) recycling works on this
+    /// backend: the pool only recycles if the backend's allocation paths draw from it. A backend
+    /// whose allocations bypass the pool must opt out, or `give_back` deposits accumulate
+    /// unboundedly in a long-lived pool (deposits with no withdrawals).
+    const RECYCLES_COLUMNS: bool = true;
     fn bit_reverse_column(column: &mut Self::Column);
 }
 
