@@ -126,7 +126,7 @@ typedef struct CudaAssertEvaluator {
         RelationEntry<N> entry
     ) {
         Fraction fraction = Fraction(entry.multiplicity, entry.relation.combine(entry.values, N));
-        this->logup.fractions[this->logup_fraction_index + this->row * logup_fraction_counts_per_eval] = fraction;
+        this->logup.fractions[this->logup_fraction_index + (size_t)this->row * logup_fraction_counts_per_eval] = fraction;
         // Check for zero denominator (invalid fraction)
         bool denom_is_zero = (fraction.denominator.a.a == 0) &&
                              (fraction.denominator.a.b == 0) &&
@@ -256,7 +256,7 @@ typedef struct CudaAssertEvaluator {
         const m31* values
     ) {
         Fraction fraction = Fraction(multiplicity, common_elements.combine(values, N));
-        this->logup.fractions[this->logup_fraction_index + this->row * logup_fraction_counts_per_eval] = fraction;
+        this->logup.fractions[this->logup_fraction_index + (size_t)this->row * logup_fraction_counts_per_eval] = fraction;
         // Check for zero denominator (invalid fraction)
         bool denom_is_zero = (fraction.denominator.a.a == 0) &&
                              (fraction.denominator.a.b == 0) &&
@@ -322,7 +322,9 @@ typedef struct CudaEvaluator {
         RelationEntry<N> entry
     ) {
         Fraction fraction = Fraction(entry.multiplicity, entry.relation.combine(entry.values, N));
-        unsigned idx = this->logup_fraction_index + this->row * logup_fraction_counts_per_eval;
+        // size_t: `row * counts` overflows 32 bits past ~2^25 rows x ~100 entries — a hard
+        // illegal address 137 GB below the buffer, not a wrap within it.
+        size_t idx = this->logup_fraction_index + (size_t)this->row * logup_fraction_counts_per_eval;
         this->logup.fractions[idx] = fraction;
         this->logup_fraction_index = this->logup_fraction_index + 1;
     }
@@ -427,7 +429,7 @@ typedef struct CudaEvaluator {
         const m31* values
     ) {
         Fraction fraction = Fraction(multiplicity, common_elements.combine(values, N));
-        unsigned idx = this->logup_fraction_index + this->row * logup_fraction_counts_per_eval;
+        size_t idx = this->logup_fraction_index + (size_t)this->row * logup_fraction_counts_per_eval;
         this->logup.fractions[idx] = fraction;
         this->logup_fraction_index = this->logup_fraction_index + 1;
     }
