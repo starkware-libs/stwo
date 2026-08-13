@@ -5,7 +5,7 @@ use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsu
 use rayon::prelude::*;
 use stwo::prover::backend::simd::m31::PackedM31;
 
-pub type MutRow<'trace, const N: usize> = Box<[&'trace mut PackedM31; N]>;
+pub type MutRow<'trace, const N: usize> = [&'trace mut PackedM31; N];
 
 /// An iterator over mutable references to the rows of a [`super::component_trace::ComponentTrace`].
 // TODO(Ohad): Iterating over single rows is not optimal, figure out optimal chunk size when using
@@ -29,14 +29,14 @@ impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
         if self.v[0].is_empty() {
             return None;
         }
-        let item = std::array::from_fn(|i| unsafe {
+        let item: MutRow<'trace, N> = std::array::from_fn(|i| unsafe {
             // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = self.v[i].split_at_mut(1);
             self.v[i] = tail;
             &mut (*head)[0]
         });
 
-        Some(Box::new(item))
+        Some(item)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -50,14 +50,14 @@ impl<const N: usize> DoubleEndedIterator for RowIterMut<'_, N> {
         if self.v[0].is_empty() {
             return None;
         }
-        let item = std::array::from_fn(|i| unsafe {
+        let item: MutRow<'_, N> = std::array::from_fn(|i| unsafe {
             // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = self.v[i].split_at_mut(self.v[i].len() - 1);
             self.v[i] = head;
             &mut (*tail)[0]
         });
 
-        Some(Box::new(item))
+        Some(item)
     }
 }
 
