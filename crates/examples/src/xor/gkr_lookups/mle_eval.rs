@@ -66,6 +66,17 @@ pub struct MleEvalProverComponent<'twiddles, 'oracle, O: MleCoeffColumnOracle> {
     twiddles: &'twiddles TwiddleTree<SimdBackend>,
 }
 
+fn local_point_for_component(
+    point: CirclePoint<SecureField>,
+    max_log_degree_bound: u32,
+    component_log_size: u32,
+) -> CirclePoint<SecureField> {
+    let fold_steps = max_log_degree_bound
+        .checked_sub(component_log_size)
+        .expect("max_log_degree_bound must be at least component log_size");
+    point.repeated_double(fold_steps)
+}
+
 impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> MleEvalProverComponent<'twiddles, 'oracle, O> {
     /// Generates prover component that carries out univariate IOP for MLE eval at point.
     ///
@@ -157,16 +168,19 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
-        _max_log_degree_bound: u32,
+        max_log_degree_bound: u32,
     ) {
+        let local_point = local_point_for_component(point, max_log_degree_bound, self.log_size());
         // Consistency check the MLE coeffs column polynomial and oracle.
-        let mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(point);
+        let direct_mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(local_point);
         let oracle_mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
-        assert_eq!(mle_coeff_col_eval, oracle_mle_coeff_col_eval);
+        assert_eq!(direct_mle_coeff_col_eval, oracle_mle_coeff_col_eval);
+        let mle_coeff_col_eval = oracle_mle_coeff_col_eval;
 
         let component_mask = mask.sub_tree(&self.trace_locations);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
-        let vanish_on_trace_eval_inv = coset_vanishing(trace_coset, point).inverse();
+        let vanish_on_trace_eval_inv =
+            coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse();
         let mut eval = PointEvaluator::new(
             component_mask,
             accumulator,
@@ -175,9 +189,9 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
             SecureField::zero(),
         );
 
-        let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
-        let is_first = eval_is_first(trace_coset, point);
-        let is_second = eval_is_first(trace_coset, point - trace_coset.step.into_ef());
+        let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, local_point);
+        let is_first = eval_is_first(trace_coset, local_point);
+        let is_second = eval_is_first(trace_coset, local_point - trace_coset.step.into_ef());
 
         // TODO(andrew): Consider evaluating `is_first` and `is_second` inside
         // `eval_mle_eval_constraints` once constant column approach updated.
@@ -370,11 +384,13 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
-        _max_log_degree_bound: u32,
+        max_log_degree_bound: u32,
     ) {
         let component_mask = mask.sub_tree(&self.trace_location);
+        let local_point = local_point_for_component(point, max_log_degree_bound, self.log_size());
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
-        let vanish_on_trace_eval_inv = coset_vanishing(trace_coset, point).inverse();
+        let vanish_on_trace_eval_inv =
+            coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse();
         let mut eval = PointEvaluator::new(
             component_mask,
             accumulator,
@@ -384,9 +400,9 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         );
 
         let mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
-        let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
-        let is_first = eval_is_first(trace_coset, point);
-        let is_second = eval_is_first(trace_coset, point - trace_coset.step.into_ef());
+        let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, local_point);
+        let is_first = eval_is_first(trace_coset, local_point);
+        let is_second = eval_is_first(trace_coset, local_point - trace_coset.step.into_ef());
 
         eval_mle_eval_constraints(
             self.interaction,
@@ -845,6 +861,204 @@ mod tests {
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
         commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
         verify(&components.components, channel, commitment_scheme, proof)
+    }
+
+    fn prove_and_verify_two_mle_eval_components_with_claim_delta(
+        n_variables_a: usize,
+        n_variables_b: usize,
+        verify_delta_a: SecureField,
+        verify_delta_b: SecureField,
+    ) -> Result<(), VerificationError> {
+        const COEFFS_COL_TRACE: usize = 1;
+        const MLE_EVAL_TRACE: usize = 2;
+        const LOG_EXPAND: u32 = 1;
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let size_a = 1 << n_variables_a;
+        let size_b = 1 << n_variables_b;
+        let mle_coeffs_a = (0..size_a).map(|_| rng.gen::<SecureField>()).collect();
+        let mle_coeffs_b = (0..size_b).map(|_| rng.gen::<SecureField>()).collect();
+        let mle_a = Mle::<SimdBackend, SecureField>::new(mle_coeffs_a);
+        let mle_b = Mle::<SimdBackend, SecureField>::new(mle_coeffs_b);
+        let eval_point_a = (0..n_variables_a)
+            .map(|_| rng.gen::<SecureField>())
+            .collect_vec();
+        let eval_point_b = (0..n_variables_b)
+            .map(|_| rng.gen::<SecureField>())
+            .collect_vec();
+        let claim_a = mle_eval_at_point(&mle_a, &eval_point_a);
+        let claim_b = mle_eval_at_point(&mle_b, &eval_point_b);
+
+        let max_log_size = n_variables_a.max(n_variables_b) as u32;
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(max_log_size + LOG_EXPAND + MIN_LOG_BLOWUP_FACTOR)
+                .circle_domain()
+                .half_coset,
+        );
+        let config = PcsConfig::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        let channel = &mut Blake2sChannel::default();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(channel);
+
+        let mut coeff_trace = mle_coeff_column::build_trace(&mle_a);
+        coeff_trace.extend(mle_coeff_column::build_trace(&mle_b));
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(coeff_trace);
+        tree_builder.commit(channel);
+
+        let mut eval_trace = build_trace(&mle_a, &eval_point_a, claim_a);
+        eval_trace.extend(build_trace(&mle_b, &eval_point_b, claim_b));
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(eval_trace);
+        tree_builder.commit(channel);
+
+        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let coeffs_a = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, n_variables_a),
+            SecureField::zero(),
+        );
+        let coeffs_b = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, n_variables_b),
+            SecureField::zero(),
+        );
+        let mle_eval_a = MleEvalProverComponent::generate(
+            trace_location_allocator,
+            &coeffs_a,
+            &eval_point_a,
+            mle_a,
+            claim_a,
+            &twiddles,
+            MLE_EVAL_TRACE,
+        );
+        let mle_eval_b = MleEvalProverComponent::generate(
+            trace_location_allocator,
+            &coeffs_b,
+            &eval_point_b,
+            mle_b,
+            claim_b,
+            &twiddles,
+            MLE_EVAL_TRACE,
+        );
+        let components: &[&dyn ComponentProver<SimdBackend>] =
+            &[&coeffs_a, &coeffs_b, &mle_eval_a, &mle_eval_b];
+        let proof = prove(components, channel, commitment_scheme).unwrap();
+
+        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let coeffs_a = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, n_variables_a),
+            SecureField::zero(),
+        );
+        let coeffs_b = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, n_variables_b),
+            SecureField::zero(),
+        );
+        let verify_claim_a = claim_a + verify_delta_a;
+        let verify_claim_b = claim_b + verify_delta_b;
+        let mle_eval_a = MleEvalVerifierComponent::new(
+            trace_location_allocator,
+            &coeffs_a,
+            &eval_point_a,
+            verify_claim_a,
+            MLE_EVAL_TRACE,
+        );
+        let mle_eval_b = MleEvalVerifierComponent::new(
+            trace_location_allocator,
+            &coeffs_b,
+            &eval_point_b,
+            verify_claim_b,
+            MLE_EVAL_TRACE,
+        );
+        let components = Components {
+            components: vec![&coeffs_a, &coeffs_b, &mle_eval_a, &mle_eval_b],
+            n_preprocessed_columns: 0,
+        };
+        let log_sizes = components.column_log_sizes();
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        commitment_scheme.commit(proof.commitments[0], &[], channel);
+        commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
+        commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
+        verify(&components.components, channel, commitment_scheme, proof)
+    }
+
+    fn prove_and_verify_two_mle_eval_components(
+        n_variables_a: usize,
+        n_variables_b: usize,
+    ) -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components_with_claim_delta(
+            n_variables_a,
+            n_variables_b,
+            SecureField::zero(),
+            SecureField::zero(),
+        )
+    }
+
+    #[test]
+    fn mle_eval_two_same_height_components() -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components(6, 6)
+    }
+
+    #[test]
+    fn mle_eval_two_mixed_height_components() -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components(6, 8)
+    }
+
+    #[test]
+    fn mle_eval_two_mixed_height_components_tall_first() -> Result<(), VerificationError> {
+        prove_and_verify_two_mle_eval_components(8, 6)
+    }
+
+    #[test]
+    fn mle_eval_same_height_false_claim_rejected() {
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            6,
+            SecureField::one(),
+            SecureField::zero(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on same-height component was ACCEPTED (unsound)"
+        );
+    }
+
+    #[test]
+    fn mle_eval_mixed_height_false_claim_short_rejected() {
+        // Tamper the SHORTER component (n=6, repeated_double by 3 in the fix).
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            8,
+            SecureField::one(),
+            SecureField::zero(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on short component was ACCEPTED (unsound)"
+        );
+    }
+
+    #[test]
+    fn mle_eval_mixed_height_false_claim_tall_rejected() {
+        // Tamper the TALLER component (n=8, repeated_double by 1 in the fix).
+        let res = prove_and_verify_two_mle_eval_components_with_claim_delta(
+            6,
+            8,
+            SecureField::zero(),
+            SecureField::one(),
+        );
+        assert!(
+            res.is_err(),
+            "false claim on tall component was ACCEPTED (unsound)"
+        );
     }
 
     #[test]
