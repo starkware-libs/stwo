@@ -190,37 +190,53 @@ impl FriOps for SimdBackend {
 
 /// Similar to [`crate::prover::fri::FriOps::fold_circle_into_line`], but optimized for folding a
 /// BaseField circle evaluation directly into a line evaluation, without going through
-/// SecureEvaluation.
+/// SecureEvaluation. `alphas[0]` is the circle-to-line alpha; `alphas[1..]` are additional line
+/// fold alphas fused in-register to reduce memory traffic.
 pub fn fold_circle_evaluation_into_line(
     eval: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
-    alpha: SecureField,
+    alphas: &[SecureField],
     twiddles: &TwiddleTree<SimdBackend>,
 ) -> LineEvaluation<SimdBackend> {
+    assert!(
+        !alphas.is_empty(),
+        "alphas must contain at least the circle fold alpha."
+    );
+    let circle_alpha = alphas[0];
+    let line_alphas = &alphas[1..];
     let log_size = eval.domain.log_size();
+    let line_fold_step = line_alphas.len() as u32;
+    let output_log_size = log_size - 1 - line_fold_step;
+    let output_line_domain =
+        LineDomain::new(Coset::half_odds(log_size - 1)).repeated_double(line_fold_step);
 
-    if log_size <= LOG_N_LANES {
+    if log_size <= LOG_N_LANES + line_fold_step || output_log_size < LOG_N_LANES {
         // Fall back to CPU implementation.
         let secure_evaluation = SecureEvaluation::new(
             eval.domain,
             SecureColumnByCoords::from_base_field_col(&eval.values.to_cpu()),
         );
-        let cpu_fold = fold_circle_into_line_cpu(&secure_evaluation, alpha);
-        return LineEvaluation::new(
-            cpu_fold.domain(),
-            SecureColumnByCoords::from_cpu(cpu_fold.values),
-        );
+        let mut result = fold_circle_into_line_cpu(&secure_evaluation, circle_alpha);
+        for &alpha in line_alphas {
+            result = fold_line_cpu(&result, alpha);
+        }
+        return LineEvaluation::new(result.domain(), result.values.into_iter().collect());
     }
 
-    let itwiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles)[0];
-    let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << (log_size - 1)) };
+    let circle_itwiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles)[0];
+    let line_twiddles = domain_line_twiddles_from_tree(
+        LineDomain::new(Coset::half_odds(log_size - 1)),
+        &twiddles.itwiddles,
+    );
 
     // Decompose alpha into M31 components. Since the input is BaseField (only coordinate 0 is
     // nonzero), we avoid a full QM31*QM31 multiply and use 4 independent BaseField multiplies.
-    let [a0, a1, a2, a3] = alpha.to_m31_array();
+    let [a0, a1, a2, a3] = circle_alpha.to_m31_array();
     let a0 = PackedBaseField::broadcast(a0);
     let a1 = PackedBaseField::broadcast(a1);
     let a2 = PackedBaseField::broadcast(a2);
     let a3 = PackedBaseField::broadcast(a3);
+
+    let mut folded_values = unsafe { SecureColumnByCoords::uninitialized(1 << output_log_size) };
 
     #[cfg(not(feature = "parallel"))]
     let dst_iter = folded_values.chunks_mut(FOLD_CHUNK_SIZE);
@@ -230,32 +246,70 @@ pub fn fold_circle_evaluation_into_line(
     dst_iter.enumerate().for_each(|(chunk_idx, mut dst_chunk)| {
         let chunk_start = chunk_idx * FOLD_CHUNK_SIZE;
         let packed_chunk_len = dst_chunk.0[0].0.len();
+        let n_circle_results = 1usize << line_fold_step;
+        let mut layer_values: Vec<[PackedBaseField; 4]> =
+            unsafe { uninit_vec(n_circle_results.max(1)) };
 
         for index in 0..packed_chunk_len {
-            let vec_index = chunk_start + index;
-            let value = {
+            let i = chunk_start + index;
+
+            // Circle-to-line fold: produce n_circle_results SecureField values.
+            let circle_base = i * n_circle_results;
+            for (j, layer_value) in layer_values
+                .iter_mut()
+                .enumerate()
+                .take(n_circle_results.max(1))
+            {
+                let circle_idx = circle_base + j;
                 // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
                 // next line domain. See `compute_first_twiddles()`.
-                let twiddle_dbl = u32x8::from_array(array::from_fn(|i| unsafe {
-                    *itwiddles.get_unchecked(vec_index * 8 + i)
+                let twiddle_dbl = u32x8::from_array(array::from_fn(|k| unsafe {
+                    *circle_itwiddles.get_unchecked(circle_idx * 8 + k)
                 }));
                 let (t0, _) = compute_first_twiddles(twiddle_dbl);
-                let val0 = eval.values.data[vec_index * 2];
-                let val1 = eval.values.data[vec_index * 2 + 1];
+                let val0 = eval.values.data[circle_idx * 2];
+                let val1 = eval.values.data[circle_idx * 2 + 1];
                 let (f, g) = {
                     let (a, b) = val0.deinterleave(val1);
                     simd_ibutterfly(a, b, t0)
                 };
-                // f + alpha * g, where f and g are BaseField (packed in coordinate 0).
-                // alpha * g = (a0*g, a1*g, a2*g, a3*g) in M31 coordinates.
-                PackedSecureField::from_packed_m31s([f + a0 * g, a1 * g, a2 * g, a3 * g])
-            };
-            unsafe { dst_chunk.set_packed(index, value) };
+                *layer_value = [f + a0 * g, a1 * g, a2 * g, a3 * g];
+            }
+
+            // Fused line folds in registers.
+            let mut next_layer_size = n_circle_results >> 1;
+            for layer in 0..line_fold_step as usize {
+                let itwiddles = line_twiddles[layer];
+                let alpha = line_alphas[layer];
+                unsafe {
+                    for j in 0..next_layer_size {
+                        let packed_itwiddles = u32x16::from_array(array::from_fn(|k| {
+                            *itwiddles.get_unchecked((i * next_layer_size + j) * 16 + k)
+                        }));
+                        let val0 = layer_values[2 * j];
+                        let val1 = layer_values[2 * j + 1];
+                        let pairs: [_; 4] = array::from_fn(|c| {
+                            let (a, b) = val0[c].deinterleave(val1[c]);
+                            simd_ibutterfly(a, b, packed_itwiddles)
+                        });
+                        let v0 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].0));
+                        let v1 =
+                            PackedSecureField::from_packed_m31s(array::from_fn(|c| pairs[c].1));
+                        layer_values[j] =
+                            (v0 + PackedSecureField::broadcast(alpha) * v1).into_packed_m31s();
+                    }
+                }
+                next_layer_size >>= 1;
+            }
+
+            unsafe {
+                dst_chunk.set_packed(index, PackedSecureField::from_packed_m31s(layer_values[0]));
+            }
         }
     });
 
-    let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
-    LineEvaluation::new(line_domain, folded_values)
+    LineEvaluation::new(output_line_domain, folded_values)
 }
 
 /// See [`decomposition_coefficient`].
