@@ -20,6 +20,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: nightly-2026-01-15
+      - name: Detect benchmark environment
+        id: benchmark_environment
+        run: |
+          cpu_model=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1)
+          echo "cpu_model=${cpu_model}" >> "$GITHUB_OUTPUT"
       - name: Run benchmark
         run: |
           cargo install cargo-criterion
@@ -32,6 +37,7 @@ jobs:
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
         with:
+          name: Stwo (${{ steps.benchmark_environment.outputs.cpu_model }}, single-threaded)
           tool: "cargo"
           output-file-path: output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
