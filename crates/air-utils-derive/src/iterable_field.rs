@@ -257,15 +257,15 @@ impl IterableField {
                 let tail = format_ident!("{}_tail", name);
                 let array_size = &array_of_vecs.outer_array_size;
                 quote! {
-                    let (
-                        mut #head,
-                        mut #tail
-                    ):([_; #array_size],[_; #array_size])  = unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+                    let mut #head: [std::mem::MaybeUninit<_>; #array_size] = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+                    let mut #tail: [std::mem::MaybeUninit<_>; #array_size] = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
                     self.#name.into_iter().enumerate().for_each(|(i, v)| {
-                        let (head, tail) = v.split_at_mut(#index);
-                        #head[i] = head;
-                        #tail[i] = tail;
+                        let (head_val, tail_val) = v.split_at_mut(#index);
+                        #head[i].write(head_val);
+                        #tail[i].write(tail_val);
                     });
+                    let #head = unsafe { std::mem::MaybeUninit::array_assume_init(#head) };
+                    let #tail = unsafe { std::mem::MaybeUninit::array_assume_init(#tail) };
                 }
             }
         }
