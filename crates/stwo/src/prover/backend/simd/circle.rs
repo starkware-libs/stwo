@@ -521,6 +521,8 @@ fn compute_small_coset_twiddles(coset: Coset) -> TwiddleTree<SimdBackend> {
 
 /// Computes the twiddles of the coset in bit-reversed order. Optimized for SIMD.
 fn compute_coset_twiddles(coset: Coset, twiddles: &mut Vec<PackedM31>) {
+    let coset_log_size = coset.log_size();
+    assert!(coset_log_size > 0);
     let log_size = coset.log_size() - 1;
     assert!(log_size >= LOG_N_LANES);
 
