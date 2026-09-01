@@ -22,7 +22,7 @@ impl PointEvaluationAccumulator {
         Self { random_coeff, accumulation: SecureField::default() }
     }
 
-    /// Accumulates u_i(P0), a polynomial evaluation at a P0 in reverse order.
+    /// Accumulates u_i(P0), where the i-th evaluation is multiplied by alpha^(N-1-i).
     pub fn accumulate(&mut self, evaluation: SecureField) {
         self.accumulation = self.accumulation * self.random_coeff + evaluation;
     }
