@@ -12,7 +12,7 @@ use super::m31::{LOG_N_LANES, PackedBaseField};
 use super::qm31::PackedSecureField;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::FieldExpOps;
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{ColumnSampleBatch, quotient_constants};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
@@ -203,8 +203,96 @@ impl QuotientOps for SimdBackend {
 /// Performs the pointwise accumulation of the numerators on `subdomain`.
 ///
 /// Note that `columns` are assumed to be evaluations over a possibly larger domain containing
-/// `subdomain`. It must hold that the points of `subdomain` in bit-reversed order form a prefix of
-/// the points of the larger domain in bit-reversed order.
+/// `subdomain`. It must hold that the points of `subdomain` in bit-reversed order form a
+/// prefix of the points of the larger domain in bit-reversed order.
+use std::simd::{i64x8, u64x8};
+
+const MASK_EVENS64: u64x8 = u64x8::from_array([0xFFFFFFFF; 8]);
+const MASK31_64: i64x8 = i64x8::splat((1i64 << 31) - 1);
+
+/// Split a packed M31 vector into 64-bit even/odd lanes for widening products.
+#[inline(always)]
+fn split_eo(v: PackedBaseField) -> (u64x8, u64x8) {
+    let t = unsafe { core::mem::transmute::<std::simd::Simd<u32, 16>, u64x8>(v.into_simd()) };
+    (t & MASK_EVENS64, t >> 32)
+}
+
+#[inline(always)]
+fn as_i64(x: u64x8) -> i64x8 {
+    unsafe { core::mem::transmute::<u64x8, i64x8>(x) }
+}
+
+/// Lazy signed Mersenne-31 fold: x mod P == (x >> 31) + (x & (2^31-1)) exactly,
+/// for any signed 64-bit x (arithmetic shift keeps the sign).
+#[inline(always)]
+fn lazy_fold(x: i64x8) -> i64x8 {
+    (x >> 31) + (x & MASK31_64)
+}
+
+/// Accumulates `sum_terms (c_t * v_t)` for base-field columns in exact 64-bit
+/// lanes, deferring all reductions to a single pass per chunk (lazy signed
+/// Mersenne-31 folds keep the accumulators below 2^63 between terms).
+#[derive(Clone, Copy)]
+struct WideSecureAcc {
+    even: [i64x8; 4],
+    odd: [i64x8; 4],
+    n_terms: u32,
+}
+
+impl WideSecureAcc {
+    const fn new() -> Self {
+        Self { even: [i64x8::splat(0); 4], odd: [i64x8::splat(0); 4], n_terms: 0 }
+    }
+
+    /// Accumulate one `c * val` term: `c` is a broadcast SecureField scalar,
+    /// `val` a packed base-field vector (embedded into QM31 with zero
+    /// coordinates 1..4, so the product is per-coordinate `c_k * val`).
+    #[inline(always)]
+    fn add_term(&mut self, c: &SecureField, val: &PackedBaseField) {
+        let (v_e, v_o) = split_eo(*val);
+        let c_coords = [c.0.0, c.0.1, c.1.0, c.1.1];
+        for (k, ck_m31) in c_coords.into_iter().enumerate() {
+            let ck = u64x8::splat(ck_m31.0 as u64);
+            self.even[k] += as_i64(v_e * ck);
+            self.odd[k] += as_i64(v_o * ck);
+        }
+
+        self.n_terms += 1;
+        // Keep the signed accumulators below ~2^63: fold every other term.
+        if self.n_terms.is_multiple_of(2) {
+            for acc in self.even.iter_mut().chain(self.odd.iter_mut()) {
+                *acc = lazy_fold(*acc);
+            }
+        }
+    }
+
+    /// Reduce to the four packed M31 coordinate vectors (bit-exact mod P).
+    fn reduce(&self) -> [PackedBaseField; 4] {
+        std::array::from_fn(|k| {
+            let e = lazy_fold(lazy_fold(self.even[k]));
+            let o = lazy_fold(lazy_fold(self.odd[k]));
+            let mut lanes = [0u32; 16];
+            for lane in 0..8 {
+                let ev = e.as_array()[lane] as i64;
+                let ov = o.as_array()[lane] as i64;
+                lanes[2 * lane] = signed_reduce_m31(ev);
+                lanes[2 * lane + 1] = signed_reduce_m31(ov);
+            }
+            PackedBaseField::from_array(std::array::from_fn(|i| M31::from(lanes[i])))
+        })
+    }
+}
+
+/// Exact signed reduction of |x| < 2^63 into [0, P).
+const fn signed_reduce_m31(mut x: i64) -> u32 {
+    const P64: i64 = crate::core::fields::m31::P as i64;
+    x %= P64;
+    if x < 0 {
+        x += P64;
+    }
+    x as u32
+}
+
 fn accumulate_numerators_on_subdomain(
     subdomain: CircleDomain,
     sample_batch: &ColumnSampleBatch,
@@ -225,27 +313,30 @@ fn accumulate_numerators_on_subdomain(
 
     iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
         let chunk_start = chunk_idx * NUMERATORS_CHUNK_SIZE;
-        // Initialize accumulators for the chunk.
-        let mut accumulators = [PackedSecureField::zero(); NUMERATORS_CHUNK_SIZE];
+        // Initialize wide accumulators for the chunk: products are summed in
+        // exact 64-bit lanes and reduced once per chunk instead of per term.
+        let mut accumulators = [WideSecureAcc::new(); NUMERATORS_CHUNK_SIZE];
         // This is needed because the last chunk may be smaller than
         // `NUMERATORS_CHUNK_SIZE`.
         let packed_chunk_len = values_dst.0[0].0.len();
         let accumulators = &mut accumulators[..packed_chunk_len];
+        let mut b_sum = PackedSecureField::zero();
 
         for (numerator_data, (_, b, c)) in zip_eq(&sample_batch.cols_vals_randpows, quotient_coeffs)
         {
             let col_data = &columns[numerator_data.column_index].data;
-            let b_broadcast = PackedSecureField::broadcast(*b);
-            let c_broadcast = PackedSecureField::broadcast(*c);
+            b_sum += PackedSecureField::broadcast(*b);
             for (i, acc) in accumulators.iter_mut().enumerate() {
-                let val = col_data[chunk_start + i];
-                *acc += c_broadcast * val - b_broadcast;
+                acc.add_term(c, &col_data[chunk_start + i]);
             }
         }
 
+        let b_sum_arr = b_sum.into_packed_m31s();
         for (i, acc) in accumulators.iter().enumerate() {
+            let reduced = acc.reduce();
+            let final_acc = std::array::from_fn(|k| reduced[k] - b_sum_arr[k]);
             unsafe {
-                values_dst.set_packed(i, *acc);
+                values_dst.set_packed(i, PackedSecureField::from_packed_m31s(final_acc));
             }
         }
     });
