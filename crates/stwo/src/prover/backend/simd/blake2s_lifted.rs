@@ -227,12 +227,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         // before.
         let mut res: Vec<Blake2sHash> = unsafe { uninit_vec(1 << log_size) };
 
-        #[cfg(not(feature = "parallel"))]
-        let iter = res.chunks_mut(1 << LOG_N_LANES);
-        #[cfg(feature = "parallel")]
-        let iter = res.par_chunks_mut(1 << LOG_N_LANES);
-
-        iter.enumerate().for_each(|(i, dst)| {
+        let work = |(i, dst): (usize, &mut [Blake2sHash])| {
             let state = INITIAL_STATE;
             let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
             let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = array::from_fn(|j| {
@@ -242,7 +237,18 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             let untransposed = untranspose_states(state);
             let dst: &mut [Blake2sHash; 16] = dst.try_into().unwrap();
             *dst = unsafe { transmute::<[u32x16; 8], [Blake2sHash; 16]>(untransposed) };
-        });
+        };
+
+        // Below a few thousand nodes the rayon dispatch costs more than the fold
+        // itself (Plonky3 uses the same 1024-node serial threshold).
+        #[cfg(feature = "parallel")]
+        if log_size >= 10 {
+            res.par_chunks_mut(1 << LOG_N_LANES).enumerate().for_each(work);
+        } else {
+            res.chunks_mut(1 << LOG_N_LANES).enumerate().for_each(work);
+        }
+        #[cfg(not(feature = "parallel"))]
+        res.chunks_mut(1 << LOG_N_LANES).enumerate().for_each(work);
         res
     }
 }
