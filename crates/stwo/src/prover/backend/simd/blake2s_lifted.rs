@@ -75,10 +75,10 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         let mut next_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
             unsafe { uninit_vec(1 << max_log_size) };
 
-        #[cfg(not(feature = "parallel"))]
-        prev_layer_states.fill(INITIAL_STATE);
-        #[cfg(feature = "parallel")]
-        prev_layer_states.par_iter_mut().for_each(|uninit| *uninit = INITIAL_STATE);
+        // Only entry 0 of `prev_layer_states` is read in the first iteration below:
+        // `prev_chunk_max_log_size` starts at 0, so `i >> log_ratio == 0` for every `i`.
+        // Filling the whole buffer is a wasted full-array write pass.
+        prev_layer_states[0] = INITIAL_STATE;
 
         // The last column chunk, which requires the `compress_finalize` permutation, is
         // `columns[last_chunk_index..]`. This chunk is treated on its own towards the end of the
